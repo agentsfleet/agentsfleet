@@ -14,6 +14,7 @@ use afr_engine_firecracker::FirecrackerEngine;
 use bytes::Bytes;
 use libtest_mimic::Failed;
 
+use crate::firecracker::{BACKGROUND_ALIVE, START_BACKGROUND};
 use crate::lane::{Lane, id_of, isolated, plan};
 use crate::run::{expect, run, runtime, shell, within};
 use crate::trials::Body;
@@ -28,8 +29,6 @@ const POOL_FILLS_WITHIN: Duration = Duration::from_secs(30);
 const MONITOR_ENDS_WITHIN: Duration = Duration::from_secs(5);
 /// How often a trial looks again.
 const POLL: Duration = Duration::from_millis(50);
-/// A process the first claimant leaves running, which the next must not see.
-const START_BACKGROUND: &str = "setsid sleep 600 >/dev/null 2>&1 </dev/null &";
 /// Counts processes running `sleep 600`; the bracket keeps the counting
 /// shell's own command line from matching.
 const BACKGROUND_COUNT: &str =
@@ -77,7 +76,10 @@ fn pool_serves_once(lane: &Lane) -> Result<(), Failed> {
             held("full")?;
             let first = claim(&pool, "pool-first").await?;
             let said = within(first, async |first| {
-                let script = format!("cat /workspace/planted; {START_BACKGROUND}");
+                // A process the first claimant leaves running, which the
+                // next must not see.
+                let script =
+                    format!("cat /workspace/planted; {START_BACKGROUND}; {BACKGROUND_ALIVE}");
                 first
                     .agent()
                     .write_file("planted", Bytes::from_static(b"the first run's\n"))
@@ -102,8 +104,8 @@ fn pool_serves_once(lane: &Lane) -> Result<(), Failed> {
         pool.shutdown().await;
         let (said, found) = served?;
         expect(
-            said == "the first run's\n",
-            format!("its file reached it, got {said:?}"),
+            said == "the first run's\nalive\n",
+            format!("its file reached it and its process runs, got {said:?}"),
         )?;
         expect(
             found.trim() == "0",

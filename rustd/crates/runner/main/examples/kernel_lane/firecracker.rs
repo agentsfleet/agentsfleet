@@ -36,10 +36,19 @@ const MID_BUILD: Duration = Duration::from_millis(150);
 const NAMESPACE_FREED_WITHIN: Duration = Duration::from_secs(2);
 /// Where the kernel's same-page merging is switched.
 const KSM_RUN: &str = "/sys/kernel/mm/ksm/run";
-/// A background process the next boot must not find.
-const START_BACKGROUND: &str =
-    "setsid sleep 600 >/dev/null 2>&1 </dev/null & echo $! > /workspace/.background";
-const BACKGROUND_ALIVE: &str =
+/// A background process the next boot must not find. It records its process
+/// identifier only once `setsid` has taken it out of the starting shell's
+/// group, and the starting shell waits until that process answers: the
+/// guest agent ends a leader's group the moment the leader exits, so a
+/// process still in it could die before it ever ran, and a trial would read
+/// "gone" for a process that never was.
+pub(crate) const START_BACKGROUND: &str = "setsid sh -c 'echo $$ > /workspace/.background; \
+     exec sleep 600' >/dev/null 2>&1 </dev/null & \
+     until [ -s /workspace/.background ] && kill -0 \"$(cat /workspace/.background)\" 2>/dev/null; \
+     do sleep 0.02; done";
+/// Whether the process [`START_BACKGROUND`] recorded still runs, asked by its
+/// identifier: a scan of command lines would match the starting script's own.
+pub(crate) const BACKGROUND_ALIVE: &str =
     "kill -0 \"$(cat /workspace/.background)\" 2>/dev/null && echo alive || echo gone";
 /// Whether that background process runs anywhere a new inner environment
 /// sees: its own `/proc` shows its own processes alone, so an old process
@@ -199,8 +208,16 @@ fn stopped_resumes(lane: &Lane) -> Result<(), Failed> {
                 Network::Allowed(&first),
             )?)
             .await?;
-        let script = format!("echo kept > /workspace/kept && {START_BACKGROUND}");
-        if let Err(failed) = run(sandbox.agent(), shell(&script)).await {
+        let script = format!("echo kept > /workspace/kept; {START_BACKGROUND}; {BACKGROUND_ALIVE}");
+        let started = run(sandbox.agent(), shell(&script))
+            .await
+            .and_then(|started| {
+                expect(
+                    started.output == "alive\n",
+                    format!("the background process runs before the stop, got {started:?}"),
+                )
+            });
+        if let Err(failed) = started {
             sandbox.destroy().await?;
             return Err(failed);
         }
@@ -256,7 +273,7 @@ fn restored_in_place(lane: &Lane) -> Result<(), Failed> {
             agent.export(&["."], &mut checkpoint).await?;
             let script = format!(
                 "for tree in {WRITTEN}; do echo before > $tree/before; done; \
-                 {START_BACKGROUND}; {IPC_HELD}make"
+                 {START_BACKGROUND}; {BACKGROUND_ALIVE}; {IPC_HELD}make"
             );
             let made = run(agent, shell(&script)).await?.output;
             agent.renew().await?;
@@ -270,8 +287,11 @@ fn restored_in_place(lane: &Lane) -> Result<(), Failed> {
         .await?;
         expect(after == monitor, "the same monitor runs: no reboot")?;
         expect(
-            made.starts_with(SYSTEM_V_HELD),
-            format!("the old environment made its System V objects, got {made:?}"),
+            made.starts_with(&format!("alive\n{SYSTEM_V_HELD}")),
+            format!(
+                "the old environment ran its background process and made its System V \
+                 objects, got {made:?}"
+            ),
         )?;
         expect(
             said == format!("restored\ngone\n{NO_IPC_HELD}\n"),
