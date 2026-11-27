@@ -16,10 +16,15 @@ use crate::trials::Body;
 
 /// A tenant loop detached from the call that started it, counting into the
 /// workspace every 20 ms. Each count lands by a rename, so a read never finds
-/// the file half-written, frozen or not.
+/// the file half-written, frozen or not. The starting shell waits for the
+/// first count: the guest agent ends a leader's group the moment the leader
+/// exits, and a leader that exited at once killed the loop before `setsid`
+/// took it out of the group. A loop that never counts is the command
+/// hanging, which `run` reports.
 const START_COUNTER: &str = "setsid sh -c 'n=0; while :; do n=$((n+1)); \
      echo $n > /workspace/.counter.next && mv /workspace/.counter.next /workspace/counter; \
-     sleep 0.02; done' >/dev/null 2>&1 </dev/null &";
+     sleep 0.02; done' >/dev/null 2>&1 </dev/null & \
+     until [ -e /workspace/counter ]; do sleep 0.02; done";
 /// The file the loop counts into, inside the workspace.
 const COUNTER: &str = "counter";
 /// How long the trial watches the counter on each side of the thaw: fifteen
