@@ -59,8 +59,9 @@ impl Pins {
     /// frame of `frame_bytes`.
     ///
     /// # Errors
-    /// The walk could not read the workspace; no pin is kept.
+    /// The workspace could not be written back or read; no pin is kept.
     pub fn walk(&mut self, dir: &Dir, parent: Option<&str>, frame_bytes: usize) -> Result<PinWalk> {
+        written_back(dir)?;
         let before = self
             .committed
             .as_ref()
@@ -116,6 +117,28 @@ impl Snapshot {
             .filter(|seen| seen.kind == super::identity::Kind::File)
             .fold(0, |sum, seen| sum.saturating_add(seen.identity.size))
     }
+}
+
+/// Writes back the dirty pages of the filesystem `dir` lies on, before the
+/// walk reads a stat field. A page a tenant wrote through a shared mapping
+/// stays writable while it is dirty, so a second write to it takes no fault
+/// and moves no file time, and the walk would trust the file. Writing it back
+/// write-protects the page: the next write through the mapping faults and
+/// moves the file's times, which the next walk reads.
+#[cfg(target_os = "linux")]
+fn written_back(dir: &Dir) -> std::io::Result<()> {
+    Ok(rustix::fs::syncfs(dir)?)
+}
+
+/// The guest agent runs on Linux alone; elsewhere a walk serves tests, which
+/// map no file.
+#[cfg(not(target_os = "linux"))]
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "the Linux build's write-back can fail"
+)]
+const fn written_back(_dir: &Dir) -> std::io::Result<()> {
+    Ok(())
 }
 
 /// `removed` as the answer lists it, or none when it cannot: a name that is
