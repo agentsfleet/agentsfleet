@@ -13,11 +13,11 @@ runs:
     # The set holds a kernel image and static binaries: no package database
     # for an SBOM to read, so each is matched by the version its record pins.
     #
-    # The monitor is held to the toolbox's gate. The kernel's report is
-    # evidence, and the step warns without failing: a version match lists
-    # every CVE whose range covers that version, whatever this configuration
-    # builds, so the toolbox's threshold is not yet a ruling on it. The
-    # warning names what a newer release on the pinned line fixes.
+    # The monitor is held to the toolbox's gate. The kernel fails the step
+    # when a newer release on its pinned line fixes a Critical finding, which
+    # moving the pin repairs (Indy, Nov 27, 2026: "critical cve fail the
+    # build"). A version match also lists every CVE whose range covers the
+    # version, whatever this configuration builds; those stay in the report.
     - name: Scan with current vulnerability data
       shell: bash
       env:
@@ -49,6 +49,7 @@ runs:
         total="$(jq -r '[.kernel.matches[].vulnerability | select(.severity == "Critical")] | length' "$report")"
         echo "guest kernel $kernel: $total Critical findings by version match; a newer ${line}x release fixes: ${behind:-none}"
         if [ -n "$behind" ]; then
-          echo "::warning::the pinned guest kernel $kernel is behind Critical fixes on its own line: $behind"
+          echo "::error::the pinned guest kernel $kernel is behind Critical fixes on its own line: $behind; move the kernel line of scripts/toolbox/guest.txt to a release that carries them"
+          status=1
         fi
         exit "$status"
