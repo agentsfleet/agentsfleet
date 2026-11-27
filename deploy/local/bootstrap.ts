@@ -1,6 +1,7 @@
 import { chmod, lstat, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
+import { LocalBootstrapError, configureWebVendors, saveSecret, type Request } from "./bootstrap-vault";
 import { readCatalogue, CATALOGUE_URL } from "../../scripts/model-catalogue/catalogue";
 import { desiredRows } from "../../scripts/model-catalogue/rows";
 import { FIXTURE_KEY } from "../../ui/packages/app/tests/e2e/acceptance/fixtures/constants";
@@ -43,14 +44,9 @@ const EMULATOR_SILENT = "the local QStash emulator did not answer its signing ke
 const registrationSchema = z.object({ runner_id: z.uuidv7(), runner_token: z.string().startsWith("agt_r") });
 const runnerSelfSchema = z.object({assigned_policy: z.object({decision_model_id: z.string().optional()})});
 const runnerPageSchema = z.object({items: z.array(z.object({host_id: z.string()})), next_cursor: z.string().min(1).nullable()});
-type Request = <T>(method: string, path: string, body?: unknown) => Promise<T>;
 type PlatformKey = { active: boolean };
 /** Runs the 1Password command line with these arguments and returns its output. */
 type Op = (args: string[]) => Promise<string>;
-class LocalBootstrapError extends Error {
-  constructor(message: string, readonly status?: number) { super(message); }
-}
-
 /** Refuse a remote target before creating identities or reading provider credentials. */
 export function localTarget(value: string, expected: string): string {
   const url = new URL(value);
@@ -117,12 +113,6 @@ async function workspace(request: Request): Promise<string> {
   const owned = result.items.filter((row) => row.role === "owner");
   if (owned.length !== 1) throw new LocalBootstrapError("local platform fixture must own exactly one workspace");
   return z.uuidv7().parse(owned[0]?.id);
-}
-
-async function saveSecret(request: Request, workspaceId: string, name: string, data: Record<string, string>): Promise<void> {
-  const path = `/v1/workspaces/${workspaceId}/secrets`;
-  const { secrets } = await request<{ secrets: { name: string }[] }>(HTTP_METHOD.get, path);
-  if (!secrets.some((row) => row.name === name)) await request(HTTP_METHOD.post, path, { name, data });
 }
 
 async function catalogueModel(request: Request, provider: string, model: string): Promise<string | undefined> {
@@ -323,6 +313,7 @@ export async function bootstrap(): Promise<void> {
   const { revokeSession } = await clerkAdmin();
   const { base, namespace, request, sessionId, workspaceId, keys } = await platformSession();
   try {
+    await configureWebVendors(request, workspaceId, process.env.PLATFORM_ADMIN_WORKSPACE_ID);
     await configureModel(request, workspaceId, keys);
     const decision = await configureDecisions(request, workspaceId, process.env.PLATFORM_ADMIN_WORKSPACE_ID);
     await configureSigning(request, workspaceId, process.env.PLATFORM_ADMIN_WORKSPACE_ID);
@@ -336,7 +327,7 @@ export async function bootstrap(): Promise<void> {
       await persistWorkspace(envFile, workspaceId);
     }
     await enroll(request, base, namespace, record, decision);
-    console.log("Local platform model, decision model, connector, scheduler and runner configuration ready.");
+    console.log("Local platform model, decision model, web vendors, connector, scheduler and runner configuration ready.");
   } finally {
     await revokeSession(sessionId);
   }

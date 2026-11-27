@@ -21,7 +21,9 @@ source "$LOCAL_DEV_ENV_FILE"
 set +a
 model_bootstrap_key="${ANTHROPIC_API_KEY:-}"
 decision_bootstrap_key="${TYPESAFE_API_KEY:-}"
-unset OPENROUTER_API_KEY FIREWORKS_API_KEY ANTHROPIC_API_KEY TYPESAFE_API_KEY
+parallel_bootstrap_key="${PARALLEL_API_KEY:-}"
+exa_bootstrap_key="${EXA_API_KEY:-}"
+unset OPENROUTER_API_KEY FIREWORKS_API_KEY ANTHROPIC_API_KEY TYPESAFE_API_KEY PARALLEL_API_KEY EXA_API_KEY
 case "${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}" in pk_test_*) ;; *) dev_fail 'local acceptance requires development Clerk credentials' ;; esac
 : "${CLERK_SECRET_KEY:?development Clerk secret is required}"
 acceptance_adapter_build
@@ -86,7 +88,8 @@ export LOCAL_ACCEPTANCE_BOOTSTRAP_ENV_FILE="$LOCAL_DEV_ENV_FILE"
 export LOCAL_DEV_ENV_FILE="$LOCAL_ACCEPTANCE_STATE/daemon.env"
 make --no-print-directory _ensure-local-daemon
 acceptance_platform
-# Runtime model credentials now live in the local encrypted vault.
+unset parallel_bootstrap_key exa_bootstrap_key
+# Runtime model and web vendor credentials now live in the local encrypted vault.
 make --no-print-directory _ensure-local-daemon
 export ACCEPTANCE_RUNNER_TOKEN
 ACCEPTANCE_RUNNER_TOKEN="$(bun -e '
