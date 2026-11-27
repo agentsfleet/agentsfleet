@@ -21,7 +21,7 @@ use bytes::Bytes;
 use libtest_mimic::Failed;
 
 use crate::lane::{Lane, WORKSPACE_IMAGE, id_of, isolated, plan, spec};
-use crate::run::{expect, run, runtime, shell};
+use crate::run::{expect, run, runtime, shell, within};
 use crate::trials::Body;
 
 /// The environment variables naming the guest kernel and the guest's initial
@@ -200,16 +200,24 @@ fn stopped_resumes(lane: &Lane) -> Result<(), Failed> {
             )?)
             .await?;
         let script = format!("echo kept > /workspace/kept && {START_BACKGROUND}");
-        run(sandbox.agent(), shell(&script)).await?;
+        if let Err(failed) = run(sandbox.agent(), shell(&script)).await {
+            sandbox.destroy().await?;
+            return Err(failed);
+        }
+        // A park or a resume that fails has destroyed the sandbox itself.
         let parked = sandbox.park(ParkMode::Stop).await?;
         let leaf = engine.config().cgroup_root.join(id.as_str());
-        expect(!leaf.exists(), "no monitor runs while it is stopped")?;
-        let mut sandbox = parked.resume().await?;
-        let script = format!("cat /workspace/kept; {BACKGROUND_ALIVE}");
-        let said = run(sandbox.agent(), shell(&script)).await?.output;
-        sandbox.egress(plan(2, Network::Allowed(&moved))).await?;
-        let resolved = run(sandbox.agent(), shell(RESOLVE)).await?.output;
-        sandbox.destroy().await?;
+        let stopped = !leaf.exists();
+        let sandbox = parked.resume().await?;
+        let (said, resolved) = within(sandbox, async |sandbox| {
+            let script = format!("cat /workspace/kept; {BACKGROUND_ALIVE}");
+            let said = run(sandbox.agent(), shell(&script)).await?.output;
+            sandbox.egress(plan(2, Network::Allowed(&moved))).await?;
+            let resolved = run(sandbox.agent(), shell(RESOLVE)).await?.output;
+            Ok((said, resolved))
+        })
+        .await?;
+        expect(stopped, "no monitor runs while it is stopped")?;
         expect(
             said == "kept\ngone\n",
             format!("the disk, not the processes, got {said:?}"),
@@ -231,32 +239,35 @@ fn restored_in_place(lane: &Lane) -> Result<(), Failed> {
     let id = id_of("restored");
     runtime().block_on(async {
         let engine = lane.microvms()?;
-        let sandbox = engine.prepare(isolated(&engine, &id)?).await?;
         let procs = engine
             .config()
             .cgroup_root
             .join(id.as_str())
             .join(afr_cgroup::SANDBOX_LEAF)
             .join(af_cgroup::CGROUP_PROCS);
-        let monitor = fs::read_to_string(&procs)?;
-        let agent = sandbox.agent();
-        agent
-            .write_file("restored", Bytes::from_static(b"checkpoint\n"))
-            .await?;
-        let mut checkpoint = Vec::new();
-        agent.export(&["."], &mut checkpoint).await?;
-        let script = format!(
-            "for tree in {WRITTEN}; do echo before > $tree/before; done; {START_BACKGROUND}; \
-             {IPC_HELD}make"
-        );
-        let made = run(agent, shell(&script)).await?.output;
-        agent.renew().await?;
-        agent.import(".", &mut checkpoint.as_slice()).await?;
-        let script =
-            format!("for tree in {WRITTEN}; do ls -A $tree; done; {SURVIVOR}; {IPC_HELD}find");
-        let said = run(agent, shell(&script)).await?.output;
-        let after = fs::read_to_string(&procs)?;
-        sandbox.destroy().await?;
+        let sandbox = engine.prepare(isolated(&engine, &id)?).await?;
+        let (monitor, made, said, after) = within(sandbox, async |sandbox| {
+            let monitor = fs::read_to_string(&procs)?;
+            let agent = sandbox.agent();
+            agent
+                .write_file("restored", Bytes::from_static(b"checkpoint\n"))
+                .await?;
+            let mut checkpoint = Vec::new();
+            agent.export(&["."], &mut checkpoint).await?;
+            let script = format!(
+                "for tree in {WRITTEN}; do echo before > $tree/before; done; \
+                 {START_BACKGROUND}; {IPC_HELD}make"
+            );
+            let made = run(agent, shell(&script)).await?.output;
+            agent.renew().await?;
+            agent.import(".", &mut checkpoint.as_slice()).await?;
+            let script =
+                format!("for tree in {WRITTEN}; do ls -A $tree; done; {SURVIVOR}; {IPC_HELD}find");
+            let said = run(agent, shell(&script)).await?.output;
+            let after = fs::read_to_string(&procs)?;
+            Ok((monitor, made, said, after))
+        })
+        .await?;
         expect(after == monitor, "the same monitor runs: no reboot")?;
         expect(
             made.starts_with(SYSTEM_V_HELD),
@@ -278,13 +289,13 @@ fn walled_off(lane: &Lane) -> Result<(), Failed> {
         let near = engine
             .prepare(spec(&engine, &first, Limits::default(), Network::Host)?)
             .await?;
-        let far = engine
-            .prepare(spec(&engine, &second, Limits::default(), Network::Host)?)
-            .await?;
-        let walls = walls(&engine, &*near, far.id()).await;
-        near.destroy().await?;
-        far.destroy().await?;
-        walls
+        within(near, async |near| {
+            let far = engine
+                .prepare(spec(&engine, &second, Limits::default(), Network::Host)?)
+                .await?;
+            within(far, async |far| walls(&engine, &*near, far.id()).await).await
+        })
+        .await
     })?;
     let merging = fs::read_to_string(KSM_RUN).unwrap_or_default();
     expect(

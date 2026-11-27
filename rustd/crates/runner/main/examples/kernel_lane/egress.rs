@@ -14,7 +14,7 @@ use crate::egress_refill::{
     reallow_keeps_an_address_both_sets_hold, reallow_swaps_the_set_in_place,
 };
 use crate::lane::{Lane, id_of, spec};
-use crate::run::{expect, in_sandbox_each, run, runtime, said, shell};
+use crate::run::{expect, in_sandbox_each, run, runtime, said, shell, within};
 use crate::trials::{Body, FAR_NAME};
 
 pub(crate) use afr_engine::conformance::{ERRNO, connect};
@@ -110,9 +110,7 @@ fn release_and_boot_sweep(lane: &Lane) -> Result<(), Failed> {
             Network::Allowed(&allowlist),
         )?;
         let sandbox = engine.prepare(request).await?;
-        let during = objects()?;
-        sandbox.destroy().await?;
-        Ok::<_, Failed>(during)
+        within(sandbox, async |_sandbox| Ok(objects()?)).await
     })?;
     let after = objects()?;
     leave(LEFTOVER_SLOT)?;

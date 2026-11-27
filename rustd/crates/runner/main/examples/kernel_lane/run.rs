@@ -1,6 +1,6 @@
 //! Running one command inside a sandbox and reading what it said.
 
-use afr_engine::{Engine as _, Limits, Network};
+use afr_engine::{Engine as _, Limits, Network, Sandbox};
 use libtest_mimic::Failed;
 
 pub(crate) use afr_engine::conformance::{
@@ -45,19 +45,30 @@ pub(crate) fn in_sandbox_each(
         let engine = lane.microvms()?;
         let id = id_of(name);
         let sandbox = engine.prepare(spec(&engine, &id, limits, network)?).await?;
-        let mut outcomes = Vec::with_capacity(scripts.len());
-        for script in scripts {
-            match run(sandbox.agent(), shell(script.as_ref())).await {
-                Ok(outcome) => outcomes.push(outcome),
-                Err(failed) => {
-                    sandbox.destroy().await?;
-                    return Err(failed);
-                }
+        within(sandbox, async |sandbox| {
+            let mut outcomes = Vec::with_capacity(scripts.len());
+            for script in scripts {
+                outcomes.push(run(sandbox.agent(), shell(script.as_ref())).await?);
             }
-        }
-        sandbox.destroy().await?;
-        Ok(outcomes)
+            Ok(outcomes)
+        })
+        .await
     })
+}
+
+/// What `body` found in `sandbox`, which is destroyed whatever it found: a
+/// trial that fails part-way leaves no cgroup or directory for the next
+/// run's sandbox of the same name to collide with, and its failure is told
+/// before its teardown's.
+pub(crate) async fn within<T>(
+    mut sandbox: Box<dyn Sandbox>,
+    body: impl AsyncFnOnce(&mut dyn Sandbox) -> Result<T, Failed>,
+) -> Result<T, Failed> {
+    let found = body(&mut *sandbox).await;
+    let destroyed = sandbox.destroy().await;
+    let found = found?;
+    destroyed?;
+    Ok(found)
 }
 
 /// What each outcome printed, trimmed.

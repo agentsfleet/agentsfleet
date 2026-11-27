@@ -15,7 +15,7 @@ use bytes::Bytes;
 use libtest_mimic::Failed;
 
 use crate::lane::{Lane, id_of, isolated, plan};
-use crate::run::{expect, run, runtime, shell};
+use crate::run::{expect, run, runtime, shell, within};
 use crate::trials::Body;
 
 /// The pool the runner boots by default.
@@ -72,24 +72,35 @@ fn pool_serves_once(lane: &Lane) -> Result<(), Failed> {
                 format!("{at}: {built} built within {}", bound.sandboxes_max),
             )
         };
-        filled(&state, POOL).await?;
-        held("full")?;
-        let first = claim(&pool, "pool-first").await?;
-        let script = format!("cat /workspace/planted; {START_BACKGROUND}");
-        first
-            .agent()
-            .write_file("planted", Bytes::from_static(b"the first run's\n"))
+        let served = async {
+            filled(&state, POOL).await?;
+            held("full")?;
+            let first = claim(&pool, "pool-first").await?;
+            let said = within(first, async |first| {
+                let script = format!("cat /workspace/planted; {START_BACKGROUND}");
+                first
+                    .agent()
+                    .write_file("planted", Bytes::from_static(b"the first run's\n"))
+                    .await?;
+                let said = run(first.agent(), shell(&script)).await?.output;
+                held("serving")?;
+                Ok(said)
+            })
             .await?;
-        let said = run(first.agent(), shell(&script)).await?.output;
-        held("serving")?;
-        first.destroy().await?;
-        filled(&state, POOL).await?;
-        held("refilled")?;
-        let next = claim(&pool, "pool-next").await?;
-        let script = format!("ls /workspace; {BACKGROUND_COUNT}");
-        let found = run(next.agent(), shell(&script)).await?.output;
-        next.destroy().await?;
+            filled(&state, POOL).await?;
+            held("refilled")?;
+            let next = claim(&pool, "pool-next").await?;
+            let found = within(next, async |next| {
+                let script = format!("ls /workspace; {BACKGROUND_COUNT}");
+                Ok(run(next.agent(), shell(&script)).await?.output)
+            })
+            .await?;
+            Ok::<_, Failed>((said, found))
+        }
+        .await;
+        // Shut down whatever the trial found, so no pooled microVM outlives it.
         pool.shutdown().await;
+        let (said, found) = served?;
         expect(
             said == "the first run's\n",
             format!("its file reached it, got {said:?}"),
@@ -113,24 +124,28 @@ fn host_ends_one(lane: &Lane) -> Result<(), Failed> {
     runtime().block_on(async {
         let engine = lane.microvms()?;
         let ended = engine.prepare(isolated(&engine, &doomed)?).await?;
-        let other = engine.prepare(isolated(&engine, &spared)?).await?;
-        let monitor = monitor_of(&engine, &doomed)?;
-        let killed = Command::new("kill").args(["-KILL", &monitor]).status()?;
-        expect(
-            killed.success(),
-            format!("SIGKILL reached monitor {monitor}"),
-        )?;
-        let deadline = Instant::now() + MONITOR_ENDS_WITHIN;
-        while ended.state() == SandboxState::Running && Instant::now() < deadline {
-            tokio::time::sleep(POLL).await;
-        }
-        let ended_state = ended.state();
-        // Its calls fail, as a run's tools then answer `sandbox_unavailable`.
-        let unanswered = run(ended.agent(), shell("echo gone")).await.is_err();
-        let answered = run(other.agent(), shell("echo still")).await?.output;
-        let other_state = other.state();
-        ended.destroy().await?;
-        other.destroy().await?;
+        let (ended_state, unanswered, answered, other_state) = within(ended, async |ended| {
+            let other = engine.prepare(isolated(&engine, &spared)?).await?;
+            within(other, async |other| {
+                let monitor = monitor_of(&engine, &doomed)?;
+                let killed = Command::new("kill").args(["-KILL", &monitor]).status()?;
+                expect(
+                    killed.success(),
+                    format!("SIGKILL reached monitor {monitor}"),
+                )?;
+                let deadline = Instant::now() + MONITOR_ENDS_WITHIN;
+                while ended.state() == SandboxState::Running && Instant::now() < deadline {
+                    tokio::time::sleep(POLL).await;
+                }
+                let ended_state = ended.state();
+                // Its calls fail, as a run's tools then answer `sandbox_unavailable`.
+                let unanswered = run(ended.agent(), shell("echo gone")).await.is_err();
+                let answered = run(other.agent(), shell("echo still")).await?.output;
+                Ok((ended_state, unanswered, answered, other.state()))
+            })
+            .await
+        })
+        .await?;
         expect(
             ended_state == SandboxState::Ended,
             "the killed one reads ended",

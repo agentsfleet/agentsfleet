@@ -11,7 +11,7 @@ use afr_guest_client::GuestAgent;
 use libtest_mimic::Failed;
 
 use crate::lane::{Lane, id_of, isolated};
-use crate::run::{expect, run, runtime, shell};
+use crate::run::{expect, run, runtime, shell, within};
 use crate::trials::Body;
 
 /// A tenant loop detached from the call that started it, counting into the
@@ -48,30 +48,37 @@ fn freezes_tenant_code(lane: &Lane) -> Result<(), Failed> {
     let id = id_of("pin-pause");
     runtime().block_on(async {
         let engine = lane.microvms()?;
-        let sandbox = engine.prepare(isolated(&engine, &id)?).await?;
         let procs = engine
             .config()
             .cgroup_root
             .join(id.as_str())
             .join(afr_cgroup::SANDBOX_LEAF)
             .join(af_cgroup::CGROUP_PROCS);
-        let monitor = fs::read_to_string(&procs)?;
-        let agent = sandbox.agent();
-        run(agent, shell(START_COUNTER)).await?;
-        let started = first_count(agent).await?;
-        agent.freeze_tenant().await?;
-        let frozen = count(agent).await?;
-        tokio::time::sleep(WATCH).await;
-        let listed = agent.list_dir(".").await;
-        let held = count(agent).await?;
-        agent.thaw_tenant().await?;
-        tokio::time::sleep(WATCH).await;
-        let thawed = count(agent).await?;
-        let after = fs::read_to_string(&procs)?;
-        sandbox.destroy().await?;
-        let listed = listed?;
+        let sandbox = engine.prepare(isolated(&engine, &id)?).await?;
+        let paused = within(sandbox, async |sandbox| {
+            let monitor = fs::read_to_string(&procs)?;
+            let agent = sandbox.agent();
+            run(agent, shell(START_COUNTER)).await?;
+            let started = first_count(agent).await?;
+            agent.freeze_tenant().await?;
+            let frozen = count(agent).await?;
+            tokio::time::sleep(WATCH).await;
+            let listed = agent.list_dir(".").await;
+            let held = count(agent).await?;
+            agent.thaw_tenant().await?;
+            tokio::time::sleep(WATCH).await;
+            let thawed = count(agent).await?;
+            let after = fs::read_to_string(&procs)?;
+            Ok(Paused {
+                listed: listed?.entries.iter().any(|entry| entry.name == COUNTER),
+                counts: [started, frozen, held, thawed],
+                same_monitor: after == monitor,
+            })
+        })
+        .await?;
+        let [started, frozen, held, thawed] = paused.counts;
         expect(
-            listed.entries.iter().any(|entry| entry.name == COUNTER),
+            paused.listed,
             "the guest agent lists the workspace while the tenant is frozen",
         )?;
         expect(
@@ -83,10 +90,20 @@ fn freezes_tenant_code(lane: &Lane) -> Result<(), Failed> {
             format!("the count runs on after the thaw, got {held} then {thawed}"),
         )?;
         expect(
-            after == monitor,
+            paused.same_monitor,
             "the same monitor runs: the VM never stopped",
         )
     })
+}
+
+/// What the trial saw across the pause.
+struct Paused {
+    /// Whether the guest agent listed the counter while the tenant was frozen.
+    listed: bool,
+    /// The count at the start, at the freeze, before the thaw and after it.
+    counts: [u64; 4],
+    /// Whether the monitor after the thaw is the one from before the pause.
+    same_monitor: bool,
 }
 
 /// The loop's first count, once it has written one.

@@ -10,7 +10,7 @@ use libtest_mimic::Failed;
 use serde_json::{Value, json};
 
 use crate::lane::{Lane, id_of, isolated};
-use crate::run::{expect, runtime};
+use crate::run::{expect, runtime, within};
 use crate::tools::called;
 
 /// The argument names the calls spell.
@@ -74,18 +74,20 @@ fn in_fresh_sandbox(lane: &Lane, run_id: &str, steps: &[Step]) -> Result<Vec<Too
         let id = id_of(run_id);
         let request = isolated(&engine, &id)?;
         let sandbox = engine.prepare(request).await?;
-        let run = Run::default().with_image_input(true);
-        let mut outputs = Vec::with_capacity(steps.len());
-        for (number, step) in (1_u64..).zip(steps) {
-            let (name, arguments) = step(&outputs);
-            if !NAMES.contains(&name) {
-                return Err(format!("{name} is not one of the trial's tools").into());
+        within(sandbox, async |sandbox| {
+            let run = Run::default().with_image_input(true);
+            let mut outputs = Vec::with_capacity(steps.len());
+            for (number, step) in (1_u64..).zip(steps) {
+                let (name, arguments) = step(&outputs);
+                if !NAMES.contains(&name) {
+                    return Err(format!("{name} is not one of the trial's tools").into());
+                }
+                let agent = sandbox.agent();
+                outputs.push(called(agent, &run, number, name, &arguments).await?);
             }
-            let agent = sandbox.agent();
-            outputs.push(called(agent, &run, number, name, &arguments).await?);
-        }
-        sandbox.destroy().await?;
-        Ok(outputs)
+            Ok(outputs)
+        })
+        .await
     })
 }
 

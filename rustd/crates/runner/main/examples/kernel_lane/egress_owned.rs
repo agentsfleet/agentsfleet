@@ -12,9 +12,9 @@ use afr_firewall::far::{
 };
 use libtest_mimic::Failed;
 
-use crate::egress::{ERRNO, connect, said_then_destroyed};
+use crate::egress::{ERRNO, connect};
 use crate::lane::{Lane, id_of, spec};
-use crate::run::{expect, runtime};
+use crate::run::{expect, run, runtime, shell, within};
 use crate::trials::FAR_NAME;
 
 /// The prefix every scope's table name carries.
@@ -41,14 +41,21 @@ pub(crate) fn host_cannot_delete_a_live_table(lane: &Lane) -> Result<(), Failed>
             Network::Allowed(&allowlist),
         )?;
         let sandbox = engine.prepare(request).await?;
-        let table = objects()?
-            .into_iter()
-            .find(|name| name.starts_with(TABLE_PREFIX) && !before.contains(name))
-            .ok_or("the live scope's table is listed")?;
-        let answers = delete_from_elsewhere(&table)?;
-        let survived = objects()?.contains(&table);
-        let said = said_then_destroyed(sandbox, &scripts).await?;
-        Ok::<_, Failed>((answers, survived, said))
+        within(sandbox, async |sandbox| {
+            let table = objects()?
+                .into_iter()
+                .find(|name| name.starts_with(TABLE_PREFIX) && !before.contains(name))
+                .ok_or("the live scope's table is listed")?;
+            let answers = delete_from_elsewhere(&table)?;
+            let survived = objects()?.contains(&table);
+            let mut said = Vec::with_capacity(scripts.len());
+            for script in &scripts {
+                let outcome = run(sandbox.agent(), shell(script)).await?;
+                said.push(outcome.output.trim().to_owned());
+            }
+            Ok((answers, survived, said))
+        })
+        .await
     })?;
 
     let [by_name, flushed] = answers;

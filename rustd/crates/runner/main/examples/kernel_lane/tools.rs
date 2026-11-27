@@ -11,7 +11,7 @@ use libtest_mimic::Failed;
 use serde_json::{Value, json};
 
 use crate::lane::{Lane, id_of, isolated};
-use crate::run::{REACH_OUT, UNREACHABLE, expect, runtime};
+use crate::run::{REACH_OUT, UNREACHABLE, expect, runtime, within};
 
 /// A command that prints and then fails.
 const EXIT_THREE: &str = "echo hi; exit 3";
@@ -82,14 +82,16 @@ pub(crate) fn shell_calls(
         let id = id_of(run_id);
         let request = isolated(&engine, &id)?;
         let sandbox = engine.prepare(request).await?;
-        let run = Run::default();
-        let mut outputs = Vec::with_capacity(calls.len());
-        for (step, arguments) in (1_u64..).zip(calls) {
-            let agent = sandbox.agent();
-            outputs.push(called(agent, &run, step, SHELL.name(), arguments).await?);
-        }
-        sandbox.destroy().await?;
-        Ok(outputs)
+        within(sandbox, async |sandbox| {
+            let run = Run::default();
+            let mut outputs = Vec::with_capacity(calls.len());
+            for (step, arguments) in (1_u64..).zip(calls) {
+                let agent = sandbox.agent();
+                outputs.push(called(agent, &run, step, SHELL.name(), arguments).await?);
+            }
+            Ok(outputs)
+        })
+        .await
     })
 }
 
