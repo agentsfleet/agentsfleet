@@ -101,28 +101,29 @@ jobs:
           gh run download "$run_id" --name runner-toolbox --dir "$RUNNER_TEMP/toolbox"
           echo "ACCEPTANCE_LOCAL_TOOLBOX_DIR=$RUNNER_TEMP/toolbox" >> "$GITHUB_ENV"
 
-      # A microVM's first process is the runner itself, from an initramfs, so
-      # the guest needs this branch's runner as the static binary a release
-      # ships. The toolbox above is main's; the guest set is built here, because
-      # main's initramfs holds main's runner, which may not speak this branch's
-      # executor protocol. The restored cache is the candidate build's.
-      - name: Restore the static runner build
+      # A microVM's first process is the guest agent, agentsfleet-guest, from
+      # an initramfs, so the guest needs this branch's agent as the static
+      # binary a release ships. The toolbox above is main's; the guest set is
+      # built here, because main's initramfs holds main's agent, which may not
+      # speak this branch's agent protocol. The restored cache is the
+      # candidate build's.
+      - name: Restore the static guest agent build
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             .cargo-cache/registry
             .cargo-cache/git
             rustd/target
-          key: cargo-dist-runner-amd64-${{ hashFiles('rustd/Cargo.lock', 'rustd/rust-toolchain.toml', 'playbooks/operations/ci_rust_images/versions.env') }}-${{ github.sha }}
+          key: cargo-dist-guest-amd64-${{ hashFiles('rustd/Cargo.lock', 'rustd/rust-toolchain.toml', 'playbooks/operations/ci_rust_images/versions.env') }}-${{ github.sha }}
           restore-keys: |
-            cargo-dist-runner-amd64-${{ hashFiles('rustd/Cargo.lock', 'rustd/rust-toolchain.toml', 'playbooks/operations/ci_rust_images/versions.env') }}-
-            cargo-dist-runner-amd64-
+            cargo-dist-guest-amd64-${{ hashFiles('rustd/Cargo.lock', 'rustd/rust-toolchain.toml', 'playbooks/operations/ci_rust_images/versions.env') }}-
+            cargo-dist-guest-amd64-
 
-      - name: Compile the static runner the guest boots
+      - name: Compile the static guest agent the guest boots
         env:
-          CANDIDATE_PACKAGE: agentsfleet_runner
-          CANDIDATE_BINARY: agentsfleet-runner
-          CANDIDATE_FILENAME: agentsfleet-runner-linux-amd64
+          CANDIDATE_PACKAGE: agentsfleet_guest
+          CANDIDATE_BINARY: agentsfleet-guest
+          CANDIDATE_FILENAME: agentsfleet-guest-linux-amd64
           CANDIDATE_ARCH: amd64
         run: make candidate-native-linux
 
@@ -131,7 +132,7 @@ jobs:
       - name: Build and install the guest set
         uses: ./.github/actions/guest-set
         with:
-          runner-binary: dist/candidate/bin/agentsfleet-runner-linux-amd64
+          guest-binary: dist/candidate/bin/agentsfleet-guest-linux-amd64
           output-dir: dist/guest
           install: 'true'
 

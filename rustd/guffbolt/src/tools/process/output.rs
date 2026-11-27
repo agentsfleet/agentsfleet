@@ -28,7 +28,7 @@ const EXITED: &str = "Process exited with code";
 pub const RUNNING: &str = "Process running with session ID";
 /// How a process a signal ended reads.
 const SIGNALED: &str = "Process killed by signal";
-/// How a process the executor killed at its timeout reads.
+/// How a process the guest agent killed at its timeout reads.
 pub const TIMED_OUT: &str = "Process timed out";
 /// How a process the kernel killed for its environment's memory reads.
 const OUT_OF_MEMORY: &str = "Process killed: out of memory";

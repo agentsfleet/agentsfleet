@@ -10,7 +10,7 @@ mod firecracker;
 mod tuning;
 
 use self::tuning::{
-    DaemonTuning, EgressTuning, ExecutorTuning, ProviderTuning, SandboxTuning, TelemetryTuning,
+    DaemonTuning, EgressTuning, GuestTuning, ProviderTuning, SandboxTuning, TelemetryTuning,
     ToolsTuning, carries_a_read,
 };
 
@@ -31,7 +31,7 @@ struct Profile {
     #[garde(dive)]
     tools: ToolsTuning,
     #[garde(dive, custom(carries_a_read(self.tools.max_file_read_mib)))]
-    executor: ExecutorTuning,
+    guest: GuestTuning,
     #[garde(dive)]
     provider: ProviderTuning,
     #[garde(dive)]
@@ -50,11 +50,11 @@ pub(super) struct Settings {
     pub(super) supervisor: afr_supervisor::config::RuntimePolicy,
     /// The supervisor's daemon link, decision calls and sandbox limits.
     pub(super) tuning: afr_supervisor::config::Tuning,
-    /// What the debug engine's executor serves with and its client keeps
+    /// What the debug engine's guest agent serves with and its client keeps
     /// the link to; our Firecracker engine reads the same sizes from its
     /// own tuning. A release build has no debug engine, so no reader.
     #[cfg(all(debug_assertions, feature = "unsandboxed"))]
-    pub(super) sizes: afr_executor::Sizes,
+    pub(super) sizes: af_guest_wire::Sizes,
     /// What our Firecracker engine boots every microVM with.
     pub(super) firecracker: afr_engine_firecracker::FirecrackerTuning,
     /// The microVMs our Firecracker engine boots ahead of their runs.
@@ -70,7 +70,7 @@ pub(super) struct Settings {
 pub(super) fn read(env: &impl EnvSource) -> Result<Settings, ExitCode> {
     let profile = load(env).map_err(|error| super::refused(&error))?;
     let inference = af_providers::settings::Timeouts::new(&checked(profile.inference)?);
-    let sizes = tuning::sizes(&profile.tools, profile.executor);
+    let sizes = tuning::sizes(&profile.tools, profile.guest);
     Ok(Settings {
         inference: profile.provider.counting(inference),
         provider_retries: af_providers::settings::RetryPolicy::new(&checked(

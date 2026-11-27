@@ -13,29 +13,34 @@ use std::path::Path;
 use std::process::Stdio;
 use std::sync::{Arc, Mutex, PoisonError};
 
+use af_cgroup::CGROUP_PROCS;
 use af_core::error_code::{Coded as _, Logged};
-use afr_cgroup::{CGROUP_PROCS, Room, RunCgroup};
+use afr_cgroup::{Room, RunCgroup};
 use afr_engine::{Allowlist, Limits, RESOLV_CONF, Result, until_in_force};
-use afr_executor::{Client, Executor as _};
 use afr_firewall::{
     Destinations, GUEST_ADDRESS, GUEST_PREFIX_LEN, GuestNamespace, HostScope, TAP, TAP_ADDRESS,
 };
+use afr_guest_client::{Client, GuestAgent as _};
 use tokio::process::{Child, Command};
 
 use super::vm::Vm;
 use super::{Kept, Reach, Shared};
 use crate::admission::Reservation;
 use crate::config::FirecrackerTuning;
+use crate::console;
 use crate::error::{exited, not_ready, unrendered};
-use crate::guest::{EXECUTOR_PORT, GuestEntry};
 use crate::jail::{self, Furnishing, JailId};
 use crate::lock::ImageLock;
 use crate::machine::{self, Boot, GuestNetwork};
 use crate::vsock::VsockRoute;
+use af_guest_wire::{AGENT_PORT, GuestEntry};
 
+/// The monitor's two output streams, as each console line names them.
+const STDOUT: &str = "stdout";
+const STDERR: &str = "stderr";
 /// What a process writes to `cgroup.procs` to move itself.
 const SELF: &[u8] = b"0";
-/// What the ready probe lists: the workspace, the executor's root.
+/// What the ready probe lists: the workspace, the guest agent's root.
 const READY_PROBE: &str = ".";
 /// The event a piece a release could not remove is logged under.
 const EVENT_RELEASE_FAILED: &str = "sandbox_teardown_failed";
@@ -55,7 +60,7 @@ pub(crate) struct Parts {
 }
 
 /// Boots the sandbox `kept` describes on its kept disk, held to its plan,
-/// and returns once its executor answers and the plan reads back in force.
+/// and returns once its guest agent answers and the plan reads back in force.
 /// It holds `reservation`, its share of the host's admission bound, until it is
 /// released.
 ///
@@ -86,7 +91,7 @@ pub(crate) async fn boot(shared: &Arc<Shared>, kept: Kept, reservation: Reservat
     }
 }
 
-/// Makes every piece of one boot into `parts`, then dials its executor.
+/// Makes every piece of one boot into `parts`, then dials its guest agent.
 async fn start(shared: &Shared, kept: &Kept, parts: &mut Parts) -> Result<Client> {
     let config = &shared.config;
     let jail = parts.jail.insert(shared.jails.claim()?);
@@ -136,6 +141,7 @@ async fn start(shared: &Shared, kept: &Kept, parts: &mut Parts) -> Result<Client
         &config.tuning.binaries.jailer,
         argv,
         &cgroup.procs(),
+        kept.id.as_str(),
     )?);
     ready(child, &kept.layout, owner, config).await
 }
@@ -175,9 +181,9 @@ fn names(reach: &Reach) -> Option<String> {
 }
 
 /// What the guest entry is told for `granted`: its `/dev/shm` share, its
-/// tenant leaf's process cap and the executor's `sizes`. The process cap is
+/// tenant leaf's process cap and the guest agent's `sizes`. The process cap is
 /// enforced inside the guest, on the tenant alone.
-pub(super) const fn guest_entry(granted: &Limits, sizes: afr_executor::Sizes) -> GuestEntry {
+pub(super) const fn guest_entry(granted: &Limits, sizes: af_guest_wire::Sizes) -> GuestEntry {
     GuestEntry::new(granted.shared_memory_bytes(), granted.pids, sizes)
 }
 
@@ -206,8 +212,14 @@ pub(super) const fn room(tuning: &FirecrackerTuning) -> Room {
 }
 
 /// Starts the jailer with `argv` inside the cgroup whose `cgroup.procs` is
-/// `procs`, so the monitor it becomes is born there.
-fn spawn(jailer: &Path, argv: Vec<std::ffi::OsString>, procs: &Path) -> Result<Child> {
+/// `procs`, so the monitor it becomes is born there, and relays its two
+/// output streams, the guest's console, to the log under `sandbox_id`.
+fn spawn(
+    jailer: &Path,
+    argv: Vec<std::ffi::OsString>,
+    procs: &Path,
+    sandbox_id: &str,
+) -> Result<Child> {
     let join = fs::OpenOptions::new()
         .write(true)
         .open(procs)
@@ -219,8 +231,8 @@ fn spawn(jailer: &Path, argv: Vec<std::ffi::OsString>, procs: &Path) -> Result<C
         .args(argv)
         .env_clear()
         .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .kill_on_drop(true);
     let hook = move || {
         rustix::io::write(&join, SELF)
@@ -232,10 +244,17 @@ fn spawn(jailer: &Path, argv: Vec<std::ffi::OsString>, procs: &Path) -> Result<C
     // a file opened before the fork and owned by the hook, and allocates
     // nothing, so the jailer, and the monitor it execs, is born in the leaf.
     unsafe { command.pre_exec(hook) };
-    Ok(command.spawn()?)
+    let mut child = command.spawn()?;
+    if let Some(stdout) = child.stdout.take() {
+        tokio::spawn(console::relay(sandbox_id.to_owned(), STDOUT, stdout));
+    }
+    if let Some(stderr) = child.stderr.take() {
+        tokio::spawn(console::relay(sandbox_id.to_owned(), STDERR, stderr));
+    }
+    Ok(child)
 }
 
-/// The guest's executor, once it lists its workspace, dialled through the
+/// The guest's agent, once it lists its workspace, dialled through the
 /// socket its monitor, running as `owner`, made in `layout`'s jail. A monitor
 /// that exits first is refused with how it ended, and a guest silent past the
 /// ready timeout as not ready.
@@ -247,11 +266,11 @@ async fn ready(
 ) -> Result<Client> {
     let waited = config.tuning.ready_timeout;
     let (jail, socket) = layout.socket();
-    let route = VsockRoute::new(jail.to_owned(), socket, uid, EXECUTOR_PORT, waited);
+    let route = VsockRoute::new(jail.to_owned(), socket, uid, AGENT_PORT, waited);
     let answered = async {
         let client = Client::dial(route, config.tuning.sizes).await?;
         client.list_dir(READY_PROBE).await?;
-        Ok::<_, afr_executor::Error>(client)
+        Ok::<_, af_guest_wire::Error>(client)
     };
     let listed = tokio::select! {
         status = child.wait() => return Err(status.map_or_else(Into::into, exited)),

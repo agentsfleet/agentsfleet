@@ -1,5 +1,5 @@
 //! The turn itself: the engine runs, beside its sandbox's build when the run
-//! has one, and reaches the sandbox's executor through the build's slot.
+//! has one, and reaches the sandbox's guest agent through the build's slot.
 
 use afr_tools::ENGINE_STOP_GRACE;
 use std::panic::AssertUnwindSafe;
@@ -8,7 +8,7 @@ use af_core::error_code;
 
 use af_wire::report::FailureClass;
 use afr_agent::AgentRun;
-use afr_executor::ExecutorSource;
+use afr_guest_client::AgentSource;
 use afr_memory::Seed;
 use futures_util::FutureExt as _;
 
@@ -68,7 +68,7 @@ impl Run<'_> {
     pub(super) async fn drive(
         &self,
         memory: Seed<'_>,
-        executor: &dyn ExecutorSource,
+        agent: &dyn AgentSource,
         sink: ActivitySink,
         prepared_durable_task: Option<&afr_agent::PreparedDurableTask>,
         recovered: Recovered<'_>,
@@ -91,7 +91,7 @@ impl Run<'_> {
             prepared_durable_task,
             run: self.payload,
             memory,
-            executor,
+            agent,
             mint: &mint,
             verbs: &verbs,
             checkpoint: &checkpoint,

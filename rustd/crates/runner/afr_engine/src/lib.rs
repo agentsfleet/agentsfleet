@@ -1,9 +1,9 @@
 //! The seam every sandbox engine meets: where a run's tool calls run.
 //!
 //! [`Engine`] builds one [`Sandbox`] per run and the sandbox hands back the
-//! [`afr_executor::Executor`] running inside it. The interface assumes no file
+//! [`afr_guest_client::GuestAgent`] running inside it. The interface assumes no file
 //! system shared with the host — the workspace is a block image, the toolbox an
-//! image file, the executor a byte stream — so a microVM engine attaches the
+//! image file, the guest agent a byte stream — so a microVM engine attaches the
 //! same artifacts (`docs/architecture/runner_execution.md` §Sandbox engines).
 //!
 //! # Shape

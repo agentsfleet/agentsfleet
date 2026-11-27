@@ -27,11 +27,17 @@ workspace = true
 agentsfleetd = { workspace = true, features = ["test-util"] }
 # The Rust runner, driven end to end against that daemon: its supervisor and
 # native session, the scripted agent engine, the seam, the unsandboxed engine,
-# the executor's process request, the hosted catalog and the runner's export.
+# the guest agent's process request, the hosted catalog and the runner's export.
 afr_agent = { workspace = true, features = ["test-util"] }
 afr_engine.workspace = true
 afr_engine_unsandboxed.workspace = true
-afr_executor.workspace = true
+afr_guest_client.workspace = true
+af_guest_wire.workspace = true
+# The layer test holds the host's Landlock probe and the guest's ruleset to
+# one interface version: the runner links no guest crate, so only here do the
+# two meet.
+afg_confine.workspace = true
+afr_engine_firecracker.workspace = true
 afr_supervisor = { workspace = true, features = ["test-util"] }
 afr_telemetry.workspace = true
 afr_tools.workspace = true

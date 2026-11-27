@@ -1,17 +1,18 @@
-//! An executor whose processes are scripted, for the suites that prove the
+//! A guest agent whose processes are scripted, for the suites that prove the
 //! sandbox-side handlers and a run's end without a sandbox.
 //!
 //! Each spawn runs the next script on fresh events and records what it was
 //! asked. A script that stays open keeps its feed, so its process runs
 //! until the suite ends it or a kill does; one that echoes answers each write
-//! with the same bytes, as `cat` does. Like the real executor, it refuses a
+//! with the same bytes, as `cat` does. Like the real guest agent, it refuses a
 //! write or a kill naming a process it does not hold.
 
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use afr_executor::{Ending, Events, Executor, Feed, Process, ProcessId, Spawn, Stream};
+use af_guest_wire::{Ending, Stream};
+use afr_guest_client::{Events, Feed, GuestAgent, Process, ProcessId, Spawn};
 use bytes::Bytes;
 
 /// The signal a kill ends a scripted process with.
@@ -37,7 +38,7 @@ enum Then {
     /// Runs until the suite ends it or a kill does, answering writes as
     /// `on_write` says.
     StaysOpen { on_write: OnWrite },
-    /// Its events finish with no ending, as a lost executor's do.
+    /// Its events finish with no ending, as a lost guest agent's do.
     Vanishes,
 }
 
@@ -129,7 +130,7 @@ impl ScriptedProcess {
     }
 
     /// Prints `output`, then its events finish with no ending, as a lost
-    /// executor's do.
+    /// guest agent's do.
     #[must_use]
     pub fn vanishes(output: &str) -> Self {
         Self {
@@ -151,7 +152,7 @@ fn said(output: &str) -> Option<Bytes> {
     (!output.is_empty()).then(|| Bytes::copy_from_slice(output.as_bytes()))
 }
 
-/// A process the executor holds: where its events go, and what it does with
+/// A process the guest agent holds: where its events go, and what it does with
 /// a write.
 #[derive(Debug)]
 struct Held {
@@ -160,9 +161,9 @@ struct Held {
     on_write: OnWrite,
 }
 
-/// An executor that runs scripted processes and records what it was asked.
+/// A guest agent that runs scripted processes and records what it was asked.
 #[derive(Debug, Default)]
-pub struct ScriptedExecutor {
+pub struct ScriptedGuest {
     scripts: Mutex<VecDeque<ScriptedProcess>>,
     ids: AtomicU64,
     spawned: Mutex<Vec<Spawn>>,
@@ -170,12 +171,12 @@ pub struct ScriptedExecutor {
     killed: Mutex<Vec<ProcessId>>,
     held: Mutex<Vec<Held>>,
     /// Processes it no longer holds whose events stay open, as when an
-    /// executor lost a process before its ending reached the caller.
+    /// guest agent lost a process before its ending reached the caller.
     forgotten: Mutex<Vec<Held>>,
 }
 
-impl ScriptedExecutor {
-    /// An executor whose spawns run `scripts`, in order.
+impl ScriptedGuest {
+    /// A guest agent whose spawns run `scripts`, in order.
     #[must_use]
     pub fn new(scripts: impl IntoIterator<Item = ScriptedProcess>) -> Self {
         Self {
@@ -232,14 +233,14 @@ fn locked<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-/// The executor's refusal, saying `detail`.
-fn refused(detail: &str) -> afr_executor::Error {
+/// The guest agent's refusal, saying `detail`.
+fn refused(detail: &str) -> af_guest_wire::Error {
     std::io::Error::other(detail).into()
 }
 
 #[async_trait::async_trait]
-impl Executor for ScriptedExecutor {
-    async fn spawn(&self, spawn: &Spawn) -> afr_executor::Result<Process> {
+impl GuestAgent for ScriptedGuest {
+    async fn spawn(&self, spawn: &Spawn) -> af_guest_wire::Result<Process> {
         locked(&self.spawned).push(spawn.clone());
         let script = locked(&self.scripts)
             .pop_front()
@@ -259,13 +260,13 @@ impl Executor for ScriptedExecutor {
         Ok(Process { id, events })
     }
 
-    async fn write(&self, process: ProcessId, data: Bytes) -> afr_executor::Result<()> {
+    async fn write(&self, process: ProcessId, data: Bytes) -> af_guest_wire::Result<()> {
         locked(&self.written).push((process, data.clone()));
         let held = locked(&self.held);
         let open = held
             .iter()
             .find(|open| open.id == process)
-            .ok_or_else(afr_executor::error::unknown_process_refused)?;
+            .ok_or_else(af_guest_wire::error::unknown_process_refused)?;
         let on_write = open.on_write;
         match on_write {
             OnWrite::Takes { echo } => {
@@ -274,7 +275,7 @@ impl Executor for ScriptedExecutor {
                 }
                 Ok(())
             }
-            OnWrite::ClosedItsInput => Err(afr_executor::error::input_closed_refused()),
+            OnWrite::ClosedItsInput => Err(af_guest_wire::error::input_closed_refused()),
             OnWrite::Refuses => Err(refused(WRITE_REFUSED)),
             OnWrite::Gone(ending) => {
                 // `end` takes the lock this holds.
@@ -282,15 +283,15 @@ impl Executor for ScriptedExecutor {
                 if let Some(ending) = ending {
                     self.end(process, ending);
                 }
-                Err(afr_executor::error::unknown_process_refused())
+                Err(af_guest_wire::error::unknown_process_refused())
             }
         }
     }
 
-    async fn kill(&self, process: ProcessId) -> afr_executor::Result<()> {
+    async fn kill(&self, process: ProcessId) -> af_guest_wire::Result<()> {
         locked(&self.killed).push(process);
         self.end(process, Ending::Signaled(KILLED))
             .then_some(())
-            .ok_or_else(afr_executor::error::unknown_process_refused)
+            .ok_or_else(af_guest_wire::error::unknown_process_refused)
     }
 }

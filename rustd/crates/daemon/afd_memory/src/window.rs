@@ -1,6 +1,6 @@
 //! Which memory entries a run is seeded with, and which stay in Postgres.
 //!
-//! Pure, deterministic, datastore-free. Summarisation belongs on the executor
+//! Pure, deterministic, datastore-free. Summarisation belongs on the runner
 //! plane; this decides only what FITS.
 //!
 //! # The rule, in full

@@ -7,7 +7,7 @@
 //! is counted, never held. Once the head is read, the count of what fell
 //! between comes next, then the tail, which becomes the new head. Cuts are
 //! moved to character boundaries, so text stays valid UTF-8 on both sides of
-//! a gap. The same store sits behind a sandboxing embedder's executor client,
+//! a gap. The same store sits behind a sandboxing embedder's guest agent client,
 //! so a local process's output reads exactly as a sandboxed one's.
 
 use std::collections::VecDeque;

@@ -48,9 +48,9 @@ fn configured_run(fake: &Fake, tools: &[&str], message: &str) -> af_wire::run::R
     held
 }
 
-async fn workspace() -> (tempfile::TempDir, afr_executor::Client, String) {
+async fn workspace() -> (tempfile::TempDir, afr_guest_client::Client, String) {
     let scratch = tempfile::tempdir().unwrap();
-    let socket = scratch.path().join("executor.sock");
+    let socket = scratch.path().join("agent.sock");
     let root = scratch.path().join("workspace");
     std::fs::create_dir(&root).unwrap();
     let text = "bounded tool result\n".repeat(LINES);
@@ -60,11 +60,11 @@ async fn workspace() -> (tempfile::TempDir, afr_executor::Client, String) {
         super::images::real_image(image::ImageFormat::Png, 0),
     )
     .unwrap();
-    tokio::spawn(async move { afr_executor::serve(&socket, &root).await });
-    let client = afr_executor::Client::connect_within(
-        &scratch.path().join("executor.sock"),
+    tokio::spawn(async move { afg_agent::serve(&socket, &root).await });
+    let client = afr_guest_client::Client::connect_within(
+        &scratch.path().join("agent.sock"),
         Duration::from_secs(20),
-        afr_executor::Sizes::DEFAULT,
+        af_guest_wire::Sizes::DEFAULT,
     )
     .await
     .unwrap();
@@ -89,7 +89,7 @@ fn tool_reply(wire: Wire) -> Reply {
 // Value: protects=compaction preserves tools after crossing the operating threshold;
 // fails_when=physical headroom is incorrectly clamped to the fleet operating cap;
 // why_new=existing provider bounds do not drive a tools-disabled summary and continuation;
-// seam=local HTTPS provider and real executor socket;
+// seam=local HTTPS provider and real guest agent socket;
 // no_claim=live provider or sandbox acceptance.
 #[tokio::test]
 async fn a_tool_result_past_the_operating_cap_is_compacted_before_tools_continue() {

@@ -145,7 +145,7 @@ pub(crate) fn allow_list_closes_dns_the_host_and_inbound(lane: &Lane) -> Result<
         }
     };
     let (listened, inbound) = while_far_knocks(&far, own, || {
-        runtime.block_on(run(sandbox.executor(), shell(&listen_for_inbound())))
+        runtime.block_on(run(sandbox.agent(), shell(&listen_for_inbound())))
     });
     let said = runtime.block_on(said_then_destroyed(sandbox, &scripts))?;
     let listened = listened?.output.trim().to_owned();

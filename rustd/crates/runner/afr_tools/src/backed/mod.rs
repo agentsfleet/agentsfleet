@@ -2,7 +2,7 @@
 //! holds, through `guffbolt`'s one builder.
 //!
 //! ```text
-//!  Run ─┬─ executor source ─► LazySandboxEnv ─► with_env ─┬► shell, files, git, browser
+//!  Run ─┬─ guest agent source ─► LazySandboxEnv ─► with_env ─┬► shell, files, git, browser
 //!       ├─ sessions ─────────────────────────► with_sessions ┴► exec_command, write_stdin
 //!       ├─ guard, transport ─► Egressed ──────► with_outbound ─► http_request, web_fetch
 //!       ├─ memory ────────────────────────────► with_memory ───► memory_*
@@ -22,7 +22,7 @@
 use std::fmt;
 
 use af_egress::Transport;
-use afr_executor::ExecutorSource;
+use afr_guest_client::AgentSource;
 use guffbolt::agents::Agents;
 use guffbolt::tools::ToolsConfig;
 use guffbolt::{Describe as _, Tools};
@@ -51,7 +51,7 @@ pub struct Backends<'b, 'run> {
 }
 
 impl<'b, 'run> Backends<'b, 'run> {
-    /// The backends of `run`: the sandbox `executor` hands over, held to the
+    /// The backends of `run`: the sandbox `agent` hands over, held to the
     /// sizes `run` names, its memory
     /// and sessions, its verbs as its scheduler and channel, and its guard
     /// sending web requests and Pushover notifications through `transport`.
@@ -60,12 +60,12 @@ impl<'b, 'run> Backends<'b, 'run> {
     #[must_use]
     pub const fn new(
         run: &'b Run<'run>,
-        executor: &'b dyn ExecutorSource,
+        agent: &'b dyn AgentSource,
         transport: Option<&'b dyn Transport>,
     ) -> Self {
         Self {
             run,
-            env: LazySandboxEnv::new(executor, run.sizes),
+            env: LazySandboxEnv::new(agent, run.sizes),
             outbound: Egressed::new(transport, run),
             fenced: Fenced::new(run),
             pushover: Pushover::new(Egressed::new(transport, run)),

@@ -123,7 +123,7 @@ const ANSWER: &str = "the scripted scene is done";
 
 /// A run, end to end, through the Rust runner: it heartbeats, takes the
 /// seeded event, runs a scripted turn whose tool call executes through the
-/// executor, streams its frames to the fleet's live tail, pushes memory,
+/// guest agent, streams its frames to the fleet's live tail, pushes memory,
 /// settles the report, and leaves no sandbox behind.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -284,7 +284,7 @@ fn scripted() -> afr_agent::scripted::ScriptedEngine {
     ScriptedEngine::new([
         Step::Run {
             tool: TOOL,
-            spawn: afr_executor::Spawn::program("echo").arg("hi"),
+            spawn: afr_guest_client::Spawn::program("echo").arg("hi"),
         },
         Step::Say(ANSWER.to_owned()),
         Step::Remember(af_wire::memory::MemoryDelta {

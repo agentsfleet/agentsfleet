@@ -35,11 +35,11 @@ const EVENT_PARK_FAILED: &str = "sandbox_park_failed";
 const EVENT_PIDS_LIMIT_HIT: &str = "sandbox_pids_limit_hit";
 /// The count of forks refused at the process cap could not be read.
 const EVENT_PIDS_UNREAD: &str = "sandbox_pids_events_unread";
-/// The workspace's own top, as the executor reads a relative path whatever
+/// The workspace's own top, as the guest agent reads a relative path whatever
 /// its root is mounted at.
 const WORKSPACE_TOP: &str = ".";
-/// Why a resumed sandbox is given up when its executor does not answer.
-const DETAIL_SILENT: &str = "the resumed sandbox's executor did not answer";
+/// Why a resumed sandbox is given up when its guest agent does not answer.
+const DETAIL_SILENT: &str = "the resumed sandbox's guest agent did not answer";
 
 /// The sandbox a run ran in, and the key it would be parked under.
 #[derive(Debug)]
@@ -104,7 +104,7 @@ impl Run<'_> {
     /// The fleet's parked sandbox, resumed, confined to what `bound` admits
     /// and answering, or none. A park the run was not told to resume is
     /// ended, and so is one that will not resume, will not take `bound`'s
-    /// addresses, or whose executor stays silent; the run builds a fresh one.
+    /// addresses, or whose guest agent stays silent; the run builds a fresh one.
     pub(super) async fn revive(&self, key: &ParkKey, bound: &Bound) -> Option<Box<dyn Sandbox>> {
         let parks = &self.lessee.parks;
         if !self.payload.resume_park {
@@ -236,7 +236,7 @@ struct GivenUp {
 }
 
 /// Resumes a parked sandbox, confines it to what `bound` admits when that is
-/// an allowlist, and waits up to `within` for its executor to answer. The
+/// an allowlist, and waits up to `within` for its guest agent to answer. The
 /// addresses change before the run's first command, so nothing runs against
 /// the old set once its names name the new one. A failure answers why, with
 /// the sandbox when it resumed and still needs destroying.
@@ -277,12 +277,12 @@ async fn resume(
 
 /// Reads, once run `run_id`'s work is done, how many forks its sandbox's
 /// process cap, `pids_max`, refused, and reports a run that met the cap. A
-/// sandbox that no longer runs has no executor to ask.
+/// sandbox that no longer runs has no guest agent to ask.
 async fn count_pids_refused(sandbox: &dyn Sandbox, run_id: &str, pids_max: u32) {
     if sandbox.state() != SandboxState::Running {
         return;
     }
-    match sandbox.executor().pids_refused().await {
+    match sandbox.agent().pids_refused().await {
         Ok(refused) => pids_limit_hit(run_id, refused, pids_max),
         Err(failure) => {
             let error_code = failure.code().as_str();
@@ -305,17 +305,17 @@ fn pids_limit_hit(run_id: &str, refused: u64, pids_max: u32) {
     record::pids_limit_hit();
 }
 
-/// Waits up to `within` for a resumed sandbox's executor to answer.
-async fn answered(sandbox: &dyn Sandbox, within: Duration) -> afr_executor::Result<()> {
-    let answer = sandbox.executor().list_dir(WORKSPACE_TOP);
+/// Waits up to `within` for a resumed sandbox's guest agent to answer.
+async fn answered(sandbox: &dyn Sandbox, within: Duration) -> af_guest_wire::Result<()> {
+    let answer = sandbox.agent().list_dir(WORKSPACE_TOP);
     tokio::time::timeout(within, answer)
         .await
         .unwrap_or_else(|_late| Err(silent()))
         .map(drop)
 }
 
-/// The failure a resumed executor that never answered is logged as.
-fn silent() -> afr_executor::Error {
+/// The failure a resumed guest agent that never answered is logged as.
+fn silent() -> af_guest_wire::Error {
     std::io::Error::new(std::io::ErrorKind::TimedOut, DETAIL_SILENT).into()
 }
 

@@ -1,7 +1,7 @@
 //! The delegating fleet, end to end: installed from the corpus into a real
 //! daemon, held by the Rust runner's real loop, its model a script, its two
 //! children, which `guffbolt` drives, reading the checked-out repository
-//! through the executor, and every call of the run, the children's included,
+//! through the guest agent, and every call of the run, the children's included,
 //! in the one trace the daemon stores under one counter.
 //!
 //! Marked `#[ignore]` like the rest of the live-service suite; run by
@@ -100,7 +100,7 @@ fn row(call: &Value) -> (String, String, String) {
 /// On `guffbolt`'s subagents: the triager starts two
 /// children with `spawn_agent` and waits for each with `wait_agent`; each
 /// child holds `file_read` alone, reads the checked-out repository through
-/// the executor, and its answer is what its wait reads; the stored trace
+/// the guest agent, and its answer is what its wait reads; the stored trace
 /// holds the parent's four rows and the children's four `file_read` rows
 /// under one counter.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -149,7 +149,7 @@ async fn test_delegating_definition_roundtrip() {
     assert_eq!(reads.len(), 4, "{reads:#?}");
     assert!(
         reads[0].contains("echo helo"),
-        "the child read the workspace through the executor: {reads:#?}"
+        "the child read the workspace through the guest agent: {reads:#?}"
     );
 
     let trace = stored_trace(&scene)

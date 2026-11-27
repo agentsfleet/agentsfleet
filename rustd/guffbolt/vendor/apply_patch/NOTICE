@@ -31,4 +31,4 @@ Changes to the copied files, as the Apache License 2.0 section 4(b) asks:
 
 Not copied: invocation.rs (shell heredoc parsing over tree-sitter), lib.rs's
 filesystem application (this crate applies hunks through the sandbox's
-executor), standalone_executable.rs, main.rs, file_update_tests.rs.
+guest agent), standalone_executable.rs, main.rs, file_update_tests.rs.

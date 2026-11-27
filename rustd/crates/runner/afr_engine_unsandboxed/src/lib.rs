@@ -1,7 +1,7 @@
 //! The debug engine: no sandbox, for the lanes that run where no microVM
 //! can.
 //!
-//! [`UnsandboxedEngine`] serves the real executor in-process, over a real
+//! [`UnsandboxedEngine`] serves the real guest agent in-process, over a real
 //! socket, in a scratch directory, so the supervisor and the daemon are
 //! proven end to end on any developer machine; a release build refuses to
 //! construct it. Behind `test-util`, [`RecoveryDrillEngine`] wraps it with a

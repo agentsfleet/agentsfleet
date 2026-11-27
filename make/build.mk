@@ -39,14 +39,15 @@ toolbox-image:  ## Build the runner's toolbox image (Linux, root; mmdebstrap + e
 # What a Firecracker microVM boots from, pinned by scripts/toolbox/guest.txt:
 # the monitor, its jailer and the guest kernel are the same bytes for one
 # manifest and builder, so their directory is cached; the initramfs is built
-# around GUEST_RUNNER, which must be the static musl runner
-# (`make candidate-native-linux`). Linux only, as any user.
+# around GUEST_BINARY, which must be the static musl agentsfleet-guest
+# (`make candidate-native-linux CANDIDATE_PACKAGE=agentsfleet_guest
+# CANDIDATE_BINARY=agentsfleet-guest`). Linux only, as any user.
 GUEST_PINNED_DIR ?= $(CURDIR)/dist/guest-pinned
 GUEST_DIR ?= $(TOOLBOX_DIR)
-GUEST_RUNNER ?= $(CURDIR)/dist/candidate/bin/agentsfleet-runner-linux-amd64
+GUEST_BINARY ?= $(CURDIR)/dist/candidate/bin/agentsfleet-guest-linux-amd64
 
 guest-pinned:  ## Fetch Firecracker and its jailer and build the guest kernel (Linux; minutes) into $(GUEST_PINNED_DIR)
 	@bash scripts/toolbox/guest.sh pinned "$(GUEST_PINNED_DIR)"
 
-guest-set:  ## Assemble the guest set, with the initramfs around GUEST_RUNNER, from $(GUEST_PINNED_DIR) into $(GUEST_DIR)
-	@bash scripts/toolbox/guest.sh assemble "$(GUEST_PINNED_DIR)" "$(GUEST_RUNNER)" "$(GUEST_DIR)"
+guest-set:  ## Assemble the guest set, with the initramfs around GUEST_BINARY (agentsfleet-guest), from $(GUEST_PINNED_DIR) into $(GUEST_DIR)
+	@bash scripts/toolbox/guest.sh assemble "$(GUEST_PINNED_DIR)" "$(GUEST_BINARY)" "$(GUEST_DIR)"

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Build the pinned guest set a Firecracker microVM boots from: the monitor and
-# its jailer, the guest kernel, and the initramfs whose /init is the runner.
+# its jailer, the guest kernel, and the initramfs whose /init is the in-VM
+# agent, agentsfleet-guest.
 #
 #   guest.sh packages
 #       The Debian packages the build needs, one per line.
@@ -9,10 +10,11 @@
 #       from the release archive, `vmlinux` built from kernel.org source, and
 #       `pinned.json` recording each one's SHA-256 and inputs. Minutes, so
 #       callers cache <dir>.
-#   guest.sh assemble <pinned-dir> <runner-binary> <output-dir>
+#   guest.sh assemble <pinned-dir> <guest-binary> <output-dir>
 #       The whole set into <output-dir>: the three pinned files, checked
-#       against their record, `guest.cpio` around <runner-binary>, and
-#       `guest.json` recording all four.
+#       against their record, `guest.cpio` around <guest-binary>, and
+#       `guest.json` recording all four, the binary as `init`, and its
+#       version beside the runner's.
 #
 # Linux only, as any user, for the builder's own architecture.
 set -euo pipefail
@@ -21,7 +23,7 @@ set -euo pipefail
 readonly BUILDER_PACKAGES=(gcc binutils make flex bison bc libelf-dev libssl-dev perl xz-utils cpio curl jq)
 
 # Every line the final kernel configuration must carry, each one something the
-# engine or the guest entry relies on (afr_engine_firecracker).
+# engine or the guest agent relies on (afr_engine_firecracker, afg_entry).
 readonly REQUIRED_CONFIG=(
   # vda, the toolbox: EROFS with the compression and attributes its image uses.
   'CONFIG_EROFS_FS=y'
@@ -34,7 +36,7 @@ readonly REQUIRED_CONFIG=(
   'CONFIG_VIRTIO_BLK=y'
   'CONFIG_VIRTIO_NET=y'
   'CONFIG_EXT4_FS=y'
-  # The executor's only way in, which no guest process may dial.
+  # The guest agent's only way in, which no guest process may dial.
   'CONFIG_VIRTIO_VSOCKETS=y'
   '# CONFIG_VSOCKETS_LOOPBACK is not set'
   # As the measured spike kernel had it.
@@ -67,7 +69,7 @@ readonly GUEST_RECORD=guest.json
 die() { echo "guest.sh: $*" >&2; exit 1; }
 
 usage() {
-  echo "usage: $0 packages | pinned <dir> | assemble <pinned-dir> <runner-binary> <output-dir>" >&2
+  echo "usage: $0 packages | pinned <dir> | assemble <pinned-dir> <guest-binary> <output-dir>" >&2
   exit 2
 }
 
@@ -253,9 +255,9 @@ check_init() {
 # One file, `init`, owned by root, its time the manifest's epoch, its inode
 # and device numbers zeroed: the archive depends on the binary alone.
 build_initramfs() {
-  local runner="$1" out="$2" stage="$work/initramfs" listed
+  local guest="$1" out="$2" stage="$work/initramfs" listed
   mkdir "$stage"
-  install -m 0755 "$runner" "$stage/init"
+  install -m 0755 "$guest" "$stage/init"
   touch -d "@$epoch" "$stage/init"
   (cd "$stage" && printf 'init\0' | cpio --null --create --format=newc --reproducible --owner=0:0 --quiet) >"$work/$INITRAMFS"
   listed="$(cpio --list --quiet <"$work/$INITRAMFS")"
@@ -263,18 +265,32 @@ build_initramfs() {
   install -m 0644 "$work/$INITRAMFS" "$out/$INITRAMFS"
 }
 
+# The version the guest binary reports of itself: clap answers --version before
+# the binary checks that it is a microVM's first process, so it runs here.
+guest_version_of() {
+  local binary="$1" said
+  said="$("$binary" --version)" || die "$binary does not answer --version"
+  [[ "$said" =~ ^agentsfleet-guest\ ([^[:space:]]+)$ ]] || die "$binary is not agentsfleet-guest: it says '$said'"
+  printf '%s\n' "${BASH_REMATCH[1]}"
+}
+
 assemble() {
-  local pinned="$1" runner="$2" out="$3" name
-  [ -f "$runner" ] || die "runner binary not found: $runner"
+  local pinned="$1" guest="$2" out="$3" name guest_version
+  [ -f "$guest" ] || die "guest binary not found: $guest"
   check_pinned "$pinned"
-  check_init "$runner"
+  check_init "$guest"
+  guest_version="$(guest_version_of "$guest")"
+  [ "$guest_version" = "$runner_version" ] \
+    || die "$guest is agentsfleet-guest $guest_version, not this release's $runner_version"
   mkdir -p "$out"
   install -m 0644 "$pinned/vmlinux" "$out/vmlinux"
   for name in firecracker jailer; do install -m 0755 "$pinned/$name" "$out/$name"; done
-  build_initramfs "$runner" "$out"
-  jq --arg version "$runner_version" --argjson initramfs "$(artifact_json "$out/$INITRAMFS")" \
-    --arg init_sha256 "$(file_sha256 "$runner")" --argjson init_length "$(stat -c %s "$runner")" \
-    '.runner_version=$version | .artifacts[$initramfs.key]=$initramfs.value
+  build_initramfs "$guest" "$out"
+  jq --arg version "$runner_version" --arg guest_version "$guest_version" \
+    --argjson initramfs "$(artifact_json "$out/$INITRAMFS")" \
+    --arg init_sha256 "$(file_sha256 "$guest")" --argjson init_length "$(stat -c %s "$guest")" \
+    '.runner_version=$version | .guest_version=$guest_version
+     | .artifacts[$initramfs.key]=$initramfs.value
      | .init={sha256:$init_sha256,length:$init_length}' "$pinned/$PINNED_RECORD" >"$work/$GUEST_RECORD"
   install -m 0644 "$work/$GUEST_RECORD" "$out/$GUEST_RECORD"
   echo "$out/$GUEST_RECORD"

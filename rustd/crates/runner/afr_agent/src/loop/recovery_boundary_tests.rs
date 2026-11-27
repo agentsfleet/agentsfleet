@@ -26,7 +26,7 @@ use crate::{
 /// What the scripted capture owner answers a save with.
 #[derive(Debug, Clone, Copy)]
 enum Answer {
-    /// No new generation: the executor was busy.
+    /// No new generation: the guest agent was busy.
     Skipped,
     /// A committed receipt for another attempt.
     Elsewhere,
@@ -66,7 +66,7 @@ impl RecoveryBoundarySink for Sink {
     async fn save(&self, snapshot: RecoverySnapshot) -> crate::Result<RecoverySave> {
         self.saves.fetch_add(1, Ordering::SeqCst);
         match self.answer {
-            Answer::Skipped => Ok(RecoverySave::Skipped(RecoverySkip::BusyExecutor)),
+            Answer::Skipped => Ok(RecoverySave::Skipped(RecoverySkip::BusyAgent)),
             Answer::Elsewhere => Ok(RecoverySave::Committed(Box::new(RecoveryReceipt {
                 run_id: "019f0000-0000-7000-8000-0000000000ff".to_owned(),
                 turn_id: snapshot.turn_id,
@@ -114,8 +114,8 @@ async fn drive(run: &RunPayload<'_>, sink: &Sink) -> RunOutput {
             prepared_durable_task: None,
             run,
             memory: afr_memory::Seed::default(),
-            executor: &afr_executor::ExecutorSlot::unavailable(
-                afr_executor::Unavailable::NoSandbox,
+            agent: &afr_guest_client::AgentSlot::unavailable(
+                afr_guest_client::Unavailable::NoSandbox,
             ),
             mint: &af_egress::testing::CountingMint::never(),
             verbs: &afr_tools::CLOSED,
@@ -208,8 +208,8 @@ async fn an_assigned_checkpoint_with_no_restored_state_refuses_the_run_before_an
             prepared_durable_task: None,
             run: &run,
             memory: afr_memory::Seed::default(),
-            executor: &afr_executor::ExecutorSlot::unavailable(
-                afr_executor::Unavailable::NoSandbox,
+            agent: &afr_guest_client::AgentSlot::unavailable(
+                afr_guest_client::Unavailable::NoSandbox,
             ),
             mint: &af_egress::testing::CountingMint::never(),
             verbs: &afr_tools::CLOSED,

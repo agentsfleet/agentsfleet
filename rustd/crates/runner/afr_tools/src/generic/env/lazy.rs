@@ -2,7 +2,8 @@
 
 use std::time::Duration;
 
-use afr_executor::{ExecutorSource, Sizes, WORKSPACE_ROOT};
+use af_guest_wire::{Sizes, WORKSPACE_ROOT};
+use afr_guest_client::AgentSource;
 use bytes::Bytes;
 use guffbolt::tools::env::{
     Browser, Env, EnvError, EnvErrorKind, EnvFuture, FileContent, Found, Listing, Process,
@@ -12,11 +13,11 @@ use guffbolt::tools::env::{
 use super::{ENDING_GRACE, SandboxEnv, WAITS_FOR_FIRECRACKER};
 
 /// The run's sandbox, as the environment of the tools the run built before
-/// the sandbox was ready: every call gets the executor from `source` first.
+/// the sandbox was ready: every call gets the guest agent from `source` first.
 #[derive(Debug, Clone, Copy)]
 pub struct LazySandboxEnv<'a> {
-    source: &'a dyn ExecutorSource,
-    /// The sizes the run's executor is started with, known before it is:
+    source: &'a dyn AgentSource,
+    /// The sizes the run's guest agent is started with, known before it is:
     /// a tool asks for its read size before the call that waits for the
     /// sandbox.
     sizes: Sizes,
@@ -24,9 +25,9 @@ pub struct LazySandboxEnv<'a> {
 
 impl<'a> LazySandboxEnv<'a> {
     /// The environment of the sandbox `source` hands over, once it does,
-    /// whose executor holds to `sizes`.
+    /// whose guest agent holds to `sizes`.
     #[must_use]
-    pub const fn new(source: &'a dyn ExecutorSource, sizes: Sizes) -> Self {
+    pub const fn new(source: &'a dyn AgentSource, sizes: Sizes) -> Self {
         Self { source, sizes }
     }
 

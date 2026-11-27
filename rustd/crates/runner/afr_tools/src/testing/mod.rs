@@ -1,6 +1,6 @@
 //! What the handler suites share: one call, made the way the router makes it,
 //! to a tool built the way a run builds it; a run that sends through a fake;
-//! and an executor served in-process for the file tools to cross.
+//! and a guest agent served in-process for the file tools to cross.
 
 #![expect(
     clippy::expect_used,
@@ -17,7 +17,7 @@ use af_egress::Egress;
 use af_egress::fixture::{RUN_ID, policy};
 use af_egress::testing::{CountingMint, RecordingTransport, Sent};
 use af_wire::policy::ExecutionPolicy;
-use afr_executor::{Client, Executor, ExecutorSlot, Unavailable};
+use afr_guest_client::{AgentSlot, Client, GuestAgent, Unavailable};
 use afr_memory::Loaded;
 use guffbolt::{CallRef, ToolOutput};
 use jiff::Timestamp;
@@ -36,7 +36,7 @@ pub(crate) const START: Timestamp = Timestamp::constant(1_700_000_000, 0);
 pub(crate) const MINTED: &str = "ghs_minted_token";
 /// A minted token's lifetime: one hour.
 pub(crate) const HOUR: Duration = Duration::from_hours(1);
-/// How long a suite waits on the executor before failing.
+/// How long a suite waits on the guest agent before failing.
 const PATIENCE: Duration = Duration::from_secs(20);
 
 /// The catalog the runner hosts, its egress tools sending into a recorder
@@ -57,30 +57,30 @@ pub(crate) fn offered(selection: &Selection<'_>, entry: &'static Entry) -> &'sta
     entry
 }
 
-/// The real executor, served in-process on a scratch socket over a scratch
+/// The real guest agent, served in-process on a scratch socket over a scratch
 /// workspace, and a client on it: a file call crosses what a sandbox's does.
 pub(crate) struct Live {
     pub(crate) client: Client,
     /// The workspace on the host, for a suite to plant and inspect files.
     pub(crate) root: PathBuf,
-    server: JoinHandle<afr_executor::Result<()>>,
+    server: JoinHandle<af_guest_wire::Result<()>>,
     scratch: tempfile::TempDir,
 }
 
 impl Live {
-    /// Serves an executor and connects to it.
+    /// Serves a guest agent and connects to it.
     pub(crate) async fn start() -> Self {
         let scratch = tempfile::tempdir().expect("a scratch directory");
-        let socket = scratch.path().join("executor.sock");
+        let socket = scratch.path().join("agent.sock");
         let root = scratch.path().join("workspace");
         std::fs::create_dir(&root).expect("the workspace directory");
         let server = tokio::spawn({
             let (socket, root) = (socket.clone(), root.clone());
-            async move { afr_executor::serve(&socket, &root).await }
+            async move { afg_agent::serve(&socket, &root).await }
         });
-        let client = Client::connect_within(&socket, PATIENCE, afr_executor::Sizes::DEFAULT)
+        let client = Client::connect_within(&socket, PATIENCE, af_guest_wire::Sizes::DEFAULT)
             .await
-            .expect("the executor answers on its socket");
+            .expect("the guest agent answers on its socket");
         Self {
             client,
             root,
@@ -96,14 +96,14 @@ impl Live {
         outside
     }
 
-    /// Hangs up and waits for the executor to stop.
+    /// Hangs up and waits for the guest agent to stop.
     pub(crate) async fn stop(self) {
         drop(self.client);
         tokio::time::timeout(PATIENCE, self.server)
             .await
-            .expect("the executor stops once its client hangs up")
+            .expect("the guest agent stops once its client hangs up")
             .expect("the server task finishes")
-            .expect("the executor served without failing");
+            .expect("the guest agent served without failing");
     }
 }
 
@@ -119,11 +119,11 @@ fn first_call() -> CallRef {
 /// A tool a suite calls: one already built, or one a run builds by name.
 pub(crate) trait Callable: Sync {
     /// Calls it with `arguments` as the router does, with `run`'s state and
-    /// `executor`, the run's sandbox when it has one.
+    /// `agent`, the run's sandbox when it has one.
     fn called(
         &self,
         run: &Run<'_>,
-        executor: Option<&dyn Executor>,
+        agent: Option<&dyn GuestAgent>,
         arguments: serde_json::Value,
     ) -> impl Future<Output = ToolOutput> + Send;
 }
@@ -133,14 +133,14 @@ impl Callable for RunTool<'_> {
     async fn called(
         &self,
         run: &Run<'_>,
-        executor: Option<&dyn Executor>,
+        agent: Option<&dyn GuestAgent>,
         arguments: serde_json::Value,
     ) -> ToolOutput {
         let call_ref = first_call();
         // Numbered as the run's ledger numbers an opened call.
         run.calls.open(&call_ref.call_id, 1);
         let context = ToolContext {
-            executor,
+            agent,
             run,
             call_ref: &call_ref,
         };
@@ -149,16 +149,16 @@ impl Callable for RunTool<'_> {
 }
 
 /// The published tool `entry` names, built the way a run builds it, over
-/// `executor` when there is one and over no sandbox otherwise; it sends no
+/// `agent` when there is one and over no sandbox otherwise; it sends no
 /// request.
 impl Callable for Entry {
     async fn called(
         &self,
         run: &Run<'_>,
-        executor: Option<&dyn Executor>,
+        agent: Option<&dyn GuestAgent>,
         arguments: serde_json::Value,
     ) -> ToolOutput {
-        built(self.name(), None, run, executor, arguments).await
+        built(self.name(), None, run, agent, arguments).await
     }
 }
 
@@ -178,38 +178,38 @@ impl Callable for Sending {
     async fn called(
         &self,
         run: &Run<'_>,
-        executor: Option<&dyn Executor>,
+        agent: Option<&dyn GuestAgent>,
         arguments: serde_json::Value,
     ) -> ToolOutput {
         let transport = Some(self.transport.as_ref());
-        built(self.entry.name(), transport, run, executor, arguments).await
+        built(self.entry.name(), transport, run, agent, arguments).await
     }
 }
 
 /// Builds `name` as `run` builds it, sending through `transport`, in
-/// `executor`'s sandbox or none, and calls it with `arguments`.
+/// `agent`'s sandbox or none, and calls it with `arguments`.
 async fn built(
     name: &str,
     transport: Option<&dyn af_egress::Transport>,
     run: &Run<'_>,
-    executor: Option<&dyn Executor>,
+    agent: Option<&dyn GuestAgent>,
     arguments: serde_json::Value,
 ) -> ToolOutput {
-    let slot = executor.map_or_else(
-        || ExecutorSlot::unavailable(Unavailable::NoSandbox),
-        ExecutorSlot::ready,
+    let slot = agent.map_or_else(
+        || AgentSlot::unavailable(Unavailable::NoSandbox),
+        AgentSlot::ready,
     );
     let backends = Backends::new(run, &slot, transport);
     let tools = backends
         .tools(&[name])
         .expect("a run builds every guffbolt tool it names");
     let tool = tools.tool(name).expect("the name is a built tool's");
-    tool.called(run, executor, arguments).await
+    tool.called(run, agent, arguments).await
 }
 
-/// The executor source of a run with no sandbox.
-pub(crate) fn no_sandbox() -> ExecutorSlot<'static> {
-    ExecutorSlot::unavailable(Unavailable::NoSandbox)
+/// The guest agent source of a run with no sandbox.
+pub(crate) fn no_sandbox() -> AgentSlot<'static> {
+    AgentSlot::unavailable(Unavailable::NoSandbox)
 }
 
 /// Calls `tool` with `arguments` from the supervisor, with `run`'s state.
@@ -222,14 +222,14 @@ pub(crate) async fn call<T: Callable + ?Sized>(
 }
 
 /// Calls `tool` with `arguments` as the router calls a sandbox-side tool:
-/// with `executor`, and `run`'s state.
+/// with `agent`, and `run`'s state.
 pub(crate) async fn call_in<T: Callable + ?Sized>(
     tool: &T,
-    executor: &dyn Executor,
+    agent: &dyn GuestAgent,
     run: &Run<'_>,
     arguments: serde_json::Value,
 ) -> ToolOutput {
-    tool.called(run, Some(executor), arguments).await
+    tool.called(run, Some(agent), arguments).await
 }
 
 /// Calls the tool named `name` that `run` builds over its own backends, with

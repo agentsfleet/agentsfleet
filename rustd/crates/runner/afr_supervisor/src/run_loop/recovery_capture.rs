@@ -1,4 +1,4 @@
-//! A boundary's save in two steps. Under the pause, the executor and tenant
+//! A boundary's save in two steps. Under the pause, the guest agent and tenant
 //! are proved idle and the workspace is pinned; the run then resumes, and the
 //! publication registers, seals, uploads, writes pages and commits after it.
 
@@ -14,7 +14,7 @@ use afr_engine::{Resumed, Sandbox};
 use futures_util::FutureExt as _;
 
 use super::{
-    pin::{Pinned as PinSource, Pinning, executor_idle, pin_sandbox, release},
+    pin::{Pinned as PinSource, Pinning, agent_idle, pin_sandbox, release},
     recovery::{State, api_toolbox},
     recovery_boundary::{BoundaryOwner, Workspace},
 };
@@ -303,14 +303,14 @@ impl super::Run<'_> {
         if !recoverable {
             return Ok(None);
         }
-        match executor_idle(sandbox).await {
+        match agent_idle(sandbox).await {
             Ok(true) => self.lessee.recovery.file(&self.interrupt).await.map(Some),
             Ok(false) => Err(error::capture_unavailable(
                 "terminal capture has active file work",
             )),
             Err(failure) => {
                 let error_code = failure.code();
-                tracing::warn!(event = "run_checkpoint_executor_unproved", %error_code);
+                tracing::warn!(event = "run_checkpoint_agent_unproved", %error_code);
                 Err(failure)
             }
         }

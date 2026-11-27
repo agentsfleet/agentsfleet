@@ -32,7 +32,7 @@ use af_wire::policy::ExecutionPolicy;
 use af_wire::run::RunPayload;
 use af_wire::tool_detail::ToolCallRecord;
 use af_wire::tool_trace::ToolTrace;
-use afr_executor::ExecutorSource;
+use afr_guest_client::AgentSource;
 use afr_memory::Seed;
 use afr_tools::RunVerbs;
 use tokio_util::sync::CancellationToken;
@@ -112,10 +112,10 @@ pub struct AgentRun<'run> {
     /// The fleet's memory, loaded before the run started, and where a
     /// recall past it asks.
     pub memory: Seed<'run>,
-    /// Where the run's sandbox-side calls get the sandbox's executor. The
+    /// Where the run's sandbox-side calls get the sandbox's guest agent. The
     /// run's build fills it while the run goes on; a run with no sandbox
     /// passes one that answers `NoSandbox`.
-    pub executor: &'run dyn ExecutorSource,
+    pub agent: &'run dyn AgentSource,
     /// Mints the credentials the run's policy names, under the held run.
     pub mint: &'run dyn Mint,
     /// The `agentsfleetd` verbs the schedule and message tools reach, fenced
@@ -140,7 +140,7 @@ impl fmt::Debug for AgentRun<'_> {
         f.debug_struct("AgentRun")
             .field("run_id", &self.run.run_id)
             .field("memory", &self.memory.len())
-            .field("executor", &self.executor)
+            .field("agent", &self.agent)
             .finish_non_exhaustive()
     }
 }

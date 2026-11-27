@@ -90,11 +90,11 @@ impl Default for FirecrackerSection {
 
 impl FirecrackerSection {
     /// How the engine starts and paces every microVM: these programs, paced
-    /// and granted as `sandbox` says, each executor serving `sizes`.
+    /// and granted as `sandbox` says, each guest agent serving `sizes`.
     pub(super) fn tuning(
         &self,
         sandbox: &SandboxTuning,
-        sizes: afr_executor::Sizes,
+        sizes: af_guest_wire::Sizes,
     ) -> FirecrackerTuning {
         FirecrackerTuning {
             binaries: Binaries {

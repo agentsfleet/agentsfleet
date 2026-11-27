@@ -7,12 +7,13 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use af_core::id::Uuid7;
+use af_guest_wire::Ending;
 use afr_engine::error::egress_refused;
 use afr_engine::{
     Allowlist, EgressEnforcer, EgressPlan, EgressRefusal, Environment, Generation, Granted, Killed,
     Network, ParkMode, Parked, Quiescence, Result, Sandbox, SandboxState, Snapshots, enforce,
 };
-use afr_executor::{Client, Ending, Executor, Spawn};
+use afr_guest_client::{Client, GuestAgent, Spawn};
 use rustix::io::Errno;
 use rustix::process::{Pid, PidfdFlags, Signal};
 use tokio::io::Interest;
@@ -28,7 +29,7 @@ const SYNC: &str = "sync";
 /// Why a park whose guest would not sync refuses.
 const UNSYNCED: &str = "the guest's sync did not end cleanly";
 
-/// One running microVM and the connection to its executor.
+/// One running microVM and the connection to its guest agent.
 #[derive(Debug)]
 pub(crate) struct Vm {
     shared: Arc<Shared>,
@@ -40,7 +41,7 @@ pub(crate) struct Vm {
 }
 
 impl Vm {
-    /// The microVM `kept` describes, booted with `parts`, its executor on
+    /// The microVM `kept` describes, booted with `parts`, its guest agent on
     /// `client`.
     pub(crate) const fn new(shared: Arc<Shared>, kept: Kept, client: Client, parts: Parts) -> Self {
         Self {
@@ -84,7 +85,7 @@ impl Vm {
         kept
     }
 
-    /// Flushes the guest's writes to its drives through its executor.
+    /// Flushes the guest's writes to its drives through its guest agent.
     async fn sync(&self) -> Result<()> {
         let process = self.client.spawn(&Spawn::program(SYNC)).await?;
         match process.ended(|_stream, _bytes| {}).await {
@@ -108,7 +109,7 @@ impl Sandbox for Vm {
         &self.kept.granted
     }
 
-    fn executor(&self) -> &dyn Executor {
+    fn agent(&self) -> &dyn GuestAgent {
         &self.client
     }
 
@@ -116,9 +117,9 @@ impl Sandbox for Vm {
         self.monitor()
     }
 
-    /// The executor's own proof that nothing it accepted still runs; of a
+    /// The guest agent's own proof that nothing it accepted still runs; of a
     /// guest whose monitor has ended, that nothing runs at all, with no
-    /// executor left to ask.
+    /// guest agent left to ask.
     async fn quiesce(&self) -> Result<Quiescence> {
         if self.monitor() == SandboxState::Ended {
             return Ok(Quiescence::Quiet);
@@ -260,7 +261,7 @@ impl Parked for Stopped {
     }
 
     /// Boots a fresh guest on the kept disk, held to the plan given last,
-    /// and dials its executor again. A host at its admission bound refuses
+    /// and dials its guest agent again. A host at its admission bound refuses
     /// before any monitor starts, and the disk goes, as any refused resume's
     /// does.
     async fn resume(self: Box<Self>) -> Result<Box<dyn Sandbox>> {

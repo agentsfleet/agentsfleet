@@ -81,7 +81,7 @@ fn answering_first() -> afr_agent::scripted::ScriptedEngine {
         Step::Say(ANSWER.to_owned()),
         Step::Run {
             tool: TOOL,
-            spawn: afr_executor::Spawn::program("echo").arg("hi"),
+            spawn: afr_guest_client::Spawn::program("echo").arg("hi"),
         },
     ])
 }

@@ -10,7 +10,7 @@
 use std::sync::atomic::Ordering;
 
 use af_core::test_util::trace::Capture;
-use afr_executor::Unavailable;
+use afr_guest_client::Unavailable;
 use afr_tools::catalog::GIT;
 use tokio_util::sync::CancellationToken;
 

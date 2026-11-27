@@ -56,11 +56,11 @@ fn kept(fixture: &Fixture, sandbox: Box<dyn Sandbox>) -> Result<Kept> {
 #[tokio::test]
 async fn a_durable_sandbox_that_cannot_save_its_history_is_killed_and_blocks_the_durable_task()
 -> Result<()> {
-    for fault in ["interrupted", "busy executor", "busy tenant"] {
+    for fault in ["interrupted", "busy guest agent", "busy tenant"] {
         let mut fixture = Fixture::new(|_| None)?;
         let root = tempfile::tempdir()?;
         let parking = match fault {
-            "busy executor" => Parking::BusyExecutor,
+            "busy guest agent" => Parking::BusyAgent,
             "busy tenant" => Parking::BusyTenant,
             _ => Parking::Works,
         };

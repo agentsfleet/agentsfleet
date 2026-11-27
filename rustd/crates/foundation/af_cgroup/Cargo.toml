@@ -1,0 +1,25 @@
+[package]
+name = "af_cgroup"
+description = "The cgroup v2 files both a host and a microVM's guest write, and the freezer that stops and resumes a cgroup's tree."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+af_core.workspace = true
+# A freeze's settling is retried on a constant delay without a hand-written
+# loop.
+backon.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

@@ -170,7 +170,7 @@ pub async fn differences(engine: &dyn Engine) -> Result<Differences, Failed> {
     let started_in = started.elapsed();
     let environment = sandbox.environment().clone();
     let tools = run::within(sandbox, async |sandbox| {
-        run(sandbox.executor(), shell(TOOL_VERSIONS)).await
+        run(sandbox.agent(), shell(TOOL_VERSIONS)).await
     })
     .await?;
     Ok(Differences {

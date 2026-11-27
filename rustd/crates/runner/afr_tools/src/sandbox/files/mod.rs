@@ -5,12 +5,12 @@
 use guffbolt::ToolOutput;
 
 use crate::SandboxEnv;
-use crate::sandbox::ScriptedExecutor;
+use crate::sandbox::ScriptedGuest;
 
 /// `path` through the file tools' gate, under the sandbox's `/workspace`.
 fn inside(path: &str) -> Result<&str, ToolOutput> {
-    let executor = ScriptedExecutor::new([]);
-    guffbolt::tools::files::inside(&SandboxEnv::new(&executor), path)
+    let agent = ScriptedGuest::new([]);
+    guffbolt::tools::files::inside(&SandboxEnv::new(&agent), path)
 }
 
 mod gate_tests;

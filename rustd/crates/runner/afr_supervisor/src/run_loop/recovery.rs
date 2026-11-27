@@ -58,7 +58,7 @@ impl Run<'_> {
             None
         };
         // A failure is a failed build; teardown owns the entire sandbox, so
-        // no partially restored executor enters the slot.
+        // no partially restored guest agent enters the slot.
         prove_quiescent(sandbox).await?;
         let state: State = self
             .native_workspace(task, sandbox, &scope, toolbox, permit.as_ref())
@@ -131,7 +131,7 @@ impl Run<'_> {
             let scope = Uuid7::parse(&self.payload.event.workspace_id)?;
             let staged = self.lessee.staging.stage(sandbox.id())?;
             let disk_bytes = sandbox.granted().limits().disk_bytes;
-            staged.export(sandbox.executor(), disk_bytes).await?;
+            staged.export(sandbox.agent(), disk_bytes).await?;
             let saved = Capture {
                 plane: &self.lessee.plane,
                 transfers: &self.lessee.recovery.transfers,

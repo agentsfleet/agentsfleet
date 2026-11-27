@@ -51,7 +51,7 @@ pub const PROVIDER_TURN_DURATION: Declared<HistogramKind> =
 pub const PROVIDER_RETRIES: Declared<CounterKind> =
     Declared::new("agentsfleet_runner_provider_retries_total");
 
-/// Time to a sandbox whose executor answers, by outcome.
+/// Time to a sandbox whose guest agent answers, by outcome.
 pub const SANDBOX_START_DURATION: Declared<HistogramKind> =
     Declared::new("agentsfleet_runner_sandbox_start_duration_seconds");
 

@@ -10,7 +10,7 @@ use super::EVENT_REFUSED;
 use crate::catalog::{BROWSER, BROWSER_OPEN, FILE_READ, SCREENSHOT};
 use crate::run::Run;
 use crate::runtime::ToolErrorCode;
-use crate::sandbox::ScriptedExecutor;
+use crate::sandbox::ScriptedGuest;
 use crate::testing::{Live, call, call_in, hosted, offered};
 
 /// The argument name a file call spells.
@@ -39,7 +39,7 @@ fn refused_tools_logged(capture: &Capture) -> Vec<String> {
 #[tokio::test]
 async fn test_browser_tools_refuse_until_firecracker() {
     let capture = Capture::install();
-    let scripted = ScriptedExecutor::default();
+    let scripted = ScriptedGuest::default();
     let live = Live::start().await;
     std::fs::write(live.root.join(PAGE), STILL_HERE).unwrap();
     let (catalog, _sent) = hosted();
@@ -97,7 +97,7 @@ async fn test_browser_tools_refuse_until_firecracker() {
 }
 
 /// Any argument shape, and a run with no sandbox at all, are refused alike:
-/// the call never reaches a parser or an executor that would mind.
+/// the call never reaches a parser or a guest agent that would mind.
 #[tokio::test]
 async fn any_arguments_and_no_sandbox_are_refused_the_same_way() {
     let (catalog, _sent) = hosted();

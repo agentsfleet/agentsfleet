@@ -9,7 +9,7 @@ use af_wire::run::RunPayload;
 use af_wire::runner::{AssignedPolicy, NetworkPolicy, SandboxTier};
 use afr_agent::AgentEngine;
 use afr_engine::Limits;
-use afr_executor::Unavailable;
+use afr_guest_client::Unavailable;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 

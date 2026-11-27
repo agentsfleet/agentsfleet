@@ -1,0 +1,56 @@
+[package]
+name = "afg_confine"
+description = "The confinement a sandbox's tenant processes put on themselves, and the inner environment the in-VM agent builds for them."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+af_core.workspace = true
+# The agent every sandbox serves, and the workspace root it confines to.
+afg_agent.workspace = true
+af_guest_wire.workspace = true
+# The process status a sandbox reads before it serves.
+procfs-core.workspace = true
+# The process calls the entry makes on itself, and the namespace, mount and
+# identity calls an inner environment is built and entered with.
+rustix.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt"] }
+tracing.workspace = true
+# The confined process logs to its error stream.
+tracing-subscriber.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# The kernel interfaces a sandbox confines itself with.
+landlock.workspace = true
+# Beside them, the calls rustix has no wrapper for: an inner environment's
+# fork, its init's signal wait and descriptor sweep, and the agent's file
+# identity.
+libc.workspace = true
+seccompiler.workspace = true
+# The hosts file an inner environment is given next, staged under a name no
+# other file has.
+tempfile.workspace = true
+
+[dev-dependencies]
+# Confines a child process and retries its socket until it answers.
+backon.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
+
+# Confines a child process and reads back what it said; it has its own `main`
+# because confinement cannot be undone inside a harness with tests left to run.
+[[test]]
+name = "confine"
+path = "tests/confine.rs"
+harness = false

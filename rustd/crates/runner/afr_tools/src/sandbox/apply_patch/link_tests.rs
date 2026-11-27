@@ -3,7 +3,7 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
-//! A link inside the workspace gives one file a second name. The executor
+//! A link inside the workspace gives one file a second name. The guest agent
 //! reads and writes through it, so hunks naming the file each way must land on
 //! the one file: each update reads its file again as it lands.
 

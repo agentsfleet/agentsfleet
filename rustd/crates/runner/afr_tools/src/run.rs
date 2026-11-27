@@ -12,7 +12,7 @@
 use dashmap::DashMap;
 
 use af_egress::Egress;
-use afr_executor::Sizes;
+use af_guest_wire::Sizes;
 use afr_memory::Loaded;
 use tokio::sync::Mutex;
 
@@ -38,7 +38,7 @@ pub struct Run<'run> {
     pub sessions: Sessions,
     /// The bounds the run's built-in tools hold its calls to.
     pub limits: Limits,
-    /// What the run's executor holds to: the read size and the output edges
+    /// What the run's guest agent holds to: the read size and the output edges
     /// its tools word their limits by.
     pub sizes: Sizes,
     /// The repositories checked out in the run's workspace.
@@ -116,8 +116,8 @@ impl<'run> Run<'run> {
         self
     }
 
-    /// The same run, whose executor holds to `sizes`: what the runner
-    /// starts every sandbox's executor with.
+    /// The same run, whose guest agent holds to `sizes`: what the runner
+    /// starts every sandbox's guest agent with.
     #[must_use]
     pub const fn with_sizes(mut self, sizes: Sizes) -> Self {
         self.sizes = sizes;

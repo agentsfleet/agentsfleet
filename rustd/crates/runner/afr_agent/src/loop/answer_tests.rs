@@ -122,8 +122,8 @@ async fn a_resumed_answering_run_sends_the_answer_once_as_the_asking_calls_resul
             prepared_durable_task: None,
             run: &run,
             memory: afr_memory::Seed::default(),
-            executor: &afr_executor::ExecutorSlot::unavailable(
-                afr_executor::Unavailable::NoSandbox,
+            agent: &afr_guest_client::AgentSlot::unavailable(
+                afr_guest_client::Unavailable::NoSandbox,
             ),
             mint: &af_egress::testing::CountingMint::never(),
             verbs: &afr_tools::CLOSED,

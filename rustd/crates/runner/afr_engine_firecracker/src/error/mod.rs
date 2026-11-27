@@ -84,15 +84,15 @@ pub(crate) enum ErrorKind {
         status: std::process::ExitStatus,
     },
 
-    /// The guest's executor did not answer within the ready timeout.
+    /// The guest's agent did not answer within the ready timeout.
     #[cfg(target_os = "linux")]
-    #[error("the guest's executor did not answer within {waited:?}")]
+    #[error("the guest's agent did not answer within {waited:?}")]
     NotReady {
         /// How long the engine waited.
         waited: Duration,
         /// Why the last attempt failed.
         #[source]
-        source: afr_executor::Error,
+        source: af_guest_wire::Error,
     },
 
     /// The monitor's configuration would not render.
@@ -196,9 +196,9 @@ pub(crate) fn exited(status: std::process::ExitStatus) -> afr_engine::Error {
     Error::from(ErrorKind::Exited { status }).into()
 }
 
-/// Reports a guest whose executor was not reached within `waited`, with why.
+/// Reports a guest whose guest agent was not reached within `waited`, with why.
 #[cfg(target_os = "linux")]
-pub(crate) fn not_ready(waited: Duration) -> impl Fn(afr_executor::Error) -> afr_engine::Error {
+pub(crate) fn not_ready(waited: Duration) -> impl Fn(af_guest_wire::Error) -> afr_engine::Error {
     move |source| Error::from(ErrorKind::NotReady { waited, source }).into()
 }
 

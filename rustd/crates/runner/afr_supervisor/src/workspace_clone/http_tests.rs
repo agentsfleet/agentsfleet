@@ -189,30 +189,30 @@ async fn a_token_the_origin_refuses_fails_the_fetch() {
     assert_eq!(seen.served.load(Ordering::SeqCst), 0, "nothing was served");
 }
 
-/// An executor that keeps every byte imported into it, and runs nothing.
+/// A guest agent that keeps every byte imported into it, and runs nothing.
 #[derive(Debug, Default)]
 struct Recorder {
     imported: parking_lot::Mutex<Vec<u8>>,
 }
 
 #[async_trait::async_trait]
-impl afr_executor::Executor for Recorder {
+impl afr_guest_client::GuestAgent for Recorder {
     async fn spawn(
         &self,
-        _spawn: &afr_executor::Spawn,
-    ) -> afr_executor::Result<afr_executor::Process> {
+        _spawn: &afr_guest_client::Spawn,
+    ) -> af_guest_wire::Result<afr_guest_client::Process> {
         Err(std::io::Error::other("the recorder runs nothing").into())
     }
 
     async fn write(
         &self,
-        _process: afr_executor::ProcessId,
+        _process: afr_guest_client::ProcessId,
         _data: Bytes,
-    ) -> afr_executor::Result<()> {
+    ) -> af_guest_wire::Result<()> {
         Ok(())
     }
 
-    async fn kill(&self, _process: afr_executor::ProcessId) -> afr_executor::Result<()> {
+    async fn kill(&self, _process: afr_guest_client::ProcessId) -> af_guest_wire::Result<()> {
         Ok(())
     }
 
@@ -220,11 +220,11 @@ impl afr_executor::Executor for Recorder {
         &self,
         _at: &str,
         tree: &mut (dyn tokio::io::AsyncRead + Send + Unpin),
-    ) -> afr_executor::Result<afr_executor::Imported> {
+    ) -> af_guest_wire::Result<af_guest_wire::Imported> {
         let mut stream = Vec::new();
         tokio::io::AsyncReadExt::read_to_end(tree, &mut stream).await?;
         self.imported.lock().extend_from_slice(&stream);
-        Ok(afr_executor::Imported::default())
+        Ok(af_guest_wire::Imported::default())
     }
 }
 

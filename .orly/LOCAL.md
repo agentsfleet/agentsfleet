@@ -105,15 +105,22 @@ The standards in `.orly/standards/` name things generically. In this
 repository:
 
 - **Crates:** each crate sits in one layer folder under `rustd/crates/`:
-  `foundation/`, `protocol/`, `harness/`, `runner/`, `daemon/` or `e2e/`. It
-  depends on its own layer or a lower one, `runner/` and `daemon/` never on
-  each other, and nothing on `e2e/`, in normal, build and dev tables alike
-  (`rustd/Cargo.toml`). `e2e/` holds test-only crates that may depend on every
-  layer: `af_e2e` drives the runner against `agentsfleetd`. Shared and `e2e/`
-  crates are `af_*`, daemon-only `afd_*`, runner-only `afr_*`. A layer's
-  binary sits in `main/` (`daemon/main` is `agentsfleetd`, `runner/main` is
-  `agentsfleet_runner`); every other folder is its crate's name.
-  `af_e2e/tests/layers.rs` enforces these rules from the manifests.
+  `foundation/`, `protocol/`, `harness/`, `runner/`, `guest/`, `daemon/` or
+  `e2e/`. It depends on its own layer or a lower one, `runner/` and `daemon/`
+  never on each other, and nothing on `e2e/`, in normal, build and dev tables
+  alike (`rustd/Cargo.toml`). `guest/` holds the in-VM agent and depends only
+  on `foundation/` and `protocol/`; `daemon/` never depends on it, and
+  `runner/` only in a dev table or through the debug engine,
+  `afr_engine_unsandboxed`, which the released runner, built with
+  `--no-default-features`, does not carry (Indy, Nov 27, 2026). `e2e/` holds
+  test-only crates that may depend on every layer: `af_e2e` drives the runner
+  against `agentsfleetd`. Shared and `e2e/` crates are `af_*`, daemon-only
+  `afd_*`, runner-only `afr_*`, guest-only `afg_*`. A layer's binary sits in
+  `main/` (`daemon/main` is `agentsfleetd`, `runner/main` is
+  `agentsfleet_runner`, `guest/main` is `agentsfleet_guest`, the
+  `agentsfleet-guest` binary built only into the guest's `guest.cpio`); every
+  other folder is its crate's name. `af_e2e/tests/layers.rs` enforces these
+  rules from the manifests.
   `rustd/guffbolt` is the one crate outside `rustd/crates/`: a standalone
   published crate that depends on no workspace crate, so it packages alone.
 - **Until the first production deploy, nothing is backward compatible.** The
@@ -182,8 +189,8 @@ repository:
   http://127.0.0.1:8222/healthz`; recreate the cluster only through
   `make _ensure-test-infra`.
 - Linux-only code in `afr_engine_firecracker`, `afr_firewall`, `afr_image`,
-  `afr_cgroup`, `afr_guest` and `afr_executor` is linted and tested on Linux;
-  a Codex cloud task provides one.
+  `afr_cgroup`, `afg_confine`, `afg_agent` and `afg_entry` is linted and
+  tested on Linux; a Codex cloud task provides one.
 - cargo-mutants runs `--in-place` in a throwaway worktree.
 - Pre-commit grades the staged index, so commit whole files.
 - Never commit the `next-env.d.ts` that `next dev` rewrites. Local `next dev`

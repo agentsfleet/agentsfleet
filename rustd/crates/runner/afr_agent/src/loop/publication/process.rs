@@ -1,20 +1,21 @@
 //! Bounded sandbox commands retain definite endings and kill on cancellation.
 
-use afr_executor::{Ending, Executor, ProcessEvent, Spawn, Stream};
+use af_guest_wire::{Ending, Stream};
+use afr_guest_client::{GuestAgent, ProcessEvent, Spawn};
 use afr_tools::ToolErrorCode;
 use guffbolt::ToolOutput;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
 pub(super) async fn run(
-    executor: &dyn Executor,
+    agent: &dyn GuestAgent,
     spawn: Spawn,
     timeout: Duration,
     stop: &CancellationToken,
     limit: usize,
     machine: bool,
 ) -> Result<Vec<u8>, ToolOutput> {
-    let mut process = executor
+    let mut process = agent
         .spawn(&spawn.timeout(timeout))
         .await
         .map_err(|source| {
@@ -73,7 +74,7 @@ pub(super) async fn run(
                 ));
             }
             None => {
-                let _killed = executor.kill(process.id).await;
+                let _killed = agent.kill(process.id).await;
                 return Err(ToolOutput::failed(
                     ToolErrorCode::Interrupted,
                     "Validation ended without a complete result; publication was not requested.",

@@ -28,7 +28,7 @@ const IMAGES: &str = "images:";
 
 /// A tool that attaches a PNG to the run and says so, as `image` does. It
 /// serves a supervisor-side entry, because the router hands a sandbox-side
-/// tool no call on a run with no executor, and this suite drives none.
+/// tool no call on a run with no guest agent, and this suite drives none.
 #[derive(Debug)]
 struct Attaches {
     schema: Schema,

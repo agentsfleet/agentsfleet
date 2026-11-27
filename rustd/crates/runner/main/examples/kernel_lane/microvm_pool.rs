@@ -77,17 +77,17 @@ fn pool_serves_once(lane: &Lane) -> Result<(), Failed> {
         let first = claim(&pool, "pool-first").await?;
         let script = format!("cat /workspace/planted; {START_BACKGROUND}");
         first
-            .executor()
+            .agent()
             .write_file("planted", Bytes::from_static(b"the first run's\n"))
             .await?;
-        let said = run(first.executor(), shell(&script)).await?.output;
+        let said = run(first.agent(), shell(&script)).await?.output;
         held("serving")?;
         first.destroy().await?;
         filled(&state, POOL).await?;
         held("refilled")?;
         let next = claim(&pool, "pool-next").await?;
         let script = format!("ls /workspace; {BACKGROUND_COUNT}");
-        let found = run(next.executor(), shell(&script)).await?.output;
+        let found = run(next.agent(), shell(&script)).await?.output;
         next.destroy().await?;
         pool.shutdown().await;
         expect(
@@ -126,8 +126,8 @@ fn host_ends_one(lane: &Lane) -> Result<(), Failed> {
         }
         let ended_state = ended.state();
         // Its calls fail, as a run's tools then answer `sandbox_unavailable`.
-        let unanswered = run(ended.executor(), shell("echo gone")).await.is_err();
-        let answered = run(other.executor(), shell("echo still")).await?.output;
+        let unanswered = run(ended.agent(), shell("echo gone")).await.is_err();
+        let answered = run(other.agent(), shell("echo still")).await?.output;
         let other_state = other.state();
         ended.destroy().await?;
         other.destroy().await?;
@@ -208,7 +208,7 @@ fn monitor_of(engine: &FirecrackerEngine, id: &af_core::id::Uuid7) -> Result<Str
         .cgroup_root
         .join(id.as_str())
         .join(afr_cgroup::SANDBOX_LEAF)
-        .join(afr_cgroup::CGROUP_PROCS);
+        .join(af_cgroup::CGROUP_PROCS);
     let listed = fs::read_to_string(procs)?;
     listed
         .lines()

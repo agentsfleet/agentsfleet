@@ -6,7 +6,8 @@
 
 use std::time::Duration;
 
-use afr_executor::{Client, Ending, Executor, Listing, Process, ProcessId, Spawn};
+use af_guest_wire::{Ending, Listing};
+use afr_guest_client::{Client, GuestAgent, Process, ProcessId, Spawn};
 use bytes::Bytes;
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
@@ -22,19 +23,19 @@ pub(super) struct Witness {
 }
 
 #[async_trait::async_trait]
-impl Executor for Witness {
-    async fn spawn(&self, spawn: &Spawn) -> afr_executor::Result<Process> {
+impl GuestAgent for Witness {
+    async fn spawn(&self, spawn: &Spawn) -> af_guest_wire::Result<Process> {
         let process = self.client.spawn(spawn).await?;
         // The tool polls through this notification to its ending wait.
         self.started.notify_one();
         Ok(process)
     }
 
-    async fn write(&self, process: ProcessId, data: Bytes) -> afr_executor::Result<()> {
+    async fn write(&self, process: ProcessId, data: Bytes) -> af_guest_wire::Result<()> {
         self.client.write(process, data).await
     }
 
-    async fn kill(&self, process: ProcessId) -> afr_executor::Result<()> {
+    async fn kill(&self, process: ProcessId) -> af_guest_wire::Result<()> {
         self.client.kill(process).await
     }
 }
@@ -46,7 +47,7 @@ pub(super) fn pair() -> (Witness, Peer) {
     let (ours, theirs) = UnixStream::pair().expect("socket pair");
     let client = Client::connected(
         ours.into_std().expect("native socket"),
-        afr_executor::Sizes::DEFAULT,
+        af_guest_wire::Sizes::DEFAULT,
     )
     .expect("native client");
     (

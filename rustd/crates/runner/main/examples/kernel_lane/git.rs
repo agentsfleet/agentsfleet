@@ -127,12 +127,7 @@ impl afr_engine::conformance::Checkout for LaneCheckout {
         };
         let staged = Staging::sweep(&root.join(STAGING))?.stage(sandbox.id())?;
         mirrors
-            .land(
-                request,
-                &staged,
-                sandbox.executor(),
-                &CancellationToken::new(),
-            )
+            .land(request, &staged, sandbox.agent(), &CancellationToken::new())
             .await?;
         Ok(())
     }
@@ -170,7 +165,7 @@ async fn work(
         if ![GIT.name(), SHELL.name()].contains(name) {
             return Err(format!("{name} is not one of the trial's tools").into());
         }
-        outputs.push(called(sandbox.executor(), &run, step, name, arguments).await?);
+        outputs.push(called(sandbox.agent(), &run, step, name, arguments).await?);
     }
     Ok(outputs)
 }

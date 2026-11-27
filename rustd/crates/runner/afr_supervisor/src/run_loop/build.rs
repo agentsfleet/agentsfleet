@@ -9,7 +9,7 @@
 //! slot with why first, so every waiting call answers, then destroys what it
 //! made, so nothing half-built is ever parked. A ready sandbox moves into
 //! the run's cell, which outlives the turn, and the slot lends the turn its
-//! executor from there. Restore, when workspace snapshots land, is one more
+//! guest agent from there. Restore, when workspace snapshots land, is one more
 //! way a repository arrives in place of its checkout.
 
 use std::sync::OnceLock;
@@ -18,7 +18,7 @@ use std::time::Instant;
 use af_core::error_code::{Coded as _, Logged};
 use af_core::id::Uuid7;
 use afr_engine::{Limits, Sandbox, SandboxSpec, Sweep};
-use afr_executor::{ExecutorSlot, Unavailable};
+use afr_guest_client::{AgentSlot, Unavailable};
 use afr_telemetry::labels::{SandboxBuild, SandboxStart};
 use afr_telemetry::record;
 use tokio_util::sync::CancellationToken;
@@ -109,19 +109,19 @@ fn counted(built: &Result<Box<dyn Sandbox>, Unbuilt>) -> SandboxBuild {
 
 impl Run<'_> {
     /// Builds the run's sandbox into `cell` and fills `slot`: with its
-    /// executor once every repository is in place, or with why not.
+    /// guest agent once every repository is in place, or with why not.
     pub(super) async fn build<'c>(
         &self,
         build: &Build<'_>,
         cell: &'c OnceLock<Box<dyn Sandbox>>,
-        slot: &ExecutorSlot<'c>,
+        slot: &AgentSlot<'c>,
     ) {
         let made = self.built(build).await;
         record::sandbox_build(counted(&made));
         match made {
             Ok(sandbox) => {
                 let sandbox = cell.get_or_init(|| sandbox);
-                slot.fill(Ok(sandbox.executor()));
+                slot.fill(Ok(sandbox.agent()));
             }
             Err(Unbuilt { ended, leftover }) => {
                 if let Ended::Failed(class, logged) = &ended {

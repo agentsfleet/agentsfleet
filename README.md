@@ -56,7 +56,7 @@ See the [CLI install guide](https://docs.agentsfleet.net/cli/install) for instal
 
 | Directory | What |
 |---|---|
-| `rustd/` | Rust workspace in five layer folders under `crates/`: `foundation/` and `protocol/` (shared `af_*` crates), `harness/` (the shared model, secret and egress crates), `runner/` (the `agentsfleet-runner` execution daemon, `afr_*` crates) and `daemon/` (the `agentsfleetd` control plane, `afd_*` crates); beside them, `guffbolt/`, the standalone agent harness. |
+| `rustd/` | Rust workspace in layer folders under `crates/`: `foundation/` and `protocol/` (shared `af_*` crates), `harness/` (the shared model, secret and egress crates), `runner/` (the `agentsfleet-runner` execution daemon, `afr_*` crates), `guest/` (`agentsfleet-guest`, the agent inside each microVM, `afg_*` crates), `daemon/` (the `agentsfleetd` control plane, `afd_*` crates) and `e2e/` (test-only); beside them, `guffbolt/`, the standalone agent harness. |
 | `ui/packages/app/` | Dashboard — Next.js, Clerk auth |
 | `ui/packages/website/` | Marketing site — [agentsfleet.net](https://agentsfleet.net) |
 | `ui/packages/design-system/` | Shared UI components |

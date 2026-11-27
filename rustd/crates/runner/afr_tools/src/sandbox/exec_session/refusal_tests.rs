@@ -1,5 +1,5 @@
 //! What `exec_command` and `write_stdin` refuse, and what they answer when the
-//! executor refuses them.
+//! guest agent refuses them.
 
 use serde_json::json;
 
@@ -7,17 +7,17 @@ use super::session;
 use super::tests::{CAT, CHARS, FIRST, SESSION_ID, exec, opening, write, writing};
 use crate::run::Run;
 use crate::runtime::ToolErrorCode;
-use crate::sandbox::ScriptedExecutor;
+use crate::sandbox::ScriptedGuest;
 use crate::testing::{call, call_in};
 
 #[tokio::test]
 async fn should_refuse_a_session_id_that_is_not_a_whole_number() {
-    let executor = ScriptedExecutor::new([]);
+    let agent = ScriptedGuest::new([]);
     let run = Run::default();
 
     for session_id in [json!("1"), json!(-1), json!(1.5)] {
         let arguments = json!({SESSION_ID: session_id, CHARS: "x"});
-        let output = call_in(write(), &executor, &run, arguments).await;
+        let output = call_in(write(), &agent, &run, arguments).await;
 
         assert_eq!(
             output.error_code,
@@ -25,20 +25,20 @@ async fn should_refuse_a_session_id_that_is_not_a_whole_number() {
             "{session_id}"
         );
     }
-    assert!(executor.written().is_empty(), "nothing reached a process");
+    assert!(agent.written().is_empty(), "nothing reached a process");
 }
 
 #[tokio::test]
 async fn should_refuse_a_session_that_is_not_open() {
-    let executor = ScriptedExecutor::new([]);
+    let agent = ScriptedGuest::new([]);
 
-    let output = call_in(write(), &executor, &Run::default(), writing(99, "x", None)).await;
+    let output = call_in(write(), &agent, &Run::default(), writing(99, "x", None)).await;
 
     assert_eq!(
         output.text,
         "[session_not_found] session 99 is not an open session"
     );
-    let written = executor.written();
+    let written = agent.written();
     assert!(written.is_empty(), "{written:?}");
 }
 
@@ -48,7 +48,7 @@ async fn should_refuse_without_a_sandbox_or_when_the_spawn_is_refused() {
 
     let opened = call(exec(), &run, opening(CAT, None)).await;
     let written = call(write(), &run, writing(1, "", None)).await;
-    let refused = call_in(exec(), &ScriptedExecutor::new([]), &run, opening(CAT, None)).await;
+    let refused = call_in(exec(), &ScriptedGuest::new([]), &run, opening(CAT, None)).await;
 
     assert_eq!(
         opened.error_code,
@@ -61,7 +61,7 @@ async fn should_refuse_without_a_sandbox_or_when_the_spawn_is_refused() {
     );
     assert!(
         refused.text.ends_with(": no scripted process left"),
-        "a refused spawn reads the executor's reason, got {:?}",
+        "a refused spawn reads the guest agent's reason, got {:?}",
         refused.text
     );
     assert!(run.sessions.get(session(FIRST)).is_none());

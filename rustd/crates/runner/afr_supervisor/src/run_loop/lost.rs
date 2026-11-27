@@ -2,14 +2,14 @@
 //!
 //! ```text
 //!   sandbox-side call ─► slot ─► the built sandbox reads Ended?
-//!                                 ├─ no  ─► its executor
+//!                                 ├─ no  ─► its guest agent
 //!                                 └─ yes ─► `lost`: the call answers `sandbox_unavailable`,
 //!                                           the turn is interrupted, the run ends cut
 //! ```
 //!
 //! The host can end a sandbox the engine still holds running: under memory
 //! overcommit its kernel ends one microVM's monitor. Every sandbox-side call
-//! reads the sandbox's state before it is lent the executor, so the first
+//! reads the sandbox's state before it is lent the guest agent, so the first
 //! call after the loss ends the run instead of failing call after call. The
 //! cut drops the run's task transition, so a durable task resumes from its
 //! last checkpoint, as a run whose runner was killed does.
@@ -18,7 +18,7 @@ use std::sync::OnceLock;
 
 use af_wire::report::FailureClass;
 use afr_engine::{Sandbox, SandboxState};
-use afr_executor::{Executor, ExecutorSlot, ExecutorSource, Outcome, Unavailable};
+use afr_guest_client::{AgentSlot, AgentSource, GuestAgent, Outcome, Unavailable};
 use tokio_util::sync::CancellationToken;
 
 use crate::report::Ending;
@@ -31,7 +31,7 @@ const EVENT_LOST: &str = "run_sandbox_lost";
 /// The run's slot, read through the sandbox it lends from.
 #[derive(Debug)]
 pub(super) struct Watched<'w, 'c> {
-    slot: &'w ExecutorSlot<'c>,
+    slot: &'w AgentSlot<'c>,
     cell: &'c OnceLock<Box<dyn Sandbox>>,
     /// Cancelled to end the turn once the sandbox is found ended.
     interrupt: &'w CancellationToken,
@@ -44,7 +44,7 @@ impl<'w, 'c> Watched<'w, 'c> {
     /// `slot`, lending from the sandbox `cell` holds once built, ending the
     /// run `run_id` through `interrupt` when that sandbox ends.
     pub(super) fn new(
-        slot: &'w ExecutorSlot<'c>,
+        slot: &'w AgentSlot<'c>,
         cell: &'c OnceLock<Box<dyn Sandbox>>,
         interrupt: &'w CancellationToken,
         run_id: &'w str,
@@ -89,16 +89,16 @@ impl<'w, 'c> Watched<'w, 'c> {
 }
 
 #[async_trait::async_trait]
-impl ExecutorSource for Watched<'_, '_> {
+impl AgentSource for Watched<'_, '_> {
     async fn get(&self) -> Outcome<'_> {
-        let executor = self.slot.get().await?;
+        let agent = self.slot.get().await?;
         if self.ended() {
             return Err(Unavailable::Lost);
         }
-        Ok(executor)
+        Ok(agent)
     }
 
-    fn peek(&self) -> Option<&dyn Executor> {
+    fn peek(&self) -> Option<&dyn GuestAgent> {
         self.slot.peek()
     }
 

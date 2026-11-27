@@ -41,13 +41,13 @@ Harness::save_boundary                         afr_agent loop/recovery_boundary.
   |-- file slot busy -> skip -> keep the previous ready checkpoint
   `-- admitted -> BoundaryOwner::capture       afr_supervisor run_loop/recovery_capture.rs
          -> quiesce: a tenant process still runs -> skip this save
-         -> export the workspace through the executor into a host stage
+         -> export the workspace through the guest agent into a host stage
          -> scan the stage, encrypt, authorize, upload, read back and verify
          -> publish the exact root and manifest under the run's fence
          -> remove the stage -> acknowledge the saved generation
 ```
 
-Firecracker answers `quiesce` by asking the guest's executor whether it is idle. A workspace that will not export skips the save, and the run goes on ([capture](../../rustd/crates/runner/afr_supervisor/src/run_loop/recovery_capture.rs)).
+Firecracker answers `quiesce` by asking the guest's agent whether it is idle. A workspace that will not export skips the save, and the run goes on ([capture](../../rustd/crates/runner/afr_supervisor/src/run_loop/recovery_capture.rs)).
 
 A checkpoint names its turn and owner, never a version of the fleet. A restore under a different model keeps the conversation and tool results. It drops only reasoning the old provider signed, because another provider cannot read it.
 
@@ -105,7 +105,7 @@ B runs                 the first resumed model call; one fenced settlement at th
 
 A required file restore waits for a transfer slot while renewal continues. The supervisor writes the files into a host stage through checked directory descriptors ([restore](../../rustd/crates/runner/afr_supervisor/src/recovery/turn/restore.rs)).
 
-It then imports the stage through the executor into the sandbox's workspace, which must be empty ([staging](../../rustd/crates/runner/afr_supervisor/src/staging/mod.rs)). Firecracker offers no host path into a microVM, so capture and restore both cross through the executor.
+It then imports the stage through the guest agent into the sandbox's workspace, which must be empty ([staging](../../rustd/crates/runner/afr_supervisor/src/staging/mod.rs)). Firecracker offers no host path into a microVM, so capture and restore both cross through the agent.
 
 Frames from the dead run carry the old fence and cannot change the new attempt. With resume off, a turn holding a committed checkpoint waits at its fleet's head after its run expires; saving still happens.
 

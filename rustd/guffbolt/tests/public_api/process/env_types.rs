@@ -56,7 +56,7 @@ fn a_spawn_keeps_what_it_was_built_with() {
 fn an_env_error_reads_its_kind_and_what_its_log_line_records() {
     let plain = EnvError::new(EnvErrorKind::NotFound, "gone");
     let logged = EnvError::new(EnvErrorKind::InputRefused, "full")
-        .logged_as("executor_backpressure", "the socket's buffer is full");
+        .logged_as("agent_backpressure", "the socket's buffer is full");
     let kinds = [
         EnvErrorKind::PathRefused,
         EnvErrorKind::NotFound,
@@ -90,11 +90,7 @@ fn an_env_error_reads_its_kind_and_what_its_log_line_records() {
     assert_eq!(plain.to_string(), "gone");
     assert_eq!(
         (logged.message(), logged.log_code(), logged.log_reason()),
-        (
-            "full",
-            "executor_backpressure",
-            "the socket's buffer is full"
-        )
+        ("full", "agent_backpressure", "the socket's buffer is full")
     );
     assert_eq!(
         predicates,

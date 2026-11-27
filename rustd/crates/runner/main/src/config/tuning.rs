@@ -35,7 +35,7 @@ const SUBAGENT_DEPTH_MAX: u8 = afr_agent::RunLimits::DEFAULT.caps.depth;
 const ACTIVITY_BATCHES_MIN: usize = 2;
 
 /// The shortest frame a full directory listing still fits in.
-const FRAME_MIB_MIN: usize = afr_executor::Sizes::LISTING_BYTES / MIB_USIZE + 1;
+const FRAME_MIB_MIN: usize = af_guest_wire::Sizes::LISTING_BYTES / MIB_USIZE + 1;
 
 /// The most processor share one microVM takes: Firecracker's 32 virtual
 /// CPUs, past which its machine configuration refuses.
@@ -68,7 +68,7 @@ pub(super) struct SandboxTuning {
     /// Processes and threads one run's tenant processes may hold at once.
     #[garde(range(min = 1, max = PIDS_MAX_MAX))]
     pub pids_max: u32,
-    /// How long a resumed parked sandbox's executor has to answer before the
+    /// How long a resumed parked sandbox's guest agent has to answer before the
     /// park is given up for a fresh sandbox.
     #[garde(range(min = 1))]
     pub park_resume_timeout_seconds: u64,
@@ -100,7 +100,7 @@ impl SandboxTuning {
         }
     }
 
-    /// How long a resumed parked sandbox's executor has to answer.
+    /// How long a resumed parked sandbox's guest agent has to answer.
     pub(super) const fn park_resume_timeout(&self) -> Duration {
         Duration::from_secs(self.park_resume_timeout_seconds)
     }
@@ -190,9 +190,9 @@ impl Default for ToolsTuning {
 }
 
 impl ToolsTuning {
-    /// What the agent loop holds every run to, its executor holding to
+    /// What the agent loop holds every run to, its guest agent holding to
     /// `sizes`.
-    pub(super) fn run_limits(&self, sizes: afr_executor::Sizes) -> afr_agent::RunLimits {
+    pub(super) fn run_limits(&self, sizes: af_guest_wire::Sizes) -> afr_agent::RunLimits {
         afr_agent::RunLimits {
             tools: guffbolt::tools::Limits {
                 default_timeout: Duration::from_secs(self.default_shell_timeout_seconds),
@@ -214,29 +214,29 @@ impl ToolsTuning {
     }
 }
 
-/// The link between the runner and each sandbox's executor.
+/// The link between the runner and each sandbox's guest agent.
 #[derive(Debug, Clone, Copy, Deserialize, Validate)]
 #[serde(default, deny_unknown_fields)]
-pub(super) struct ExecutorTuning {
+pub(super) struct GuestTuning {
     /// The longest message either end reads; a full directory listing must
     /// fit.
     #[garde(range(min = FRAME_MIB_MIN))]
     pub max_frame_mib: usize,
 }
 
-impl Default for ExecutorTuning {
+impl Default for GuestTuning {
     fn default() -> Self {
         Self {
-            max_frame_mib: afr_executor::Sizes::DEFAULT.max_frame_bytes / MIB_USIZE,
+            max_frame_mib: af_guest_wire::Sizes::DEFAULT.max_frame_bytes / MIB_USIZE,
         }
     }
 }
 
 /// Refuses a frame too short to carry one whole read of `read_mib`: base64
 /// writes four bytes for every three, and the answer around it needs room.
-pub(super) fn carries_a_read(read_mib: u64) -> impl FnOnce(&ExecutorTuning, &()) -> garde::Result {
-    move |executor, ()| {
-        let frame_mib = u64::try_from(executor.max_frame_mib).unwrap_or(u64::MAX);
+pub(super) fn carries_a_read(read_mib: u64) -> impl FnOnce(&GuestTuning, &()) -> garde::Result {
+    move |agent, ()| {
+        let frame_mib = u64::try_from(agent.max_frame_mib).unwrap_or(u64::MAX);
         if frame_mib.saturating_mul(3) > read_mib.saturating_mul(4) {
             Ok(())
         } else {
@@ -247,14 +247,14 @@ pub(super) fn carries_a_read(read_mib: u64) -> impl FnOnce(&ExecutorTuning, &())
     }
 }
 
-/// What every executor link holds to: the read size and output edges
-/// `tools` chooses, and the frame `executor` chooses. The engine starts each
-/// executor with them and the tools word their limits by them.
-pub(super) const fn sizes(tools: &ToolsTuning, executor: ExecutorTuning) -> afr_executor::Sizes {
-    afr_executor::Sizes {
+/// What every guest agent link holds to: the read size and output edges
+/// `tools` chooses, and the frame `[guest]` chooses. The engine starts each
+/// guest agent with them and the tools word their limits by them.
+pub(super) const fn sizes(tools: &ToolsTuning, guest: GuestTuning) -> af_guest_wire::Sizes {
+    af_guest_wire::Sizes {
         max_read_bytes: tools.max_file_read_mib.saturating_mul(MIB),
         edge_bytes: tools.output_edge_kib.saturating_mul(KIB),
-        max_frame_bytes: executor.max_frame_mib.saturating_mul(MIB_USIZE),
+        max_frame_bytes: guest.max_frame_mib.saturating_mul(MIB_USIZE),
     }
 }
 

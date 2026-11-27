@@ -6,7 +6,7 @@
 //! count its processes, so a drill on it would skip every checkpoint. This
 //! wrapper names one toolbox from every engine, so a replacement process
 //! accepts the first one's checkpoint, and reports itself quiet: the drill's
-//! turn calls only file tools, which the executor serves itself, so no
+//! turn calls only file tools, which the guest agent serves itself, so no
 //! tenant process ever runs in it.
 
 use std::path::PathBuf;
@@ -17,7 +17,7 @@ use afr_engine::{
     Capabilities, EgressPlan, Engine, Environment, Granted, Killed, Limits, ParkMode, Parked,
     Quiescence, Root, Sandbox, SandboxSpec, SandboxState, Sweep, Swept,
 };
-use afr_executor::Executor;
+use afr_guest_client::GuestAgent;
 
 use super::UnsandboxedEngine;
 
@@ -101,15 +101,15 @@ impl Sandbox for Drilled {
         self.unconfined.granted()
     }
 
-    fn executor(&self) -> &dyn Executor {
-        self.unconfined.executor()
+    fn agent(&self) -> &dyn GuestAgent {
+        self.unconfined.agent()
     }
 
     fn state(&self) -> SandboxState {
         self.unconfined.state()
     }
 
-    /// Quiet: the drill's turn starts no tenant process, and the executor's
+    /// Quiet: the drill's turn starts no tenant process, and the guest agent's
     /// own file jobs are proved idle before any capture.
     async fn quiesce(&self) -> Result<Quiescence> {
         Ok(Quiescence::Quiet)

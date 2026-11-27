@@ -64,12 +64,12 @@ pub(crate) enum ErrorKind {
         source: tokio::task::JoinError,
     },
 
-    /// The executor inside the sandbox failed.
-    #[error("the sandbox's executor failed")]
-    Executor {
-        /// The executor's failure.
+    /// The guest agent inside the sandbox failed.
+    #[error("the sandbox's guest agent failed")]
+    GuestAgent {
+        /// The guest agent's failure.
         #[source]
-        source: afr_executor::Error,
+        source: af_guest_wire::Error,
     },
 
     /// A sandbox still holds or allows something it must not.
@@ -144,7 +144,7 @@ impl Error {
     #[must_use]
     pub const fn code(&self) -> ErrorCode {
         match self.kind() {
-            ErrorKind::Executor { source } => source.code(),
+            ErrorKind::GuestAgent { source } => source.code(),
             ErrorKind::Engine { source } => source.code(),
             ErrorKind::Io { .. }
             | ErrorKind::Refused { .. }
@@ -173,7 +173,7 @@ impl Error {
             ErrorKind::Io { .. }
             | ErrorKind::Refused { .. }
             | ErrorKind::Task { .. }
-            | ErrorKind::Executor { .. }
+            | ErrorKind::GuestAgent { .. }
             | ErrorKind::Unconfined { .. }
             | ErrorKind::Entropy { .. }
             | ErrorKind::Unsupported { .. }

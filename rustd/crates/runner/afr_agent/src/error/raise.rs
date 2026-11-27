@@ -20,10 +20,10 @@ af_core::error_lifts!(Error, ErrorKind:
 // that turns the feature on through a dependant, and the lift is the same
 // generated `From` every other one is.
 #[cfg(feature = "test-util")]
-mod executor {
+mod agent {
     use super::{Error, ErrorKind};
 
-    af_core::error_lifts!(Error, ErrorKind: afr_executor::Error => Executor,);
+    af_core::error_lifts!(Error, ErrorKind: af_guest_wire::Error => GuestAgent,);
 }
 
 /// A saved root cannot be resumed under its declared meaning.

@@ -13,8 +13,8 @@ use af_core::error_code::{self, ErrorCode};
 
 mod raise;
 
+pub(crate) use self::raise::cgroup_left;
 pub use self::raise::{cgroup, cgroup_unreadable};
-pub(crate) use self::raise::{cgroup_left, cgroup_unsettled};
 
 af_core::error_shell!(
     /// A cgroup failure, with the backtrace of where it was raised.
@@ -62,16 +62,6 @@ pub(crate) enum ErrorKind {
         source: std::io::Error,
     },
 
-    /// A cgroup took its freeze or thaw but never reported reaching it, so
-    /// some process in it is still running or still stopped.
-    #[error("the cgroup {path} did not settle {state}")]
-    CgroupUnsettled {
-        /// The cgroup's directory.
-        path: PathBuf,
-        /// The state it was asked for: `frozen` or `thawed`.
-        state: &'static str,
-    },
-
     /// A refusal in the seam's words: a host missing a controller, a tree
     /// that is not confined.
     #[error(transparent)]
@@ -93,8 +83,7 @@ impl Error {
             ErrorKind::Io { .. }
             | ErrorKind::Cgroup { .. }
             | ErrorKind::CgroupUnreadable { .. }
-            | ErrorKind::CgroupLeft { .. }
-            | ErrorKind::CgroupUnsettled { .. } => error_code::INTERNAL_OPERATION_FAILED,
+            | ErrorKind::CgroupLeft { .. } => error_code::INTERNAL_OPERATION_FAILED,
         }
     }
 
@@ -113,8 +102,7 @@ impl Error {
             ErrorKind::Io { .. }
             | ErrorKind::Cgroup { .. }
             | ErrorKind::CgroupUnreadable { .. }
-            | ErrorKind::CgroupLeft { .. }
-            | ErrorKind::CgroupUnsettled { .. } => None,
+            | ErrorKind::CgroupLeft { .. } => None,
         }
     }
 

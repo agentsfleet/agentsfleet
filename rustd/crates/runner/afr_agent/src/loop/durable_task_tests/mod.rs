@@ -150,8 +150,8 @@ async fn run(
             recovered_durable_task: None,
             recovered_turn: None,
             memory: afr_memory::Seed::default(),
-            executor: &afr_executor::ExecutorSlot::unavailable(
-                afr_executor::Unavailable::NoSandbox,
+            agent: &afr_guest_client::AgentSlot::unavailable(
+                afr_guest_client::Unavailable::NoSandbox,
             ),
             mint: &af_egress::testing::CountingMint::never(),
             verbs: native,

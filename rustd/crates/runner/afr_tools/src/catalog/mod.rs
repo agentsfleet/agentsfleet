@@ -125,7 +125,7 @@ pub const FILE_WRITE: Entry = Entry::new("file_write", Runtime::Sandbox);
 pub const FILE_EDIT: Entry = Entry::new("file_edit", Runtime::Sandbox);
 /// Applies a patch.
 pub const APPLY_PATCH: Entry = Entry::new("apply_patch", Runtime::Sandbox);
-/// An image file, read through the executor for the next model turn.
+/// An image file, read through the guest agent for the next model turn.
 pub const IMAGE: Entry = Entry::new("image", Runtime::Sandbox);
 /// Chromium, driven over the Chrome `DevTools` Protocol.
 pub const BROWSER: Entry = Entry::new("browser", Runtime::Sandbox);

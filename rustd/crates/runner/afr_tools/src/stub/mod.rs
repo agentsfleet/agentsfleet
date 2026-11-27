@@ -1,7 +1,7 @@
 //! Stub handlers for the suites that prove routing and admission.
 //!
 //! A stub serves any published tool. A supervisor-side stub answers with its
-//! name and never touches the executor; a sandbox-side one reads
+//! name and never touches the guest agent; a sandbox-side one reads
 //! [`STUB_PATH`] through it, so a suite can count that the call crossed.
 
 use guffbolt::{Describe, Tool, ToolFuture, ToolOutput, ToolSpec};
@@ -38,8 +38,8 @@ impl Stub {
 
     async fn run(&self, context: ToolContext<'_, '_>) -> ToolOutput {
         let name = self.entry.name();
-        match (self.entry.runtime(), context.executor) {
-            (Runtime::Sandbox, Some(executor)) => match executor.read_file(STUB_PATH, 1).await {
+        match (self.entry.runtime(), context.agent) {
+            (Runtime::Sandbox, Some(agent)) => match agent.read_file(STUB_PATH, 1).await {
                 Ok(_) => ToolOutput::succeeded(name),
                 Err(failure) => {
                     ToolOutput::failed(ToolErrorCode::SandboxUnavailable, &failure.to_string())

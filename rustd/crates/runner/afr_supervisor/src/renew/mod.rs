@@ -18,7 +18,7 @@ use crate::error::Error;
 /// Leave time for an uncooperative engine, process-group termination and reaping before
 /// the daemon may hand the expired run to another runner.
 pub(crate) const EXPIRY_MARGIN: Duration = afr_tools::ENGINE_STOP_GRACE
-    .saturating_add(afr_executor::timing::KILL_GRACE)
+    .saturating_add(af_guest_wire::timing::KILL_GRACE)
     .saturating_add(Duration::from_secs(2));
 
 const _: () = assert!(

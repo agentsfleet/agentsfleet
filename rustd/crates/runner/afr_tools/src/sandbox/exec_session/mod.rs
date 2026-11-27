@@ -6,9 +6,9 @@ use guffbolt::tools::process::exec_session::{
     EMPTY_WRITE_YIELD_MIN, INPUT_REFUSED, WRITE_UNDELIVERED, YIELD_DEFAULT,
 };
 
-/// The session the scripted executor's process `id` is, as the sessions
+/// The session the scripted guest agent's process `id` is, as the sessions
 /// name it.
-fn session(id: afr_executor::ProcessId) -> guffbolt::tools::env::ProcessId {
+fn session(id: afr_guest_client::ProcessId) -> guffbolt::tools::env::ProcessId {
     guffbolt::tools::env::ProcessId::new(id.get())
 }
 

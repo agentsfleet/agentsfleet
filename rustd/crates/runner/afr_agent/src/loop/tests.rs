@@ -54,7 +54,7 @@ pub(crate) async fn drive_with_memory(
         prepared_durable_task: None,
         run,
         memory,
-        executor: &afr_executor::ExecutorSlot::unavailable(afr_executor::Unavailable::NoSandbox),
+        agent: &afr_guest_client::AgentSlot::unavailable(afr_guest_client::Unavailable::NoSandbox),
         mint: &CountingMint::never(),
         verbs: &afr_tools::CLOSED,
         checkpoint: &Discard,
@@ -288,7 +288,7 @@ async fn a_dropped_run_still_closes_its_open_call_once() {
     let stop = CancellationToken::new();
     let mint = CountingMint::never();
     let meter = Meter::default();
-    let executor = afr_executor::ExecutorSlot::unavailable(afr_executor::Unavailable::NoSandbox);
+    let agent = afr_guest_client::AgentSlot::unavailable(afr_guest_client::Unavailable::NoSandbox);
     let run = engine.run(AgentRun {
         recovery: None,
         recovered_durable_task: None,
@@ -296,7 +296,7 @@ async fn a_dropped_run_still_closes_its_open_call_once() {
         prepared_durable_task: None,
         run: &run,
         memory: afr_memory::Seed::default(),
-        executor: &executor,
+        agent: &agent,
         mint: &mint,
         verbs: &afr_tools::CLOSED,
         checkpoint: &Discard,

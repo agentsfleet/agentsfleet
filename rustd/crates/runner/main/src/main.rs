@@ -1,6 +1,6 @@
 //! `agentsfleet-runner`: the one runner binary.
 //!
-//! Three entries, each only composing library crates:
+//! Two entries, each only composing library crates:
 //!
 //! - `run` supervises this host's runs, as the systemd unit: each run's
 //!   turn runs on the agent loop, its tools in a Firecracker microVM of its
@@ -9,9 +9,10 @@
 //!   no credential to do it.
 //! - `probe` prints what this host can enforce, as a heartbeat would carry
 //!   it.
-//! - `guest` is a Firecracker microVM's first process: it mounts the guest's
-//!   drives, then serves the executor on vsock. The binary is the guest's
-//!   `/init`, so there is no second artifact to ship.
+//!
+//! A microVM's first process is not this binary: it is `agentsfleet-guest`,
+//! built only into the guest's initramfs. The runner as shipped links no
+//! guest crate, so nothing here can serve tenant processes.
 
 #![deny(clippy::self_named_module_files)]
 
@@ -41,9 +42,6 @@ use self::host::OrExit as _;
 const DEFAULT_LEVEL: LevelFilter = LevelFilter::INFO;
 /// Logged when a second SIGINT or SIGTERM ends a drain the first one began.
 const EVENT_STOP_FORCED: &str = "runner_stop_forced";
-/// Why the guest entry refuses off Linux: only a Linux guest kernel starts it.
-#[cfg(not(target_os = "linux"))]
-const GUEST_OFF_LINUX: &str = "the guest entry runs only as a Linux microVM's first process";
 
 /// The runner's command line.
 #[derive(Debug, Parser)]
@@ -61,9 +59,6 @@ enum Command {
     Run(RunArgs),
     /// Print what this host can enforce.
     Probe,
-    /// Mount a microVM's file systems and serve its executor on vsock; the
-    /// guest kernel starts this binary so, as its first process.
-    Guest(afr_engine_firecracker::guest::GuestEntry),
 }
 
 /// How `run` builds each run's sandbox.
@@ -76,40 +71,18 @@ struct RunArgs {
 
 fn main() -> ExitCode {
     match Cli::parse().command {
-        Command::Guest(entry) => guest(entry),
         Command::Probe => probe::probe(),
         Command::Run(args) => run(args),
     }
 }
 
-/// Mounts and serves as a microVM's first process; any refusal goes to the
-/// guest's console, and the guest ends with it.
-#[cfg(target_os = "linux")]
-fn guest(entry: afr_engine_firecracker::guest::GuestEntry) -> ExitCode {
-    exited(afr_engine_firecracker::guest::serve_vm(entry))
-}
-
-/// Only a Linux guest kernel starts the guest entry.
-#[cfg(not(target_os = "linux"))]
-fn guest(_entry: afr_engine_firecracker::guest::GuestEntry) -> ExitCode {
-    exited(Err::<(), _>(GUEST_OFF_LINUX))
-}
-
-/// SUCCESS for an entry that ended cleanly, otherwise its refusal.
-fn exited(ended: Result<(), impl std::fmt::Display>) -> ExitCode {
-    match ended {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(error) => refused(&error),
-    }
-}
-
 /// Writes a refusal to stderr and fails.
 ///
-/// Stderr rather than a subscriber: a guest's refusal goes to its console,
-/// which the engine quotes when it refuses.
+/// Stderr rather than a subscriber: `probe` answers before any subscriber
+/// exists, and the operator reads its refusal there.
 #[expect(
     clippy::print_stderr,
-    reason = "stderr is the refusal the engine and the operator read"
+    reason = "stderr is the refusal the operator reads"
 )]
 fn refused(error: &impl std::fmt::Display) -> ExitCode {
     eprintln!("{error}");

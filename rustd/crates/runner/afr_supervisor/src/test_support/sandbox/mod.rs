@@ -1,5 +1,5 @@
 //! A sandbox engine for the run tests: sandboxes that count their teardowns
-//! and an executor that reports what is written into the workspace.
+//! and a guest agent that reports what is written into the workspace.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -17,9 +17,9 @@ use tokio::sync::mpsc;
 
 use crate::egress::Bound;
 
-mod executor;
+mod agent;
 mod lifecycle;
-use executor::FakeExecutor;
+use agent::FakeGuest;
 
 /// What the fake engine states: every cap enforced, parking by pause.
 pub(crate) const CAPABILITIES: Capabilities = Capabilities {
@@ -41,20 +41,20 @@ pub(crate) enum Parking {
     RefusesPark,
     /// Parks, then refuses the resume; the engine destroys the sandbox.
     RefusesResume,
-    /// Parks and resumes, but its executor never answers again, as one that
+    /// Parks and resumes, but its guest agent never answers again, as one that
     /// died while parked would.
     ResumesSilent,
-    /// Parks and resumes, but its executor fails every listing after.
+    /// Parks and resumes, but its guest agent fails every listing after.
     ResumesBroken,
     /// Parks, then refuses the addresses its next run's hosts resolved
     /// to, as a kernel refusing the swap would.
     RefusesReallow,
     /// A detached tenant process prevents a live workspace snapshot.
     BusyTenant,
-    /// An abandoned file worker has not finished its executor-side work.
-    BusyExecutor,
-    /// Its executor cannot answer whether file work is idle.
-    ExecutorUnproved,
+    /// An abandoned file worker has not finished its agent-side work.
+    BusyAgent,
+    /// Its guest agent cannot answer whether file work is idle.
+    AgentUnproved,
     /// It cannot answer whether a tenant process is still running.
     QuiescenceUnproved,
     /// Its processes ended after the run's calls, so it no longer reports
@@ -124,10 +124,10 @@ pub(crate) struct FakeEngine {
     /// Where each sweep reports the scope it was asked for: the sandbox's
     /// identifier, or none for leftovers.
     pub(crate) swept: Option<mpsc::UnboundedSender<Option<Uuid7>>>,
-    /// Where each sandbox's executor reports the files written into it.
+    /// Where each sandbox's guest agent reports the files written into it.
     pub(crate) written: Option<mpsc::UnboundedSender<(String, Bytes)>>,
-    /// The host directory each sandbox's executor imports into and exports
-    /// from, as a real executor serves its workspace; none refuses both.
+    /// The host directory each sandbox's guest agent imports into and exports
+    /// from, as a real guest agent serves its workspace; none refuses both.
     pub(crate) workspace: Option<PathBuf>,
     /// The verified toolbox digest a durable-recovery sandbox's root is;
     /// none roots it on the host.
@@ -148,7 +148,7 @@ pub(crate) struct FakeEngine {
     pub(crate) reallowed: Option<mpsc::UnboundedSender<(Allowlist, bool)>>,
     /// What its sandboxes do when parked and resumed.
     pub(crate) parking: Parking,
-    /// Whether its executors have a tenant leaf to freeze, each freeze and
+    /// Whether its guest agents have a tenant leaf to freeze, each freeze and
     /// thaw reported as a step; without one they refuse both.
     pub(crate) freezes: bool,
 }
@@ -255,7 +255,7 @@ impl Engine for FakeEngine {
             resume_attempts: Arc::clone(&self.resume_attempts),
             reallowed: self.reallowed.clone(),
             parking: self.parking,
-            executor: FakeExecutor {
+            agent: FakeGuest {
                 written: self.written.clone(),
                 workspace: self.workspace.clone(),
                 parking: self.parking,
@@ -286,7 +286,7 @@ struct FakeSandbox {
     resume_attempts: Arc<AtomicUsize>,
     reallowed: Option<mpsc::UnboundedSender<(Allowlist, bool)>>,
     parking: Parking,
-    executor: FakeExecutor,
+    agent: FakeGuest,
 }
 
 impl FakeSandbox {
@@ -333,8 +333,8 @@ pub(crate) const NO_PARK: &str = "cgroup.freeze refused";
 const NO_QUIESCENCE: &str = "cgroup.events unreadable";
 /// What a refused swap of a parked sandbox's addresses says.
 pub(crate) const NO_REFILL: &str = "the egress set refused its new addresses";
-/// What a broken executor says once its sandbox is resumed.
-pub(crate) const EXECUTOR_GONE: &str = "the executor died while parked";
+/// What a broken guest agent says once its sandbox is resumed.
+pub(crate) const AGENT_GONE: &str = "the guest agent died while parked";
 
 /// The network a sandbox was asked for, owned, so a test reads it back after
 /// the request is gone.

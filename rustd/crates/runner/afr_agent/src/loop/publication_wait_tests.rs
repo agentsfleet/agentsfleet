@@ -109,7 +109,7 @@ async fn the_next_model_call_does_not_wait_for_publication() {
     );
     let (frames, stop) = (Frames::default(), CancellationToken::new());
     let events = frames.sink();
-    let executor = afr_executor::ExecutorSlot::unavailable(afr_executor::Unavailable::NoSandbox);
+    let agent = afr_guest_client::AgentSlot::unavailable(afr_guest_client::Unavailable::NoSandbox);
     let mint = af_egress::testing::CountingMint::never();
     let meter = Meter::default();
     let driven = engine.run(AgentRun {
@@ -119,7 +119,7 @@ async fn the_next_model_call_does_not_wait_for_publication() {
         prepared_durable_task: None,
         run: &run,
         memory: afr_memory::Seed::default(),
-        executor: &executor,
+        agent: &agent,
         mint: &mint,
         verbs: &afr_tools::CLOSED,
         checkpoint: &Discard,

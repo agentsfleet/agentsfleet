@@ -54,8 +54,8 @@ async fn test_memory_tools_round_trip_through_push() -> Checked {
             prepared_durable_task: None,
             run: &run,
             memory: afr_memory::Seed::window(&loaded),
-            executor: &afr_executor::ExecutorSlot::unavailable(
-                afr_executor::Unavailable::NoSandbox,
+            agent: &afr_guest_client::AgentSlot::unavailable(
+                afr_guest_client::Unavailable::NoSandbox,
             ),
             mint: &CountingMint::never(),
             verbs: &afr_tools::CLOSED,

@@ -64,7 +64,7 @@ impl WorkspaceVolume for Ordered<'_> {
     }
 }
 
-/// One save's pause over a sandbox `parking` as told, whose executor
+/// One save's pause over a sandbox `parking` as told, whose guest agent
 /// freezes when `freezes` and serves `workspace` when it has one.
 async fn paused(
     parking: Parking,
@@ -159,12 +159,12 @@ async fn a_pin_that_fails_still_thaws_the_tenant() -> Checked {
 async fn a_call_in_flight_skips_the_save_before_any_freeze_or_pin() -> Checked {
     let workspace = tempfile::tempdir()?;
 
-    let saved = paused(Parking::BusyExecutor, true, Some(workspace.path())).await?;
+    let saved = paused(Parking::BusyAgent, true, Some(workspace.path())).await?;
 
     assert_eq!(
         saved,
         Saved {
-            skipped: Some(RecoverySkip::BusyExecutor),
+            skipped: Some(RecoverySkip::BusyAgent),
             order: vec![],
             held: 0,
             left: 0,

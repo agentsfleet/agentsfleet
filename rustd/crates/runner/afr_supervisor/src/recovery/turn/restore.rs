@@ -7,7 +7,7 @@ use af_wire::run::{
     TurnCheckpointRef, TurnCheckpointSaved, TurnWorkspace,
 };
 use afr_agent::TurnRecovery;
-use afr_executor::Executor;
+use afr_guest_client::GuestAgent;
 use garde::Validate as _;
 use tokio_util::sync::CancellationToken;
 use zeroize::Zeroizing;
@@ -17,7 +17,7 @@ impl NativeTurn<'_> {
         &self,
         assignment: &RunPayload<'_>,
         workspace: TurnWorkspace,
-        destination: Option<(&Staged, &dyn Executor)>,
+        destination: Option<(&Staged, &dyn GuestAgent)>,
         stop: &CancellationToken,
         permit: Option<&afr_agent::FileRecoveryPermit>,
     ) -> Result<Option<TurnRecovery>> {
@@ -42,7 +42,7 @@ impl NativeTurn<'_> {
         };
         let checked = async {
             validate(&saved, assignment, &workspace)?;
-            if let Some((staged, executor)) = destination {
+            if let Some((staged, agent)) = destination {
                 let mut session = TurnSession::new(
                     self,
                     &saved.descriptor.scope,
@@ -58,7 +58,7 @@ impl NativeTurn<'_> {
                         permit,
                     )
                     .await?;
-                staged.restore(executor).await?;
+                staged.restore(agent).await?;
             } else {
                 require_empty_manifest(&saved)?;
             }

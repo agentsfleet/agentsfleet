@@ -54,7 +54,7 @@ impl fmt::Display for Cache {
     }
 }
 
-/// One run's figures: the time to executor-ready, then to its first
+/// One run's figures: the time to agent-ready, then to its first
 /// command's end.
 struct Start {
     ready: Duration,
@@ -83,7 +83,7 @@ pub(crate) fn start_budgets(lane: &Lane) -> Result<(), Failed> {
             }
             println!(
                 "{cache} cache: host staging p50 of {STAGINGS} {staging:?}; {} runs, {AT_ONCE} at \
-                 once: executor-ready p50/p95/p99 {}; first useful command ({FIRST_COMMAND}) \
+                 once: agent-ready p50/p95/p99 {}; first useful command ({FIRST_COMMAND}) \
                  p50/p95/p99 {}",
                 ready.len(),
                 percentiles(&mut ready),
@@ -137,14 +137,14 @@ async fn round_of_runs(
     try_join_all(names.iter().map(|name| one_start(engine, name))).await
 }
 
-/// One run from request to executor-ready, then its first command's end.
+/// One run from request to agent-ready, then its first command's end.
 async fn one_start(engine: &dyn Engine, name: &str) -> Result<Start, Failed> {
     let id = id_of(name);
     let started = Instant::now();
     let sandbox = engine.prepare(isolated(engine, &id)?).await?;
     let ready = started.elapsed();
     let began = Instant::now();
-    let said = run::run(sandbox.executor(), run::shell(FIRST_COMMAND)).await;
+    let said = run::run(sandbox.agent(), run::shell(FIRST_COMMAND)).await;
     let first_command = began.elapsed();
     sandbox.destroy().await?;
     let said = said?;
@@ -167,7 +167,7 @@ pub(crate) fn warm_beats_cold(lane: &Lane) -> Result<(), Failed> {
         slots.network_assigned(NetworkKind::Isolated);
         let warm = starts(&slots, WARM).await?;
         slots.shutdown().await;
-        println!("run-accept to executor-ready, p50 of {STARTS}: cold {cold:?}, warm {warm:?}");
+        println!("run-accept to agent-ready, p50 of {STARTS}: cold {cold:?}, warm {warm:?}");
         expect(
             warm < cold,
             format!("warm {warm:?} must beat cold {cold:?}"),

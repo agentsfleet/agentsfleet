@@ -17,23 +17,22 @@ use tracing_subscriber::layer::{Context, Layer};
 
 use super::engine::EngineChoice;
 use super::probe::answer;
-use super::{Cli, Command, RunArgs, exited, log_filter};
+use super::{Cli, Command, RunArgs, log_filter};
 
-/// The engine starts the binary as each microVM's first process by the
-/// guest entry's own spelling of the sub-command and its flags, so the two
-/// can never disagree.
+/// A microVM's first process is `agentsfleet-guest`, never this binary: the
+/// runner has no `guest` entry, so clap refuses the word and the guest
+/// entry's own flags after it.
 #[test]
-fn the_guest_entry_is_the_sub_command_the_engine_starts() {
-    let sizes = afr_executor::Sizes {
-        max_read_bytes: 1024 * 1024,
-        ..afr_executor::Sizes::DEFAULT
-    };
-    let entry = afr_engine_firecracker::guest::GuestEntry::new(4096, 37, sizes);
-    let argv = std::iter::once("agentsfleet-runner".into()).chain(entry.arguments());
+fn the_runner_has_no_guest_entry() {
+    let entry = af_guest_wire::GuestEntry::new(4096, 37, af_guest_wire::Sizes::DEFAULT);
+    let argv = ["agentsfleet-runner", "guest"]
+        .into_iter()
+        .map(std::ffi::OsString::from)
+        .chain(entry.arguments());
 
-    let parsed = Cli::try_parse_from(argv);
+    let refused = Cli::try_parse_from(argv).unwrap_err();
 
-    assert_eq!(parsed.unwrap().command, Command::Guest(entry));
+    assert_eq!(refused.kind(), clap::error::ErrorKind::InvalidSubcommand);
 }
 
 #[test]
@@ -288,11 +287,4 @@ fn a_probe_answer_that_cannot_be_written_fails() {
         ),
         std::process::ExitCode::FAILURE
     );
-}
-
-/// An entry that ended cleanly exits 0; one that refused exits 1.
-#[test]
-fn an_entry_exits_by_how_it_ended() {
-    assert_eq!(exited(Ok::<(), &str>(())), std::process::ExitCode::SUCCESS);
-    assert_eq!(exited(Err("bind refused")), std::process::ExitCode::FAILURE);
 }

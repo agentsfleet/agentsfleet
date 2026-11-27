@@ -1,5 +1,5 @@
 //! A parked sandbox revived for its fleet's next run: marked on the run's
-//! span and logged when its executor answers, given up for a fresh sandbox
+//! span and logged when its guest agent answers, given up for a fresh sandbox
 //! when it does not.
 
 #![expect(
@@ -22,11 +22,11 @@ use super::{DETAIL_SILENT, EVENT_RESUME_FAILED, EVENT_REUSED};
 use crate::client::{Call, Verb};
 use crate::parks::{Parks, Release};
 use crate::test_support::{
-    Answer, Behaviour, EXECUTOR_GONE, FAILURE_REASON, FLEET_ID, FakeAgent, FakeEngine, NO_PARK,
+    AGENT_GONE, Answer, Behaviour, FAILURE_REASON, FLEET_ID, FakeAgent, FakeEngine, NO_PARK,
     OUTCOME, PROCESSED, Parking, RENEWAL_TERMINATE, RUN_ID, Rig, clock, daemon, payload, reported,
 };
 
-/// Long past the wait for a resumed executor's answer, on the paused clock: a
+/// Long past the wait for a resumed guest agent's answer, on the paused clock: a
 /// run still running then is stuck on a sandbox it should have given up.
 const RUN_BOUND: Duration = Duration::from_secs(60);
 /// The field a run's own log lines name it by.
@@ -49,20 +49,20 @@ async fn test_resume_failure_falls_back_fresh() {
     );
 }
 
-/// The executor a parked sandbox resumes into died while it was parked: it
+/// The guest agent a parked sandbox resumes into died while it was parked: it
 /// never answers, so the park is given up and the run runs in a fresh sandbox.
 #[tokio::test(start_paused = true)]
-async fn test_an_executor_silent_after_resume_falls_back_fresh() {
+async fn test_an_agent_silent_after_resume_falls_back_fresh() {
     let counted = gives_up_the_resumed_park(Parking::ResumesSilent, DETAIL_SILENT).await;
 
     assert_eq!(counted, RESUMED_THEN_FRESH);
 }
 
-/// The executor a parked sandbox resumes into fails once it is back: the park
+/// The guest agent a parked sandbox resumes into fails once it is back: the park
 /// is given up and the run runs in a fresh sandbox.
 #[tokio::test(start_paused = true)]
-async fn test_an_executor_failing_after_resume_falls_back_fresh() {
-    let counted = gives_up_the_resumed_park(Parking::ResumesBroken, EXECUTOR_GONE).await;
+async fn test_an_agent_failing_after_resume_falls_back_fresh() {
+    let counted = gives_up_the_resumed_park(Parking::ResumesBroken, AGENT_GONE).await;
 
     assert_eq!(counted, RESUMED_THEN_FRESH);
 }
@@ -112,7 +112,7 @@ async fn gives_up_the_resumed_park(parking: Parking, cause: &str) -> (usize, usi
 }
 
 /// A park and the reuse that follows are each counted, reuse once the resumed
-/// executor answered.
+/// guest agent answered.
 #[tokio::test(start_paused = true)]
 async fn test_a_park_and_its_reuse_are_counted() {
     let counted = parks_counted(Parking::Works, resumed(NEXT_RUN_ID, FLEET_ID)).await;

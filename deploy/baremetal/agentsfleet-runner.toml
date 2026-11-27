@@ -22,8 +22,8 @@ max_file_read_mib = 8
 # Raise it when command output loses the middle the model needs; lower it to hold less memory per running command.
 output_edge_kib = 512
 
-# Performance knobs: the runner's link to each sandbox's executor. Values are today's compiled defaults.
-[executor]
+# Performance knobs: the runner's link to each sandbox's guest agent. Values are today's compiled defaults.
+[guest]
 # Raise it when file writes are refused as too long, or after raising max_file_read_mib past three quarters of it; lower it to cap what a sandbox can make the runner buffer. At least 7.
 max_frame_mib = 64
 

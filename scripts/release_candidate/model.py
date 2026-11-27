@@ -14,10 +14,14 @@ BINARIES = (
 )
 GATES = ("fly", "metal", "dashboard", "verify", "qa", "acceptance", "cli")
 # What a Firecracker microVM boots from, beside the toolbox it mounts: the
-# monitor, its jailer, the guest kernel and the initramfs around the runner.
+# monitor, its jailer, the guest kernel and the initramfs around the in-VM
+# agent, agentsfleet-guest.
 GUEST_PROGRAMS = ("firecracker", "jailer")
 GUEST_ARTIFACTS = GUEST_PROGRAMS + ("vmlinux", "guest.cpio")
-GUEST_RUNNER = "bin/agentsfleet-runner-linux-amd64"
+# The initramfs's /init. A candidate file, so guest.json's `init` is checked
+# against this tree's own build, but never a release archive or part of the
+# runner bundle: it is installed on no host, only packed into guest.cpio.
+GUEST_INIT = "bin/agentsfleet-guest-linux-amd64"
 IMAGE_REPOSITORY = "ghcr.io/agentsfleet/agentsfleetd"
 
 
@@ -141,7 +145,7 @@ def toolbox_digest(root: Path) -> str:
 
 
 def candidate_names(digest: str) -> set[str]:
-    return {f"bin/{name}" for name in BINARIES} | {
+    return {f"bin/{name}" for name in BINARIES} | {GUEST_INIT} | {
         "images/daemon-linux-amd64.tar", "images/daemon-linux-arm64.tar",
     } | {f"toolbox/toolbox-{digest}.{suffix}" for suffix in (
         "erofs", "json", "sbom.spdx.json", "scan.json",
@@ -188,13 +192,14 @@ def guest_file(raw: object) -> File:
 
 
 def verify_guest(root: Path, actual: dict[str, File], version: str) -> None:
-    """The guest record names this candidate's own files and its own runner."""
+    """The guest record names this candidate's own files, runner and guest agent."""
     guest = record(load(root / "toolbox" / "guest.json"))
     artifacts = record(guest.get("artifacts"), set(GUEST_ARTIFACTS))
     if (guest.get("arch") != "amd64" or guest.get("runner_version") != version
+            or guest.get("guest_version") != version
             or any(guest_file(entry) != actual[f"toolbox/{name}"] for name, entry in artifacts.items())
-            or guest_file(guest.get("init")) != actual[GUEST_RUNNER]):
-        raise ValueError("guest record does not match the candidate's files or its runner")
+            or guest_file(guest.get("init")) != actual[GUEST_INIT]):
+        raise ValueError("guest record does not match the candidate's files or its guest agent")
 
 
 def create(root: Path, source: Source) -> None:

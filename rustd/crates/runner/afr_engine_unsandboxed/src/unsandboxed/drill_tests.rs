@@ -63,7 +63,7 @@ async fn should_name_one_toolbox_from_every_drill_engine() {
 }
 
 /// A workspace checkpoint needs no tenant process left: a drill sandbox
-/// reports itself quiet, its executor idle, and it serves on until destroy
+/// reports itself quiet, its guest agent idle, and it serves on until destroy
 /// removes it.
 #[tokio::test]
 async fn should_report_a_drill_sandbox_quiet() {
@@ -76,7 +76,7 @@ async fn should_report_a_drill_sandbox_quiet() {
         .unwrap();
 
     let quiescence = sandbox.quiesce().await.unwrap();
-    let idle = sandbox.executor().recovery_idle().await.unwrap();
+    let idle = sandbox.agent().recovery_idle().await.unwrap();
     let state = sandbox.state();
     sandbox.destroy().await.unwrap();
 

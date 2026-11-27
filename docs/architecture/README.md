@@ -122,6 +122,7 @@ Each row is a one-line pointer; the linked section owns the definition.
 |---|---|
 | **`agentsfleetd`** | The daemon (`rustd/crates/daemon/main`): it serves the API, owns Postgres and its NATS connection, and hands work to runners. [(more)](./runner_fleet.md#why-it-exists) |
 | **`agentsfleet-runner`** | The host binary (`rustd/crates/runner/main`) that runs each run with its admitted tools. [(more)](./runner_execution.md#process-model) |
+| **`agentsfleet-guest`** | The guest agent (`rustd/crates/guest/main`): each microVM's first process, serving its run's processes and files to the runner over vsock; built only into the guest's initramfs. [(more)](./runner_execution.md#inside-a-microvm) |
 | **Tenant** (`identity.tenants`) | The paying account; it owns workspaces and one wallet. [(more)](../AUTH.md#signup-what-usercreated-writes) |
 | **Workspace** (`identity.workspaces`) | The space inside a tenant that fleets, secrets and connector installs belong to. [(more)](../AUTH.md#who-opens-a-workspace) |
 | **Fleet** (`fleet.fleets`) | A long-lived agent in one workspace with a name, a model and one thread. [(more)](./user_flow.md#what-a-fleet-is-made-of) |

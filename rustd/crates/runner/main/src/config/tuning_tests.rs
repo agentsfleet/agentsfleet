@@ -5,7 +5,7 @@ use std::io::Write as _;
 use std::time::Duration;
 
 use af_core::env::MapEnv;
-use afr_executor::Executor as _;
+use afr_guest_client::GuestAgent as _;
 
 use super::{ENV_CONFIG_FILE, Settings, load, read};
 
@@ -62,7 +62,7 @@ fn an_empty_profile_selects_todays_values() -> Checked {
         selected.inference,
         af_providers::settings::Timeouts::DEFAULT
     );
-    assert_eq!(selected.sizes, afr_executor::Sizes::DEFAULT);
+    assert_eq!(selected.sizes, af_guest_wire::Sizes::DEFAULT);
     Ok(())
 }
 
@@ -108,17 +108,17 @@ fn tools_values_reach_the_run_limits() -> Checked {
 }
 
 #[test]
-fn executor_sizes_reach_the_engine_and_the_tools() -> Checked {
+fn guest_sizes_reach_the_engine_and_the_tools() -> Checked {
     let selected = settings(
         "[tools]\nmax_file_read_mib = 2\noutput_edge_kib = 64\n\n\
-         [executor]\nmax_frame_mib = 16\n",
+         [guest]\nmax_frame_mib = 16\n",
     )?;
-    let sizes = afr_executor::Sizes {
+    let sizes = af_guest_wire::Sizes {
         max_read_bytes: 2 * 1024 * 1024,
         edge_bytes: 64 * 1024,
         max_frame_bytes: 16 * 1024 * 1024,
     };
-    // The engine starts every executor with what the tools word their
+    // The engine starts every guest agent with what the tools word their
     // limits by.
     assert_eq!(selected.sizes, sizes);
     assert_eq!(selected.firecracker.sizes, sizes);
@@ -126,30 +126,31 @@ fn executor_sizes_reach_the_engine_and_the_tools() -> Checked {
     Ok(())
 }
 
-/// A runner told to read 1 MiB at a time starts its executor so: the
-/// executor cuts a 2 MiB file at 1 MiB, though the call asks for all of it.
+/// The guest agent's command line, as `agentsfleet-guest` reads it.
+#[derive(clap::Parser)]
+struct Guest {
+    #[command(flatten)]
+    entry: af_guest_wire::GuestEntry,
+}
+
+/// A runner told to read 1 MiB at a time starts its guest agent so: the
+/// guest agent cuts a 2 MiB file at 1 MiB, though the call asks for all of it.
 #[tokio::test]
-async fn the_executor_uses_the_sizes_the_runner_sent() -> Checked {
+async fn the_agent_uses_the_sizes_the_runner_sent() -> Checked {
     let selected = settings("[tools]\nmax_file_read_mib = 1\n")?;
     let sizes = selected.firecracker.sizes;
-    // What the engine tells the guest entry, as the entry reads it back.
-    let told = afr_engine_firecracker::guest::GuestEntry::new(1, 1, sizes).arguments();
-    let argv = std::iter::once("agentsfleet-runner".into()).chain(told);
-    let crate::Command::Guest(entry) = <crate::Cli as clap::Parser>::try_parse_from(argv)?.command
-    else {
-        return Err("the guest entry parses as itself".into());
-    };
+    // What the engine tells the guest agent, as the agent reads it back.
+    let told = af_guest_wire::GuestEntry::new(1, 1, sizes).arguments();
+    let argv = std::iter::once("agentsfleet-guest".into()).chain(told);
+    let entry = <Guest as clap::Parser>::try_parse_from(argv)?.entry;
     let scratch = tempfile::tempdir()?;
-    let (socket, root) = (
-        scratch.path().join("executor.sock"),
-        scratch.path().join("w"),
-    );
+    let (socket, root) = (scratch.path().join("agent.sock"), scratch.path().join("w"));
     std::fs::create_dir(&root)?;
     std::fs::write(root.join("big.bin"), vec![b'x'; 2 * 1024 * 1024])?;
-    let server = afr_executor::bind(&socket)?.with_sizes(entry.sizes());
+    let server = afg_agent::bind(&socket)?.with_sizes(entry.sizes());
     let serving = tokio::spawn(async move { server.serve(&root).await });
     let client =
-        afr_executor::Client::connect_within(&socket, Duration::from_secs(5), sizes).await?;
+        afr_guest_client::Client::connect_within(&socket, Duration::from_secs(5), sizes).await?;
 
     let read = client.read_file("big.bin", u64::MAX).await?;
 
@@ -238,7 +239,7 @@ const ZEROES: &[(&str, &str)] = &[
     ("tools", "max_subagent_depth"),
     ("tools", "max_file_read_mib"),
     ("tools", "output_edge_kib"),
-    ("executor", "max_frame_mib"),
+    ("guest", "max_frame_mib"),
     ("provider", "decision_connect_timeout_seconds"),
     ("provider", "decision_call_timeout_seconds"),
     ("provider", "token_count_timeout_seconds"),
@@ -296,14 +297,14 @@ fn values_past_their_bounds_are_refused() -> Checked {
         "max_activity_batches_held",
     )?;
     // A frame a full directory listing would not fit in.
-    refused_naming("[executor]\nmax_frame_mib = 6\n", "max_frame_mib")?;
+    refused_naming("[guest]\nmax_frame_mib = 6\n", "max_frame_mib")?;
     // More processors than Firecracker's 32 virtual CPUs.
     refused_naming("[sandbox]\ncpu_millicores = 32_001\n", "cpu_millicores")?;
     // A process cap past the kernel's `PID_MAX_LIMIT`, which `pids.max` refuses.
     refused_naming("[sandbox]\npids_max = 4_194_305\n", "pids_max")?;
     // A frame too short to carry one whole read as base64.
     refused_naming(
-        "[tools]\nmax_file_read_mib = 12\n\n[executor]\nmax_frame_mib = 16\n",
+        "[tools]\nmax_file_read_mib = 12\n\n[guest]\nmax_frame_mib = 16\n",
         "max_frame_mib",
     )?;
     Ok(())

@@ -5,7 +5,7 @@
 
 //! What a read carries, and what an edit refuses to write back.
 
-use afr_executor::MAX_READ_BYTES;
+use af_guest_wire::MAX_READ_BYTES;
 use serde_json::json;
 
 use super::tests::{PATH, edit};

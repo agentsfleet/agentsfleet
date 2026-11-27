@@ -1,0 +1,51 @@
+[package]
+name = "afg_agent"
+description = "The in-VM agent: one host connection, every process it starts in the guest's tenant leaf and inner environment, and every file call, confined to the workspace."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# The object-only gate every message from the host decodes through.
+af_core.workspace = true
+# The messages, framing and refusals the host speaks: the only thing this
+# crate shares with it.
+af_guest_wire.workspace = true
+bytes.workspace = true
+cap-std.workspace = true
+# The anonymous spool a tree crossing in chunks lands in before it is unpacked
+# or read back.
+cap-tempfile.workspace = true
+futures-util = { workspace = true, features = ["sink"] }
+# `fs/search` walks the sandbox's own disk once: ripgrep's walker, which
+# skips what `.gitignore` names, its glob matcher, and its line searcher over
+# its regex matcher.
+globset.workspace = true
+grep-regex.workspace = true
+grep-searcher.workspace = true
+ignore.workspace = true
+jsonrpsee-types.workspace = true
+# The terminal launcher opens its pair here (`pty`, `termios`), so a terminal
+# process takes the same pre-exec placement hook a process on pipes does.
+rustix = { workspace = true, features = ["pty", "termios"] }
+serde.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["fs", "io-util", "net", "process", "rt", "sync", "time", "macros"] }
+tokio-util = { workspace = true, features = ["codec", "io", "rt"] }
+tracing.workspace = true
+
+[dev-dependencies]
+# The log capture a test reads a process's end back through.
+af_core = { workspace = true, features = ["test-util"] }
+base64.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["fs", "io-util", "net", "process", "rt", "rt-multi-thread", "sync", "time", "macros", "test-util"] }

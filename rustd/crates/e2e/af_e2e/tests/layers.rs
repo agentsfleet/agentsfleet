@@ -1,6 +1,7 @@
 //! The workspace's layer rule, enforced: every edge obeys its
 //! layer, no crate dev-depends on a crate that depends on it, each folder and
-//! prefix names its layer, the runner links no datastore client, lower layers
+//! prefix names its layer, the runner links no datastore client and, as
+//! released, no guest crate, lower layers
 //! hold no SQL, each item has one public path, each handler crate names its
 //! own plane, each crate runs in exactly one test shard, and only the
 //! cryptographic home names a cryptographic crate and only `af_stream` QUIC.
@@ -28,8 +29,11 @@ mod workspace;
 
 use std::collections::BTreeSet;
 
-use rules::{ENGINE_PREFIX, dev_cycles, engine_edges, folders, layer_edges, runner_datastores};
-use workspace::{Workspace, planted};
+use rules::{
+    ENGINE_PREFIX, defaulted_builds, dev_cycles, engine_edges, folders, layer_edges,
+    release_runner_guests, runner_datastores,
+};
+use workspace::{Workspace, planted, read, rustd};
 
 #[test]
 fn every_crate_depends_on_its_own_layer_or_lower() {
@@ -85,6 +89,157 @@ fn an_edge_to_a_higher_layer_or_into_e2e_is_refused() {
 }
 
 #[test]
+fn a_guest_crate_names_only_foundation_and_protocol_crates() {
+    let workspace = planted(&[
+        (
+            "crates/guest/afg_x",
+            "afg_x",
+            "[dependencies]\naf_c.workspace = true\naf_p.workspace = true\nafg_y.workspace = true\nafr_r.workspace = true\n[dev-dependencies]\naf_h.workspace = true\n",
+        ),
+        ("crates/guest/afg_y", "afg_y", ""),
+        ("crates/foundation/af_c", "af_c", ""),
+        ("crates/protocol/af_p", "af_p", ""),
+        ("crates/harness/af_h", "af_h", ""),
+        ("crates/runner/afr_r", "afr_r", ""),
+    ]);
+    assert_eq!(
+        layer_edges(&workspace),
+        [
+            "afg_x (crates/guest/afg_x) Normal → afr_r (crates/runner/afr_r): guest/ depends only on foundation/ and protocol/",
+            "afg_x (crates/guest/afg_x) Dev → af_h (crates/harness/af_h): guest/ depends only on foundation/ and protocol/",
+        ]
+    );
+}
+
+#[test]
+fn the_runner_reaches_guest_only_in_a_dev_table_or_through_the_debug_engine() {
+    let workspace = planted(&[
+        ("crates/guest/afg_x", "afg_x", ""),
+        (
+            "crates/runner/afr_engine_unsandboxed",
+            "afr_engine_unsandboxed",
+            "[dependencies]\nafg_x.workspace = true\n",
+        ),
+        (
+            "crates/runner/afr_tools",
+            "afr_tools",
+            "[dev-dependencies]\nafg_x.workspace = true\n",
+        ),
+        (
+            "crates/runner/afr_supervisor",
+            "afr_supervisor",
+            "[target.'cfg(unix)'.dependencies]\nafg_x.workspace = true\n",
+        ),
+        (
+            "crates/daemon/afd_d",
+            "afd_d",
+            "[dev-dependencies]\nafg_x.workspace = true\n",
+        ),
+        (
+            "crates/protocol/af_p",
+            "af_p",
+            "[build-dependencies]\nafg_x.workspace = true\n",
+        ),
+        (
+            "crates/e2e/af_e",
+            "af_e",
+            "[dev-dependencies]\nafg_x.workspace = true\n",
+        ),
+    ]);
+    assert_eq!(
+        layer_edges(&workspace),
+        [
+            "af_p (crates/protocol/af_p) Build → afg_x (crates/guest/afg_x): a crate depends on its own layer or a lower one",
+            "afd_d (crates/daemon/afd_d) Dev → afg_x (crates/guest/afg_x): daemon/ never depends on guest/",
+            "afr_supervisor (crates/runner/afr_supervisor) Normal → afg_x (crates/guest/afg_x): runner/ reaches guest/ only in a dev table or through afr_engine_unsandboxed",
+        ]
+    );
+}
+
+#[test]
+fn the_released_runner_links_no_guest_crate_and_no_debug_engine() {
+    let violations = release_runner_guests(&Workspace::load());
+    assert!(violations.is_empty(), "{violations:#?}");
+}
+
+#[test]
+fn a_released_runner_reaching_a_guest_crate_is_named() {
+    let runner = |dependencies: &str| {
+        planted(&[
+            ("crates/runner/main", "agentsfleet_runner", dependencies),
+            (
+                "crates/runner/afr_engine_unsandboxed",
+                "afr_engine_unsandboxed",
+                "[dependencies]\nafg_x.workspace = true\n",
+            ),
+            (
+                "crates/runner/afr_tools",
+                "afr_tools",
+                "[features]\nlive = [\"dep:afg_x\"]\n[dependencies]\nafg_x = { workspace = true, optional = true }\n",
+            ),
+            ("crates/guest/afg_x", "afg_x", ""),
+        ])
+    };
+    // The debug engine behind a default feature: a release build turns no
+    // feature on, so it links neither the engine nor the agent.
+    let defaulted = runner(
+        "[features]\ndefault = [\"unsandboxed\"]\nunsandboxed = [\"dep:afr_engine_unsandboxed\"]\n[dependencies]\nafr_engine_unsandboxed = { workspace = true, optional = true }\nafr_tools.workspace = true\n",
+    );
+    assert_eq!(release_runner_guests(&defaulted), Vec::<String>::new());
+    let required = runner("[dependencies]\nafr_engine_unsandboxed.workspace = true\n");
+    assert_eq!(
+        release_runner_guests(&required),
+        [
+            "agentsfleet_runner's release build reaches afg_x: agentsfleet_runner → afr_engine_unsandboxed → afg_x",
+            "agentsfleet_runner's release build reaches afr_engine_unsandboxed: agentsfleet_runner → afr_engine_unsandboxed",
+        ]
+    );
+    let forwarded =
+        runner("[dependencies]\nafr_tools = { workspace = true, features = [\"live\"] }\n");
+    assert_eq!(
+        release_runner_guests(&forwarded),
+        [
+            "agentsfleet_runner's release build reaches afg_x: agentsfleet_runner → afr_tools → afg_x"
+        ]
+    );
+}
+
+#[test]
+fn every_release_candidate_build_turns_off_default_features() {
+    let root = rustd();
+    let recipe = read(
+        &root
+            .parent()
+            .expect("rustd/ sits in the repository")
+            .join("scripts/build-candidate.sh"),
+    );
+    assert!(recipe.contains("cargo build"), "the recipe builds");
+    let defaulted = defaulted_builds(&recipe);
+    assert!(defaulted.is_empty(), "{defaulted:#?}");
+}
+
+#[test]
+fn a_release_build_with_default_features_is_named() {
+    let recipe = "  cargo build --profile dist -p a --no-default-features\n  (cd rustd && cargo build --profile dist -p b)\n";
+    assert_eq!(
+        defaulted_builds(recipe),
+        ["(cd rustd && cargo build --profile dist -p b)"]
+    );
+}
+
+/// The host's probe asks its kernel whether it can build the guest's Landlock
+/// ruleset, and the guest builds it; the runner links no guest crate, so each
+/// names the interface version, and this holds them to one.
+#[cfg(target_os = "linux")]
+#[test]
+fn the_host_probe_and_the_guest_ruleset_name_one_landlock_abi() {
+    assert_eq!(
+        afr_engine_firecracker::LANDLOCK_ABI,
+        afg_confine::LANDLOCK_ABI
+    );
+}
+
+#[test]
 fn only_the_runner_binary_and_e2e_name_an_engine_crate() {
     let violations = engine_edges(&Workspace::load());
     assert!(violations.is_empty(), "{violations:#?}");
@@ -122,7 +277,7 @@ fn an_engine_crate_named_by_the_supervisor_or_another_engine_is_refused() {
 
 #[test]
 fn the_supervisor_names_the_seam_alone() {
-    const BUILDING_BLOCKS: [&str; 4] = ["afr_image", "afr_firewall", "afr_cgroup", "afr_guest"];
+    const BUILDING_BLOCKS: [&str; 3] = ["afr_image", "afr_firewall", "afr_cgroup"];
     let workspace = Workspace::load();
     let supervisor = workspace
         .members
@@ -183,14 +338,19 @@ fn a_crate_in_the_wrong_folder_is_named() {
         ("crates/protocol/main", "af_bin", ""),
         ("tools/af_w", "af_w", ""),
         ("crates/daemon/main", "agentsfleetd", ""),
+        ("crates/guest/main", "agentsfleet_guest", ""),
+        ("crates/guest/afr_g", "afr_g", ""),
+        ("crates/runner/afg_r", "afg_r", ""),
     ]);
     assert_eq!(
         folders(&workspace),
         [
-            "af_bin (crates/protocol/main): main/ holds the runner's or the daemon's binary",
+            "af_bin (crates/protocol/main): main/ holds the runner's, the guest's or the daemon's binary",
             "af_w (tools/af_w): sits in no layer folder under crates/",
             "afd_x (crates/runner/afd_x): the prefix is not the layer's",
             "afd_z (crates/daemon/afd_y): the folder is not the crate's name",
+            "afg_r (crates/runner/afg_r): the prefix is not the layer's",
+            "afr_g (crates/guest/afr_g): the prefix is not the layer's",
         ]
     );
 }

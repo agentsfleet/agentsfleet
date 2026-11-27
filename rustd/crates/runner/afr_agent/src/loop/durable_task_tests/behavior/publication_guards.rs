@@ -1,14 +1,14 @@
 //! Publication guard regressions execute the root loop and its real hosted tools.
 use super::publication_fixture::{Publisher, publisher};
 use super::*;
-use afr_tools::sandbox::{ScriptedExecutor, ScriptedProcess};
+use afr_tools::sandbox::{ScriptedGuest, ScriptedProcess};
 use std::sync::Arc;
 
 pub(super) async fn execute(
     script: &Script,
     native: &dyn RunVerbs,
     inputs: DurableTaskInputsResponse<'static>,
-    executor: &ScriptedExecutor,
+    agent: &ScriptedGuest,
 ) -> crate::Result<crate::RunOutput> {
     let (transport, _) = af_egress::testing::RecordingTransport::replying(200, "");
     let engine = crate::Loop::new(
@@ -28,7 +28,7 @@ pub(super) async fn execute(
             recovered_durable_task: None,
             recovered_turn: None,
             memory: afr_memory::Seed::default(),
-            executor: &afr_executor::ExecutorSlot::ready(executor),
+            agent: &afr_guest_client::AgentSlot::ready(agent),
             mint: &af_egress::testing::CountingMint::never(),
             verbs: native,
             checkpoint: &crate::testing::Discard,
@@ -98,10 +98,10 @@ async fn open_command_is_stopped_before_publication_and_requires_fresh_validatio
         publication_call(),
         ended(false),
     ]]);
-    let executor = ScriptedExecutor::new([ScriptedProcess::stays_open("ready")]);
-    let output = execute(&script, &native, native.goals.inputs.clone(), &executor).await?;
-    assert_eq!(executor.spawned().len(), 1);
-    assert_eq!(executor.killed(), [afr_executor::ProcessId::new(1)]);
+    let agent = ScriptedGuest::new([ScriptedProcess::stays_open("ready")]);
+    let output = execute(&script, &native, native.goals.inputs.clone(), &agent).await?;
+    assert_eq!(agent.spawned().len(), 1);
+    assert_eq!(agent.killed(), [afr_guest_client::ProcessId::new(1)]);
     refusal(&native, output, "Open commands were stopped")?;
     Ok(())
 }
@@ -116,9 +116,9 @@ async fn malformed_native_repository_identity_refuses_before_candidate_capture()
         "missing-owner".clone_into(repository);
     }
     let script = Script::new([vec![publication_call(), ended(false)]]);
-    let executor = ScriptedExecutor::new([]);
-    let output = execute(&script, &native, native.goals.inputs.clone(), &executor).await?;
-    assert_eq!(executor.spawned().len(), 0);
+    let agent = ScriptedGuest::new([]);
+    let output = execute(&script, &native, native.goals.inputs.clone(), &agent).await?;
+    assert_eq!(agent.spawned().len(), 0);
     refusal(&native, output, "Native repository identity is invalid")?;
     Ok(())
 }

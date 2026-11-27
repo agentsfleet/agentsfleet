@@ -73,7 +73,7 @@ const MOVED_NAME: &str = "moved.far.test";
 /// a name it does not know.
 const RESOLVE: &str = "getent hosts first.far.test moved.far.test | cut -d' ' -f1";
 
-/// The vsock dial a guest makes at its own executor's port, at `$1`.
+/// The vsock dial a guest makes at its own guest agent's port, at `$1`.
 const VSOCK_DIAL: &str = "python3 -c 'import socket,sys; s=socket.socket(socket.AF_VSOCK, \
      socket.SOCK_STREAM); s.settimeout(2); \
      print(\"open\" if s.connect_ex((int(sys.argv[1]), 1024)) == 0 else \"refused\")' ";
@@ -125,7 +125,7 @@ pub(crate) fn tuning() -> FirecrackerTuning {
         first_jail_id: afr_engine_firecracker::FIRST_JAIL_ID,
         ready_timeout: afr_engine::DEFAULT_READY_TIMEOUT,
         io_bytes_per_second: afr_cgroup::DEFAULT_IO_BYTES_PER_SECOND,
-        sizes: afr_executor::Sizes::DEFAULT,
+        sizes: af_guest_wire::Sizes::DEFAULT,
         limits: Limits::default(),
         memory_overcommit: afr_engine_firecracker::MEMORY_OVERCOMMIT,
         disk_overcommit: afr_engine_firecracker::DISK_OVERCOMMIT,
@@ -200,15 +200,15 @@ fn stopped_resumes(lane: &Lane) -> Result<(), Failed> {
             )?)
             .await?;
         let script = format!("echo kept > /workspace/kept && {START_BACKGROUND}");
-        run(sandbox.executor(), shell(&script)).await?;
+        run(sandbox.agent(), shell(&script)).await?;
         let parked = sandbox.park(ParkMode::Stop).await?;
         let leaf = engine.config().cgroup_root.join(id.as_str());
         expect(!leaf.exists(), "no monitor runs while it is stopped")?;
         let mut sandbox = parked.resume().await?;
         let script = format!("cat /workspace/kept; {BACKGROUND_ALIVE}");
-        let said = run(sandbox.executor(), shell(&script)).await?.output;
+        let said = run(sandbox.agent(), shell(&script)).await?.output;
         sandbox.egress(plan(2, Network::Allowed(&moved))).await?;
-        let resolved = run(sandbox.executor(), shell(RESOLVE)).await?.output;
+        let resolved = run(sandbox.agent(), shell(RESOLVE)).await?.output;
         sandbox.destroy().await?;
         expect(
             said == "kept\ngone\n",
@@ -237,24 +237,24 @@ fn restored_in_place(lane: &Lane) -> Result<(), Failed> {
             .cgroup_root
             .join(id.as_str())
             .join(afr_cgroup::SANDBOX_LEAF)
-            .join(afr_cgroup::CGROUP_PROCS);
+            .join(af_cgroup::CGROUP_PROCS);
         let monitor = fs::read_to_string(&procs)?;
-        let executor = sandbox.executor();
-        executor
+        let agent = sandbox.agent();
+        agent
             .write_file("restored", Bytes::from_static(b"checkpoint\n"))
             .await?;
         let mut checkpoint = Vec::new();
-        executor.export(&["."], &mut checkpoint).await?;
+        agent.export(&["."], &mut checkpoint).await?;
         let script = format!(
             "for tree in {WRITTEN}; do echo before > $tree/before; done; {START_BACKGROUND}; \
              {IPC_HELD}make"
         );
-        let made = run(executor, shell(&script)).await?.output;
-        executor.renew().await?;
-        executor.import(".", &mut checkpoint.as_slice()).await?;
+        let made = run(agent, shell(&script)).await?.output;
+        agent.renew().await?;
+        agent.import(".", &mut checkpoint.as_slice()).await?;
         let script =
             format!("for tree in {WRITTEN}; do ls -A $tree; done; {SURVIVOR}; {IPC_HELD}find");
-        let said = run(executor, shell(&script)).await?.output;
+        let said = run(agent, shell(&script)).await?.output;
         let after = fs::read_to_string(&procs)?;
         sandbox.destroy().await?;
         expect(after == monitor, "the same monitor runs: no reboot")?;
@@ -301,9 +301,9 @@ async fn walls(
 ) -> Result<(), Failed> {
     // Each slot's guest leaves its namespace as `10.69.<slot>.2`.
     for slot in 0..2 {
-        let port = u16::try_from(afr_engine_firecracker::guest::EXECUTOR_PORT)?;
+        let port = u16::try_from(af_guest_wire::AGENT_PORT)?;
         let dial = connect(format!("10.69.{slot}.2"), port);
-        let said = run(near.executor(), shell(&dial)).await?.output;
+        let said = run(near.agent(), shell(&dial)).await?.output;
         let said = said.trim();
         expect(
             said.starts_with(ERRNO) || said == NO_ANSWER,
@@ -311,7 +311,7 @@ async fn walls(
         )?;
     }
     for cid in [1, 2, 3] {
-        let said = run(near.executor(), shell(&format!("{VSOCK_DIAL}{cid}")))
+        let said = run(near.agent(), shell(&format!("{VSOCK_DIAL}{cid}")))
             .await?
             .output;
         expect(

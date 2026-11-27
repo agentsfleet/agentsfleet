@@ -3,7 +3,7 @@
 
 use std::fmt;
 
-use afr_executor::Executor;
+use afr_guest_client::GuestAgent;
 use guffbolt::CallRef;
 use guffbolt::tools::code;
 
@@ -14,7 +14,7 @@ use crate::run::Run;
 pub enum Runtime {
     /// In the supervisor, beside the loop. Never touches the sandbox.
     Supervisor,
-    /// Inside the run's sandbox, through the executor connection.
+    /// Inside the run's sandbox, through the guest agent connection.
     Sandbox,
     /// At the model provider, sent as the provider's own hosted tool spec.
     Provider,
@@ -22,7 +22,7 @@ pub enum Runtime {
 
 /// What a handler is given for one call.
 ///
-/// The router builds it per call and hands the executor only to a sandbox-side
+/// The router builds it per call and hands the guest agent only to a sandbox-side
 /// handler, so a supervisor-side one cannot reach the sandbox by construction.
 /// A generic tool reaches the sandbox only through the environment the run
 /// built it over ([`crate::LazySandboxEnv`]): no handler here runs a command
@@ -32,8 +32,8 @@ pub enum Runtime {
 /// ([`Run`]).
 #[derive(Debug)]
 pub struct ToolContext<'call, 'run> {
-    /// The run's executor; `None` for a supervisor-side call.
-    pub executor: Option<&'call dyn Executor>,
+    /// The run's guest agent; `None` for a supervisor-side call.
+    pub agent: Option<&'call dyn GuestAgent>,
     /// What every call of the run shares.
     pub run: &'call Run<'run>,
     /// Where the call sits in its loop's conversation.
@@ -102,7 +102,7 @@ pub enum ToolErrorCode {
     /// processes ran out of memory.
     OutOfMemory,
     /// The process's ending never reached the caller: its sandbox or the
-    /// executor went away.
+    /// guest agent went away.
     Interrupted,
     /// The session named is not open: it never was, or its process ended.
     SessionNotFound,

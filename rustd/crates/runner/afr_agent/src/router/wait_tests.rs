@@ -11,7 +11,7 @@ use std::sync::atomic::Ordering;
 use std::sync::mpsc::Receiver;
 use std::time::Duration;
 
-use afr_executor::{ExecutorSlot, Unavailable};
+use afr_guest_client::{AgentSlot, Unavailable};
 use afr_telemetry::labels::SandboxWait;
 use afr_telemetry::testing::{Recorded, Tally, scoped};
 use afr_tools::catalog::{FILE_READ, UPDATE_PLAN};
@@ -45,8 +45,8 @@ async fn bounded<T>(future: impl Future<Output = T>) -> T {
 async fn a_sandbox_call_mid_build_waits_then_runs_in_that_sandbox() {
     let catalog = catalog();
     let selection = catalog.select(&[FILE_READ.name()]).unwrap();
-    let executor = Counting::default();
-    let slot = ExecutorSlot::pending();
+    let agent = Counting::default();
+    let slot = AgentSlot::pending();
     let tool = routed(&selection, &FILE_READ);
     let (tally, recorded) = Tally::new();
     let (arguments, run) = (serde_json::json!({}), Run::default());
@@ -54,7 +54,7 @@ async fn a_sandbox_call_mid_build_waits_then_runs_in_that_sandbox() {
     let call = tool.run(&arguments, &slot, &run, &at);
     let build = async {
         tokio::time::sleep(BUILD_TAKES).await;
-        slot.fill(Ok(&executor))
+        slot.fill(Ok(&agent))
     };
 
     let (output, filled) = bounded(scoped(tally, async { tokio::join!(call, build) })).await;
@@ -62,7 +62,7 @@ async fn a_sandbox_call_mid_build_waits_then_runs_in_that_sandbox() {
     assert!(filled, "the build's fill is the first");
     assert_eq!(output.error_code, None, "{}", output.text);
     assert_eq!(
-        executor.calls.load(Ordering::SeqCst),
+        agent.calls.load(Ordering::SeqCst),
         1,
         "the call crossed into the build's sandbox"
     );
@@ -74,7 +74,7 @@ async fn a_sandbox_call_mid_build_answers_the_failures_class() {
     for class in [Unavailable::Prepare, Unavailable::Checkout] {
         let catalog = catalog();
         let selection = catalog.select(&[FILE_READ.name()]).unwrap();
-        let slot = ExecutorSlot::pending();
+        let slot = AgentSlot::pending();
         let tool = routed(&selection, &FILE_READ);
         let (tally, recorded) = Tally::new();
         let (arguments, run) = (serde_json::json!({}), Run::default());
@@ -104,7 +104,7 @@ async fn a_sandbox_call_mid_build_answers_the_failures_class() {
 async fn a_supervisor_call_never_waits_on_the_build() {
     let catalog = catalog();
     let selection = catalog.select(&[UPDATE_PLAN.name()]).unwrap();
-    let slot = ExecutorSlot::pending();
+    let slot = AgentSlot::pending();
     let tool = routed(&selection, &UPDATE_PLAN);
 
     let (arguments, run) = (serde_json::json!({}), Run::default());
@@ -123,8 +123,8 @@ async fn a_supervisor_call_never_waits_on_the_build() {
 async fn a_sandbox_call_after_the_build_records_no_wait() {
     let catalog = catalog();
     let selection = catalog.select(&[FILE_READ.name()]).unwrap();
-    let executor = Counting::default();
-    let slot = ExecutorSlot::ready(&executor);
+    let agent = Counting::default();
+    let slot = AgentSlot::ready(&agent);
     let tool = routed(&selection, &FILE_READ);
     let (tally, recorded) = Tally::new();
 
@@ -135,7 +135,7 @@ async fn a_sandbox_call_after_the_build_records_no_wait() {
     let output = bounded(scoped(tally, call)).await;
 
     assert_eq!(output.error_code, None, "{}", output.text);
-    assert_eq!(executor.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(agent.calls.load(Ordering::SeqCst), 1);
     assert!(
         waits(&recorded).is_empty(),
         "a filled slot holds no call up"

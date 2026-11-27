@@ -10,7 +10,7 @@ executable: false
 
 ## What it is
 
-`agentsfleet-runner` is one binary with three entries: `run`, `probe` and `guest` ([main](../../rustd/crates/runner/main/src/main.rs)). This page follows a run from the moment the daemon pushes it to the moment its report is acknowledged.
+`agentsfleet-runner` is one binary with two entries, `run` and `probe` ([main](../../rustd/crates/runner/main/src/main.rs)). Inside each microVM runs a second binary, `agentsfleet-guest`, the guest agent ([guest](../../rustd/crates/guest/main/src/main.rs)); it ships only inside the guest's initramfs and is never installed on a host. This page follows a run from the moment the daemon pushes it to the moment its report is acknowledged.
 
 | Part | What it is |
 |---|---|
@@ -43,18 +43,18 @@ agentsfleet-runner (one binary on a VM or a bare-metal host)
  │ agent loop and model providers         (model keys live only here)   │
  │ tool router · secret scrub · activity frames · git clone · minting   │
  └───────────────┬──────────────────────────────────────────────────────┘
-                 │ one executor link per run: vsock to the microVM
+                 │ one agent link per run: vsock to the microVM
  ┌ sandbox: one per run ────────────────────────────────────────────────┐
  │ /            toolbox, read-only                                      │
  │ /workspace   the run's disk, writable                                │
- │ executor: processes on pipes or pseudo-terminals, file calls         │
+ │ guest agent: processes on pipes or pseudo-terminals, file calls      │
  │ network per assigned policy · Landlock · seccomp · no capabilities   │
  └──────────────────────────────────────────────────────────────────────┘
 ```
 
-The executor is a small in-sandbox server. It spawns, writes to, reads and kills processes, and it serves the file calls the file tools use.
+The guest agent is a small in-sandbox server. It spawns, writes to, reads and kills processes, and it serves the file calls the file tools use.
 
-In a microVM, the binary's `guest` entry is the guest kernel's first process and serves the executor on vsock.
+In a microVM, `agentsfleet-guest` is the guest kernel's first process and serves the agent on vsock. The runner links none of its crates: the two speak only `af_guest_wire`. The shipped runner is built with `--no-default-features`, so it carries neither the debug engine nor the agent that engine serves in-process ([layer rules](../../rustd/crates/e2e/af_e2e/tests/layers.rs)).
 
 Every tool call ends exactly once. When a run ends for any reason, the supervisor closes each open call as `interrupted` and kills every command session still open.
 
@@ -86,7 +86,7 @@ Usage rides both renewals and the report, one line per provider request, with no
 
 ### Crates
 
-The runner's crates sit in `rustd/crates/runner/` and import nothing from `daemon/`. No runner crate links a datastore crate ([layer rules](../../rustd/crates/e2e/af_e2e/tests/layers.rs)).
+The runner's crates sit in `rustd/crates/runner/` and import nothing from `daemon/`. No runner crate links a datastore crate. The guest agent's crates sit in `rustd/crates/guest/` with the `afg_` prefix and link only `foundation/` and `protocol/` crates; a runner crate links one only in a dev table or through the debug engine ([layer rules](../../rustd/crates/e2e/af_e2e/tests/layers.rs)).
 
 | Crate | Role |
 |---|---|
@@ -98,8 +98,11 @@ The runner's crates sit in `rustd/crates/runner/` and import nothing from `daemo
 | `afr_supervisor` | The stream, worker pool, renewals, reports, holds, clones, host stages and checkpoint transfer |
 | `afr_engine` | The seam every engine meets: its traits and facts, egress plans, boot admission, warm slots and the conformance suite |
 | `afr_engine_firecracker`, `afr_engine_unsandboxed` | One crate per engine; the second is the debug and recovery-drill engine |
-| `afr_image`, `afr_firewall`, `afr_cgroup` | Building blocks: toolbox and workspace images, the host egress tables, cgroup limits and the freezer |
-| `afr_guest`, `afr_executor` | The hardening and inner environment each tenant process runs in inside the guest, and the in-sandbox server |
+| `afr_image`, `afr_firewall`, `afr_cgroup` | Building blocks: toolbox and workspace images, the host egress tables, and a run's cgroup limits |
+| `afr_guest_client` | The host's client for the guest agent: the `GuestAgent` seam the agent loop calls, the redialling link and the slot a run's agent is reached through |
+| `af_guest_wire` | What the runner and the guest agent both speak: the link's messages and framing, the refusals both name, the tree's tar stream and the guest kernel's command line |
+| `af_cgroup` | The cgroup v2 file names and the freezer both ends write |
+| `afg_agent`, `afg_confine`, `afg_entry`, `agentsfleet_guest` | The guest agent: the in-sandbox server, the hardening and inner environment each tenant process runs in, the guest's first-process entry, and its binary |
 | `af_wire` | The one wire format the daemon and runner share |
 
 `afr_supervisor` reaches every engine through `afr_engine` and names no engine or building-block crate. Only the runner binary, `agentsfleet_runner`, and the `af_e2e` crate name an engine crate, and no engine crate names another ([layer rules](../../rustd/crates/e2e/af_e2e/tests/layers.rs)).
@@ -156,7 +159,7 @@ The supervisor sees an engine only through `afr_engine`'s `Engine`, `Sandbox` an
 - `prepare(spec)` builds a sandbox under a `Uuid7` the caller mints. A second `prepare` for a live identifier is refused naming that sandbox.
 - A build whose outcome the engine cannot tell answers `Ambiguous`. The supervisor sweeps that identifier once and never builds it again ([build](../../rustd/crates/runner/afr_supervisor/src/run_loop/build.rs)).
 - `environment()` names the engine and the root: the toolbox by its SHA-256 digest, or the host's own files for the debug engine. A checkpoint restore compares that digest.
-- `quiesce()` reads from the engine's own mechanism whether a tenant process remains. A checkpoint is captured only when it reads quiet. On Firecracker the guest's executor answers: quiet when no call of its own runs and the tenant leaf lists no process, so one a call left behind reads busy ([leaf](../../rustd/crates/runner/afr_executor/src/server/launch/tenant/mod.rs)). `kill()` ends the monitor and returns once it has exited, and a guest whose monitor has ended reads quiet.
+- `quiesce()` reads from the engine's own mechanism whether a tenant process remains. A checkpoint is captured only when it reads quiet. On Firecracker the guest's agent answers: quiet when no call of its own runs and the tenant leaf lists no process, so one a call left behind reads busy ([leaf](../../rustd/crates/guest/afg_agent/src/server/launch/tenant/mod.rs)). `kill()` ends the monitor and returns once it has exited, and a guest whose monitor has ended reads quiet.
 
 Each engine sweeps what a crashed runner left when the engine is built.
 
@@ -164,7 +167,7 @@ Each engine sweeps what a crashed runner left when the engine is built.
 
 A processed run's sandbox parks in the first mode its engine offers, and a sandbox whose engine offers none is killed ([park](../../rustd/crates/runner/afr_supervisor/src/run_loop/park.rs)). A parked sandbox is its own type, `Parked`, which runs nothing until it resumes.
 
-- `Stop` is Firecracker's. The guest syncs, its monitor stops, and only the disk stays. Resume boots a fresh microVM on that disk. The run waits `[sandbox] park_resume_timeout_seconds` (2) for its executor to answer, then gives the park up for a fresh sandbox.
+- `Stop` is Firecracker's. The guest syncs, its monitor stops, and only the disk stays. Resume boots a fresh microVM on that disk. The run waits `[sandbox] park_resume_timeout_seconds` (2) for its guest agent to answer, then gives the park up for a fresh sandbox.
 - `Pause` keeps memory and disk while every process stops, and no engine offers it.
 
 #### Egress plans
@@ -179,7 +182,7 @@ A new allowlist on a running microVM refills the tap's set, then replaces the gu
 
 #### Files in and out
 
-No engine offers a host path into its sandbox. Files cross only through the executor's `import` and `export`: a tar stream confined to `/workspace`, sent in chunks under the 64 MiB frame ([tree](../../rustd/crates/runner/afr_executor/src/tree/mod.rs), [pack](../../rustd/crates/runner/afr_executor/src/tree/pack.rs), [unpack](../../rustd/crates/runner/afr_executor/src/tree/unpack.rs)).
+No engine offers a host path into its sandbox. Files cross only through the guest agent's `import` and `export`: a tar stream confined to `/workspace`, sent in chunks under the 64 MiB frame ([tree](../../rustd/crates/protocol/af_guest_wire/src/tree/mod.rs), [pack](../../rustd/crates/protocol/af_guest_wire/src/tree/pack.rs), [unpack](../../rustd/crates/protocol/af_guest_wire/src/tree/unpack.rs)).
 
 An import is spooled on the workspace disk and checked whole before its first write. One entry leaving its root refuses the whole stream, and set-id bits are dropped. An export streams as it is packed.
 
@@ -189,7 +192,7 @@ On the host, each step's files wait in a stage, `<storage home>/staging/<sandbox
 - Checkpoint capture exports the workspace into a stage, which the checkpoint reads ([checkpoints](checkpoints.md#when-the-runner-saves)).
 - Restore writes the checkpoint into a stage and imports it into an empty workspace.
 
-The host unpacks an export with the same `afr_executor::tree` checks the executor applies to an import.
+The host unpacks an export with the same `af_guest_wire::tree` checks the guest agent applies to an import.
 
 #### The conformance suite
 
@@ -221,24 +224,30 @@ The guest's memory is the grant rounded up to whole mebibytes. Its processors ar
 
 #### Inside a microVM
 
-The guest kernel starts the runner binary's `guest` entry as its first process ([guest](../../rustd/crates/runner/afr_engine_firecracker/src/guest/mod.rs)). The entry mounts the toolbox drive's `/usr` and `/etc`, and the workspace drive at `/workspace` and `/tmp`. It brings loopback up, so a process inside reaches its own `127.0.0.1` with or without a network device. It sets the guest kernel to overcommit memory always, so a process asking for more than the guest holds is ended by the out-of-memory killer and its run reads `out_of_memory`, instead of failing on a refused allocation. Then it serves the executor on vsock port 1024.
+The guest kernel starts `agentsfleet-guest` as its first process ([entry](../../rustd/crates/guest/afg_entry/src/lib.rs)). It refuses to start unless it is process 1 with a vsock device, naming which it is not, so it never mounts over a host ([admission](../../rustd/crates/guest/afg_entry/src/admit.rs)). Its death ends the microVM, and the run resumes from its checkpoint on a fresh one. It mounts the toolbox drive's `/usr` and `/etc`, and the workspace drive at `/workspace` and `/tmp`. It brings loopback up, so a process inside reaches its own `127.0.0.1` with or without a network device. It sets the guest kernel to overcommit memory always, so a process asking for more than the guest holds is ended by the out-of-memory killer and its run reads `out_of_memory`, instead of failing on a refused allocation. Then it serves the guest agent on vsock port 1024.
 
-Every tenant process runs in the guest's tenant cgroup leaf, whose `pids.max` is `[sandbox] pids_max`, passed on the guest's kernel command line as `--pids-max` ([guest entry](../../rustd/crates/runner/afr_engine_firecracker/src/guest/linux.rs)). A fork bomb stops there with `EAGAIN`, and the executor, outside the leaf, still answers. When a run ends, the supervisor reads the leaf's `pids.events` `max` count through the executor; above zero, it logs `sandbox_pids_limit_hit` with `refused` and `pids_max` and counts `agentsfleet_runner_sandbox_pids_limit_hits_total`, the data `pids_max` is tuned from ([park](../../rustd/crates/runner/afr_supervisor/src/run_loop/park.rs)).
+Every tenant process runs in the guest's tenant cgroup leaf, whose `pids.max` is `[sandbox] pids_max`, passed on the guest's kernel command line as `--pids-max` ([guest entry](../../rustd/crates/guest/afg_entry/src/vm/linux.rs)). A fork bomb stops there with `EAGAIN`, and the guest agent, outside the leaf, still answers. When a run ends, the supervisor reads the leaf's `pids.events` `max` count through the guest agent; above zero, it logs `sandbox_pids_limit_hit` with `refused` and `pids_max` and counts `agentsfleet_runner_sandbox_pids_limit_hits_total`, the data `pids_max` is tuned from ([park](../../rustd/crates/runner/afr_supervisor/src/run_loop/park.rs)).
 
-The executor is the VM's root service. Tenant code runs in an inner environment the executor builds: a new process namespace, a new mount namespace and a new inter-process communication (IPC) namespace, whose init reaps orphans ([inner environment](../../rustd/crates/runner/afr_guest/src/inner/mod.rs)).
+The guest agent is the VM's root service. Tenant code runs in an inner environment the guest agent builds: a new process namespace, a new mount namespace and a new inter-process communication (IPC) namespace, whose init reaps orphans ([inner environment](../../rustd/crates/guest/afg_confine/src/inner/mod.rs)).
 
-Each tenant process enters it as uid and gid 1000, under `no_new_privs`, Landlock and seccomp with `unshare` refused. The executor stands outside that confinement, and the VM is the wall around both. Which confinement a process applies is the executor's choice, behind one seam ([confinement](../../rustd/crates/runner/afr_guest/src/harden/confinement.rs)); a tenant's request names none.
+Each tenant process enters it as uid and gid 1000, under `no_new_privs`, Landlock and seccomp with `unshare` refused. The guest agent stands outside that confinement, and the VM is the wall around both. Which confinement a process applies is the guest agent's choice, behind one seam ([confinement](../../rustd/crates/guest/afg_confine/src/harden/confinement.rs)); a tenant's request names none.
 
-A process is born into the inner process namespace because the thread that forks it was readied first. Once the fork is done the executor puts that thread back, since a thread readied that way can start no thread of its own process ([entry](../../rustd/crates/runner/afr_executor/src/server/launch/inner.rs)).
+A process is born into the inner process namespace because the thread that forks it was readied first. Once the fork is done the guest agent puts that thread back, since a thread readied that way can start no thread of its own process ([entry](../../rustd/crates/guest/afg_agent/src/server/launch/inner.rs)).
 
-The executor's `renew` ends the inner environment, empties `/workspace` and builds it again while the VM runs on. Ending the namespace's init ends every process in it, so no tenant process outlives a renewal. The IPC namespace goes with its last process, so no System V object or POSIX message queue a tenant made outlives one either.
+The guest agent's `renew` ends the inner environment, empties `/workspace` and builds it again while the VM runs on. Ending the namespace's init ends every process in it, so no tenant process outlives a renewal. The IPC namespace goes with its last process, so no System V object or POSIX message queue a tenant made outlives one either.
 
-The host reaches the executor through the monitor's socket with a `CONNECT 1024` line ([vsock](../../rustd/crates/runner/afr_engine_firecracker/src/vsock.rs)). The executor client dials again after every boot, and a process the old link carried reads `Interrupted`.
+The host reaches the guest agent through the monitor's socket with a `CONNECT 1024` line ([vsock](../../rustd/crates/runner/afr_engine_firecracker/src/vsock.rs)). The guest agent client dials again after every boot, and a process the old link carried reads `Interrupted`.
 
-#### Only the host reaches the executor
+#### The console
 
-- The executor drops a vsock peer whose context identifier is not the host's, 2, before it reads a byte.
-- The guest kernel has no vsock loopback, so no guest process can dial its own executor.
+Each microVM's serial console, `ttyS0`, carries the guest kernel's messages and the guest agent's own log lines; Firecracker writes it to its standard output. The engine pipes the monitor's standard output and error and reads each in a task of its own, one line at a time, logging every line as `sandbox_console` with `sandbox_id`, `stream` and `line` through the runner's own logging and export. A line longer than Linux's default pipe capacity, 64 KiB, is logged in pieces of that size, each but the last marked `continues` ([console](../../rustd/crates/runner/afr_engine_firecracker/src/console.rs)). The task ends when the pipe closes, and it reads as fast as the monitor writes, so the guest never waits on it.
+
+No tenant process writes a console line. Landlock grants a tenant writes beneath `/workspace`, `/tmp`, `/dev/pts` and `/dev/shm` and to `/dev/null`, `/dev/zero`, `/dev/full`, `/dev/tty` and `/dev/ptmx` alone, so `/dev/console`, `/dev/ttyS0` and `/dev/kmsg` refuse it ([walls](../../rustd/crates/guest/afg_confine/src/harden/mod.rs)). A kernel message a tenant provokes, such as an out-of-memory kill, is the kernel's line.
+
+#### Only the host reaches the guest agent
+
+- The guest agent drops a vsock peer whose context identifier is not the host's, 2, before it reads a byte.
+- The guest kernel has no vsock loopback, so no guest process can dial its own guest agent.
 - The host's end of the vsock is a socket inside the jail, owned by that jail's user.
 
 #### Walls between microVMs
@@ -274,7 +283,7 @@ Every sandbox gets the runner's `[sandbox]` values, and the wire carries no per-
 
 ### Sandbox filesystem
 
-The guest entry mounts a fixed set of file systems before it serves the executor ([guest mounts](../../rustd/crates/runner/afr_engine_firecracker/src/guest/linux.rs)). The drives behind them are listed under [Firecracker](#firecracker).
+The guest agent mounts a fixed set of file systems before it serves the host ([guest mounts](../../rustd/crates/guest/afg_entry/src/vm/linux.rs)). The drives behind them are listed under [Firecracker](#firecracker).
 
 | Inside | From | Mode |
 |---|---|---|
@@ -411,14 +420,14 @@ run start
   ├─ workspace.img 4 GiB → ext4, owned by the guest user, never host-mounted
   ├─ jail user · image lock · netns, tap and host table · chroot · cgroup leaf
   ├─ jailer → firecracker --config-file --no-api
-  └─ ready once the executor answers over vsock and the plan reads back in force
+  └─ ready once the agent answers over vsock and the plan reads back in force
             … the turn runs …
   processed: guest sync → monitor stopped → disk kept; otherwise killed
   release: monitor → cgroup → host table and pair → namespace → chroot → lock, jail user
   destroy: release, then the directory and its image
 ```
 
-The supervisor waits at most 10 seconds for the executor to answer before refusing the run. Building the engine sweeps every leftover run directory, egress table and virtual link a crashed runner left.
+The supervisor waits at most 10 seconds for the guest agent to answer before refusing the run. Building the engine sweeps every leftover run directory, egress table and virtual link a crashed runner left.
 
 The storage home is `/var/lib/agentsfleet-runner` unless `RUNNER_STORAGE_HOME` names another root. It holds the toolbox images, per-run sandboxes, one git mirror per workspace and repository, and `staging/`.
 

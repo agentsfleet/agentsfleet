@@ -144,8 +144,8 @@ impl AgentEngine for Loop {
             || Agents::new(caps),
             |recovered| Agents::restored(caps, &recovered.driver),
         );
-        let backends = Backends::new(&tools_run, run.executor, self.catalog.transport())
-            .with_agents(&registry);
+        let backends =
+            Backends::new(&tools_run, run.agent, self.catalog.transport()).with_agents(&registry);
         let backed = backends.tools(&names)?;
         let shared = Shared::new(
             &run,

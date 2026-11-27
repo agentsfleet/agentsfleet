@@ -6,10 +6,12 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use afr_cgroup::{MEMORY_EVENTS, RunCgroup, SANDBOX_LEAF};
+use af_cgroup::MEMORY_EVENTS;
+use af_guest_wire::Ending;
+use afr_cgroup::{RunCgroup, SANDBOX_LEAF};
 use afr_engine::conformance::{ENOSPC, SMALL_DISK, SMALL_MEMORY};
 use afr_engine::{Engine as _, Limits, Network};
-use afr_executor::{Ending, Executor};
+use afr_guest_client::GuestAgent;
 use libtest_mimic::Failed;
 
 use crate::firecracker::room;
@@ -124,7 +126,7 @@ pub(crate) fn runaway(lane: &Lane) -> Result<(), Failed> {
 }
 
 /// A tenant process allocating past its guest's memory is killed and reads
-/// `out_of_memory`; the monitor's leaf counts no kill, and the same executor
+/// `out_of_memory`; the monitor's leaf counts no kill, and the same guest agent
 /// runs the next command.
 pub(crate) fn oom_kills_only_the_tenant(lane: &Lane) -> Result<(), Failed> {
     let name = "oomsplit";
@@ -138,8 +140,8 @@ pub(crate) fn oom_kills_only_the_tenant(lane: &Lane) -> Result<(), Failed> {
         let sandbox = engine
             .prepare(spec(&engine, &id, limits, Network::Isolated)?)
             .await?;
-        let hog = run_in(sandbox.executor(), shell(HOG)).await;
-        let after = run_in(sandbox.executor(), shell(&format!("echo {OK}"))).await;
+        let hog = run_in(sandbox.agent(), shell(HOG)).await;
+        let after = run_in(sandbox.agent(), shell(&format!("echo {OK}"))).await;
         let events = fs::read_to_string(monitor_events(lane, name)).unwrap_or_default();
         sandbox.destroy().await?;
         Ok::<_, Failed>((hog?, after?, events))
@@ -147,7 +149,7 @@ pub(crate) fn oom_kills_only_the_tenant(lane: &Lane) -> Result<(), Failed> {
     killed_for_memory(hog.ending)?;
     expect(
         after.output.trim() == OK && after.ending == Ending::Exited(0),
-        format!("the executor runs a command afterwards, got {after:?}"),
+        format!("the guest agent runs a command afterwards, got {after:?}"),
     )?;
     expect(
         events.lines().any(|line| line == NO_OOM_KILLS),
@@ -157,7 +159,7 @@ pub(crate) fn oom_kills_only_the_tenant(lane: &Lane) -> Result<(), Failed> {
 
 /// A fork bomb inside the microVM stops at the run's process cap, the
 /// tenant leaf's `pids.max`, with `EAGAIN`; while its children hold the leaf
-/// full, the executor, outside the leaf, still lists the workspace, reads
+/// full, the guest agent, outside the leaf, still lists the workspace, reads
 /// what the bomb wrote and counts the refusals from the leaf's `pids.events`.
 pub(crate) fn fork_bomb_stops_at_the_process_cap(lane: &Lane) -> Result<(), Failed> {
     let name = "forkbomb";
@@ -172,10 +174,10 @@ pub(crate) fn fork_bomb_stops_at_the_process_cap(lane: &Lane) -> Result<(), Fail
             .prepare(spec(&engine, &id, limits, Network::Isolated)?)
             .await?;
         let bombed = async {
-            let started = run_in(sandbox.executor(), shell(FORK_BOMB)).await?;
-            let listed = listed_while_full(sandbox.executor()).await?;
-            let forks = sandbox.executor().read_file(FORKS, 64).await?;
-            let refused = sandbox.executor().pids_refused().await?;
+            let started = run_in(sandbox.agent(), shell(FORK_BOMB)).await?;
+            let listed = listed_while_full(sandbox.agent()).await?;
+            let forks = sandbox.agent().read_file(FORKS, 64).await?;
+            let refused = sandbox.agent().pids_refused().await?;
             Ok::<_, Failed>((started, listed, forks, refused))
         }
         .await;
@@ -188,7 +190,7 @@ pub(crate) fn fork_bomb_stops_at_the_process_cap(lane: &Lane) -> Result<(), Fail
     )?;
     expect(
         listed,
-        "the executor listed the workspace with the leaf full",
+        "the guest agent listed the workspace with the leaf full",
     )?;
     let said = String::from_utf8_lossy(&forks.data).into_owned();
     let (forked, errno) = said.split_once(' ').unwrap_or_default();
@@ -202,12 +204,12 @@ pub(crate) fn fork_bomb_stops_at_the_process_cap(lane: &Lane) -> Result<(), Fail
     )
 }
 
-/// Lists the workspace through `executor` until the fork bomb's [`FORKS`]
-/// appears in it, each listing an answer the executor gave while the bomb
+/// Lists the workspace through `agent` until the fork bomb's [`FORKS`]
+/// appears in it, each listing an answer the guest agent gave while the bomb
 /// ran: whether it appeared within [`LIST_TRIES`] listings.
-async fn listed_while_full(executor: &dyn Executor) -> Result<bool, Failed> {
+async fn listed_while_full(agent: &dyn GuestAgent) -> Result<bool, Failed> {
     for _try in 0..LIST_TRIES {
-        let listing = executor.list_dir(".").await?;
+        let listing = agent.list_dir(".").await?;
         if listing.entries.iter().any(|entry| entry.name == FORKS) {
             return Ok(true);
         }
@@ -266,7 +268,7 @@ pub(crate) fn disk_fill_under_memory_limit_ends_in_enospc(lane: &Lane) -> Result
         let engine = lane.microvms()?;
         let id = id_of(name);
         let sandbox = engine.prepare(isolated(&engine, &id)?).await?;
-        let filled = run_in(sandbox.executor(), shell(FILL_PAST_THE_DISK)).await;
+        let filled = run_in(sandbox.agent(), shell(FILL_PAST_THE_DISK)).await;
         let events = fs::read_to_string(monitor_events(lane, name)).unwrap_or_default();
         sandbox.destroy().await?;
         Ok::<_, Failed>((filled?, events))

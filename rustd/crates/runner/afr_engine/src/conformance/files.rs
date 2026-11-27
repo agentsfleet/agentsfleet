@@ -4,7 +4,8 @@
 
 use std::io::Read as _;
 
-use afr_executor::{Ending, Spawn, Stream};
+use af_guest_wire::{Ending, Stream};
+use afr_guest_client::Spawn;
 use libtest_mimic::Failed;
 use tar::{Archive, Builder, EntryType, Header};
 
@@ -95,7 +96,7 @@ pub(super) async fn streams_and_exit_code(
 ) -> Result<(), Failed> {
     let (ending, stdout, stderr) = within(build(engine, Limits::DEFAULT).await?, async |sandbox| {
         let spawn = Spawn::program("/bin/sh").arg("-c").arg(STREAMS);
-        let process = sandbox.executor().spawn(&spawn).await?;
+        let process = sandbox.agent().spawn(&spawn).await?;
         let (mut stdout, mut stderr) = (Vec::new(), Vec::new());
         let ending = process
             .ended(|stream, data| match stream {
@@ -128,12 +129,9 @@ pub(super) async fn import_then_export(
 ) -> Result<(), Failed> {
     let tree = packed()?;
     let exported = within(build(engine, Limits::DEFAULT).await?, async |sandbox| {
-        sandbox
-            .executor()
-            .import(ROOT, &mut tree.as_slice())
-            .await?;
+        sandbox.agent().import(ROOT, &mut tree.as_slice()).await?;
         let mut exported = Vec::new();
-        sandbox.executor().export(&[ROOT], &mut exported).await?;
+        sandbox.agent().export(&[ROOT], &mut exported).await?;
         Ok(exported)
     })
     .await?;

@@ -7,7 +7,8 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-use afr_cgroup::{CGROUP_PROCS, RunCgroup, SUBTREE_CONTROL};
+use af_cgroup::{CGROUP_PROCS, SUBTREE_CONTROL};
+use afr_cgroup::RunCgroup;
 use afr_engine::{Limits, REQUIRED_CONTROLLERS};
 use afr_image::ToolboxHome;
 use libtest_mimic::Failed;

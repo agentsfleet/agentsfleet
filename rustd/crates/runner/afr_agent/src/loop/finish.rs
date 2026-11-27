@@ -172,14 +172,14 @@ impl Harness<'_, '_> {
     /// the run stopped mid-yield left its process registered, so it is
     /// closed here too.
     async fn close_sessions(&self) {
-        let Some(executor) = self.shared.executor.peek() else {
+        let Some(agent) = self.shared.agent.peek() else {
             return;
         };
         let sessions = self
             .shared
             .run
             .sessions
-            .close_all(&afr_tools::SandboxEnv::new(executor))
+            .close_all(&afr_tools::SandboxEnv::new(agent))
             .await;
         if sessions > 0 {
             let run_id = self.shared.run_id;

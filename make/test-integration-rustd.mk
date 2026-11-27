@@ -99,7 +99,7 @@ _RUSTD_COVERAGE_JUDGE = PYTHONDONTWRITEBYTECODE=1 python3 scripts/rustd_coverage
 # folder it sits in:
 #   foundation  the foundation/ and protocol/ layers
 #   harness     the harness/ layer
-#   runner      the runner/ layer
+#   runner      the runner/ and guest/ layers
 #   daemon-api  the daemon/ layer's two heaviest suites: afd_api* and afd_fleet*
 #   daemon      the rest of the daemon/ layer, then the suites that need the
 #               cluster alone (afd_bus holds them)
@@ -117,7 +117,7 @@ _RUSTD_COVERAGE_JUDGE = PYTHONDONTWRITEBYTECODE=1 python3 scripts/rustd_coverage
 # nothing; unset runs every shard and grades. Any other subset is refused.
 RUSTD_COVER_FOUNDATION_DIRS := crates/foundation/* crates/protocol/*
 RUSTD_COVER_HARNESS_DIRS := crates/harness/*
-RUSTD_COVER_RUNNER_DIRS := crates/runner/*
+RUSTD_COVER_RUNNER_DIRS := crates/runner/* crates/guest/*
 RUSTD_COVER_DAEMON_API_DIRS := crates/daemon/afd_api* crates/daemon/afd_fleet*
 RUSTD_COVER_DAEMON_DIRS := crates/daemon/afd_ad* crates/daemon/afd_app* crates/daemon/afd_au* crates/daemon/afd_b* crates/daemon/afd_c* crates/daemon/afd_d* crates/daemon/afd_g* crates/daemon/afd_h* crates/daemon/afd_i* crates/daemon/afd_m* crates/daemon/afd_o* crates/daemon/afd_r* crates/daemon/afd_s* crates/daemon/afd_t* crates/daemon/afd_v* crates/daemon/main
 RUSTD_COVER_E2E_DIRS := crates/e2e/*

@@ -1,4 +1,4 @@
-//! A connected executor can acknowledge spawn and then withhold its ending.
+//! A connected guest agent can acknowledge spawn and then withhold its ending.
 #![expect(clippy::expect_used, reason = "test preconditions fail loudly")]
 
 mod socket;
@@ -6,7 +6,7 @@ mod socket;
 use std::time::Duration;
 
 use af_core::test_util::trace::Capture;
-use afr_executor::Ending;
+use af_guest_wire::Ending;
 use serde_json::json;
 use tokio::sync::Notify;
 
@@ -19,7 +19,7 @@ use super::{EVENT_ENDING_DEADLINE, EVENT_TIMED_OUT};
 use socket::{PATIENCE, pair};
 
 // Value: protects=both public command tools finish when only the ending is lost;
-// fails_when=the runner relies solely on the executor's process timeout;
+// fails_when=the runner relies solely on the guest agent's process timeout;
 // seam=scripted socket peer with the real Client and native lost token;
 // no_claim=the closed connection establishes remote process death.
 #[tokio::test]
@@ -89,7 +89,7 @@ fn assert_deadline(capture: &Capture) {
     );
 }
 
-// Value: protects=executor cleanup may report its real ending after command time;
+// Value: protects=guest agent cleanup may report its real ending after command time;
 // fails_when=the runner omits cleanup grace or claims an unknown result is killed;
 // seam=real Client over a scripted socket; no_claim=kernel process-group cleanup.
 #[tokio::test]

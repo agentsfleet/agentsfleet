@@ -7,9 +7,10 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
+use af_cgroup::CGROUP_PROCS;
 use af_core::env::MapEnv;
 use af_egress::testing::upstream::{Reply, Route, Seen, Upstream};
-use afr_cgroup::{CGROUP_PROCS, SANDBOX_LEAF};
+use afr_cgroup::SANDBOX_LEAF;
 use afr_engine::{Capabilities, Engine, Granted, Limits, Sandbox, SandboxSpec, Sweep, Swept};
 use afr_engine_firecracker::FirecrackerEngine;
 use afr_supervisor::config::{ENV_API_URL, ENV_RUNNER_TOKEN, ENV_STORAGE_HOME};

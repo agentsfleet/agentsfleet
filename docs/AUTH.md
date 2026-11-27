@@ -1010,7 +1010,7 @@ The [decision architecture](architecture/durable_tasks.md#goal-evaluation) owns 
 
 Firecracker's jailer is spawned with `env_clear()` (`rustd/crates/runner/afr_engine_firecracker/src/engine/build.rs`), and the guest boots its own kernel.
 
-Every process the in-sandbox process runner starts gets `env_clear()` plus its plan's own variables (`rustd/crates/runner/afr_executor/src/server/launch/mod.rs`).
+Every process the in-sandbox process runner starts gets `env_clear()` plus its plan's own variables (`rustd/crates/guest/afg_agent/src/server/launch/mod.rs`).
 
 A prompt-injected fleet that reads `AGENTSFLEET_RUNNER_TOKEN` or its own `/proc/self/environ` finds nothing. Model keys and minted tokens stay in the supervisor too ([`architecture/runner_execution.md`](./architecture/runner_execution.md) §"Credentials").
 

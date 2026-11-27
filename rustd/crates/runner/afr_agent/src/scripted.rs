@@ -11,13 +11,14 @@ use std::time::Instant;
 
 use crate::{Completed, ExecutionResult, ResultOutcome};
 use af_core::clock::saturating_millis_signed;
+use af_guest_wire::Ending;
 use af_wire::activity::{
     ActivityFrame, FleetResponseChunk, StreamTextKind, ToolCallCompleted, ToolCallStarted,
 };
 use af_wire::memory::MemoryDelta;
 use af_wire::policy::ExecutionPolicy;
 use af_wire::tool_trace::ToolCallStatus;
-use afr_executor::{Ending, Executor, Spawn};
+use afr_guest_client::{GuestAgent, Spawn};
 use guffbolt::Usage;
 
 use crate::engine::{AgentEngine, AgentRun, EventSink, Needs, RunOutput};
@@ -88,8 +89,8 @@ impl AgentEngine for ScriptedEngine {
         for (index, step) in self.steps.iter().enumerate() {
             match step {
                 Step::Run { tool, spawn } => {
-                    if let Ok(executor) = run.executor.get().await {
-                        run_tool(executor, run.events, tool, &call_id(index), spawn).await?;
+                    if let Ok(agent) = run.agent.get().await {
+                        run_tool(agent, run.events, tool, &call_id(index), spawn).await?;
                     }
                 }
                 Step::Say(text) => say(run.events, &mut turn, text),
@@ -108,7 +109,7 @@ fn call_id(index: usize) -> String {
 
 /// Runs one tool call to its end.
 async fn run_tool(
-    executor: &dyn Executor,
+    agent: &dyn GuestAgent,
     events: &dyn EventSink,
     tool: &'static str,
     call: &str,
@@ -120,11 +121,7 @@ async fn run_tool(
         args_redacted: Cow::Borrowed(ARGS_REDACTED),
         call_id: Cow::Owned(call.to_owned()),
     }));
-    let ending = executor
-        .spawn(spawn)
-        .await?
-        .ended(|_stream, _data| ())
-        .await;
+    let ending = agent.spawn(spawn).await?.ended(|_stream, _data| ()).await;
     let elapsed = saturating_millis_signed(started.elapsed());
     events.emit(ActivityFrame::ToolCallCompleted(ToolCallCompleted {
         name: Cow::Borrowed(tool),

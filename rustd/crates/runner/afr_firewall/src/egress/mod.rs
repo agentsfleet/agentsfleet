@@ -41,8 +41,7 @@ mod scope;
 mod slot;
 
 pub use self::guest::{
-    GUEST_ADDRESS, GUEST_PREFIX_LEN, GuestNamespace, TAP, TAP_ADDRESS, raise_loopback,
-    remove_namespace,
+    GUEST_ADDRESS, GUEST_PREFIX_LEN, GuestNamespace, TAP, TAP_ADDRESS, remove_namespace,
 };
 use self::kernel::{Host, Kernel};
 pub use self::lock::own_host;

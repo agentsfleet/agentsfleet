@@ -52,19 +52,6 @@ const ON: &str = "1";
 /// The bound namespace file: only its owner reads it.
 const NAMESPACE_MODE: u32 = 0o600;
 
-/// Brings loopback up in the calling thread's network namespace.
-///
-/// A guest's kernel raises it only when it is booted with an address, so in
-/// a guest with no network device a process dialling `127.0.0.1` reads the
-/// network unreachable until its `init` does this.
-///
-/// # Errors
-/// The kernel refused the route socket, the lookup or the change.
-pub fn raise_loopback() -> Result<()> {
-    let mut route = Host.route().map_err(netlink(Step::Loopback))?;
-    link::raise_loopback(&mut route).map_err(netlink(Step::Loopback))
-}
-
 /// A network namespace bound at a path, so a jailer joins it by name; it
 /// lives until [`GuestNamespace::remove`], or the boot sweep's
 /// [`remove_namespace`], unbinds it and the last process in it ends.

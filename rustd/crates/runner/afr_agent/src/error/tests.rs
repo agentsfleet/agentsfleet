@@ -94,12 +94,12 @@ fn should_refuse_a_private_persisted_endpoint_without_mistaking_it_for_an_unhost
     );
 }
 
-/// An executor failure under the scripted engine is the engine's own fault:
+/// A guest agent failure under the scripted engine is the engine's own fault:
 /// logged as an internal failure, and naming nothing the run asked for.
 #[cfg(feature = "test-util")]
 #[test]
-fn should_log_an_executor_failure_as_internal_and_name_nothing_unhosted() {
-    let lost = afr_executor::Error::from(std::io::Error::other("the executor socket closed"));
+fn should_log_an_agent_failure_as_internal_and_name_nothing_unhosted() {
+    let lost = af_guest_wire::Error::from(std::io::Error::other("the guest agent socket closed"));
 
     let failure = Error::from(lost);
 

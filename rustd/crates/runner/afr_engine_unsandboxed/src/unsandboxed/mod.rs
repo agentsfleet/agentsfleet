@@ -1,6 +1,6 @@
 //! An engine with no sandbox, for the lanes that run where no microVM can.
 //!
-//! It serves the real executor in-process, over a real socket, in a scratch
+//! It serves the real guest agent in-process, over a real socket, in a scratch
 //! directory, so the supervisor and the daemon are proven end to end on any
 //! developer machine. A release build refuses to construct it: nothing a
 //! shipped runner executes ever runs outside a sandbox.
@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use af_core::id::Uuid7;
+use af_guest_wire::Sizes;
 use af_wire::runner::{Isolation, SandboxEngine};
 use afr_engine::error::{egress_refused, sandbox_exists, unconfined, unsupported};
 use afr_engine::{
@@ -18,17 +19,17 @@ use afr_engine::{
     Quiescence, ResourceFacts, Root, Sandbox, SandboxSpec, SandboxState, Sweep, Swept,
 };
 use afr_engine::{EgressRefusal, Network, Result};
-use afr_executor::{Client, Executor, Sizes};
+use afr_guest_client::{Client, GuestAgent};
 use tokio::task::JoinHandle;
 
 use crate::error::ErrorKind;
 
-/// The executor's socket in each run's scratch directory: with no sandbox
-/// to inherit a pair, the executor listens on a path.
-pub(crate) const SOCKET_NAME: &str = "executor.sock";
+/// The guest agent's socket in each run's scratch directory: with no sandbox
+/// to inherit a pair, the guest agent listens on a path.
+pub(crate) const SOCKET_NAME: &str = "agent.sock";
 /// The workspace directory inside each run's scratch directory.
 const WORKSPACE_DIR: &str = "workspace";
-/// How long the in-process executor may take to bind its socket.
+/// How long the in-process guest agent may take to bind its socket.
 const CONNECT_WITHIN: Duration = Duration::from_secs(1);
 /// How long a closed session may take to end its processes.
 const SERVER_GRACE: Duration = Duration::from_secs(5);
@@ -55,7 +56,7 @@ const NO_CGROUP_KILL: &str = "its processes run under no cgroup that a kill coul
 #[derive(Debug)]
 pub struct UnsandboxedEngine {
     base: PathBuf,
-    /// What each run's executor serves with and its client connects with.
+    /// What each run's guest agent serves with and its client connects with.
     sizes: Sizes,
 }
 
@@ -76,7 +77,7 @@ impl UnsandboxedEngine {
         })
     }
 
-    /// The same engine, each run's executor serving with `sizes` and its
+    /// The same engine, each run's guest agent serving with `sizes` and its
     /// client connecting with them.
     #[must_use]
     pub const fn with_sizes(mut self, sizes: Sizes) -> Self {
@@ -127,7 +128,7 @@ impl Engine for UnsandboxedEngine {
         let server = tokio::spawn({
             let socket = socket.clone();
             async move {
-                afr_executor::bind(&socket)?
+                afg_agent::bind(&socket)?
                     .with_sizes(sizes)
                     .serve(&workspace)
                     .await
@@ -176,13 +177,13 @@ impl Engine for UnsandboxedEngine {
     }
 }
 
-/// Connects once the executor has bound its socket, holding the link to the
+/// Connects once the guest agent has bound its socket, holding the link to the
 /// `sizes` it serves with.
 async fn connect(socket: &Path, sizes: Sizes) -> Result<Client> {
     Ok(Client::connect_within(socket, CONNECT_WITHIN, sizes).await?)
 }
 
-/// A scratch directory with an executor serving it.
+/// A scratch directory with a guest agent serving it.
 #[derive(Debug)]
 struct Unconfined {
     id: Uuid7,
@@ -190,7 +191,7 @@ struct Unconfined {
     environment: Environment,
     dir: PathBuf,
     client: Client,
-    server: JoinHandle<afr_executor::Result<()>>,
+    server: JoinHandle<af_guest_wire::Result<()>>,
 }
 
 #[async_trait::async_trait]
@@ -207,7 +208,7 @@ impl Sandbox for Unconfined {
         &self.granted
     }
 
-    fn executor(&self) -> &dyn Executor {
+    fn agent(&self) -> &dyn GuestAgent {
         &self.client
     }
 
@@ -242,7 +243,7 @@ impl Sandbox for Unconfined {
     }
 
     /// Unsettled: its processes run on the host under no cgroup, so no kill
-    /// can prove them gone. They end with the executor's session, at destroy.
+    /// can prove them gone. They end with the guest agent's session, at destroy.
     async fn kill(&self) -> Killed {
         Killed::Unsettled(unconfined(NO_CGROUP_KILL))
     }
@@ -258,7 +259,7 @@ impl Sandbox for Unconfined {
             mut server,
             ..
         } = *self;
-        // Closing the connection is what ends the executor's session, which
+        // Closing the connection is what ends the guest agent's session, which
         // ends every process it started; a session that outlives the grace
         // period is cut off.
         drop(client);

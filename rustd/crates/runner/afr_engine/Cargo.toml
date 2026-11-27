@@ -29,9 +29,10 @@ bytes = { workspace = true, optional = true }
 libtest-mimic = { workspace = true, optional = true }
 # The conformance suite's file trial packs and reads a tree (`test-util`).
 tar = { workspace = true, optional = true }
-# Every sandbox serves the same executor, which is what makes a second engine
-# an addition rather than a rewrite.
-afr_executor.workspace = true
+# Every sandbox serves the same guest agent, reached through one client, which
+# is what makes a second engine an addition rather than a rewrite.
+afr_guest_client.workspace = true
+af_guest_wire.workspace = true
 async-trait.workspace = true
 # A pin's changes are read as a stream, and the warm-slot suite polls a
 # claim once.
@@ -52,7 +53,7 @@ test-util = ["dep:bytes", "dep:libtest-mimic", "dep:tar"]
 
 [dev-dependencies]
 af_core = { workspace = true, features = ["test-util"] }
-# The warm-slot suite's fake executor takes the bytes a write carries.
+# The warm-slot suite's fake guest agent takes the bytes a write carries.
 bytes.workspace = true
 # The conformance suite, which its own tests run over fakes.
 libtest-mimic.workspace = true

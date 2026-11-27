@@ -46,7 +46,7 @@ pub(crate) use self::parser::ParseError;
 pub(crate) use self::parser::{Hunk, UpdateFileChunk, parse_patch};
 
 /// Why a patch could not be applied: upstream's `ApplyPatchError`, less the
-/// input/output arms, because the sandbox's executor reports those itself,
+/// input/output arms, because the sandbox's guest agent reports those itself,
 /// and less the parse arm, because the handler parses the whole patch before
 /// it applies a chunk and reads a `ParseError` itself.
 #[derive(Debug, PartialEq)]

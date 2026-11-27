@@ -29,7 +29,7 @@ use af_wire::activity::ActivityFrame;
 use af_wire::run::RunPayload;
 use afr_agent::testing::Discard;
 use afr_agent::{AgentEngine as _, AgentRun, Loop, Meter, RunOutput};
-use afr_executor::Executor;
+use afr_guest_client::GuestAgent;
 use afr_tools::Catalog;
 use afr_tools::catalog::UPDATE_PLAN;
 use afr_tools::stub::Stub;
@@ -265,18 +265,18 @@ pub(crate) async fn run(
 }
 
 /// Runs `run` on `engine` to its end, its sandbox-side calls served by
-/// `executor`, with every frame it sent.
+/// `agent`, with every frame it sent.
 pub(crate) async fn run_with(
     engine: &Loop,
     run: &RunPayload<'_>,
-    executor: Option<&dyn Executor>,
+    agent: Option<&dyn GuestAgent>,
 ) -> (RunOutput, Vec<ActivityFrame<'static>>) {
     let (sent, frames) = std::sync::mpsc::channel();
     let sink = move |frame| sent.send(frame).expect("the suite holds the receiver");
     let stop = CancellationToken::new();
-    let executor = executor.map_or_else(
-        || afr_executor::ExecutorSlot::unavailable(afr_executor::Unavailable::NoSandbox),
-        afr_executor::ExecutorSlot::ready,
+    let agent = agent.map_or_else(
+        || afr_guest_client::AgentSlot::unavailable(afr_guest_client::Unavailable::NoSandbox),
+        afr_guest_client::AgentSlot::ready,
     );
     let run = AgentRun {
         recovery: None,
@@ -285,7 +285,7 @@ pub(crate) async fn run_with(
         recovered_turn: None,
         run,
         memory: afr_memory::Seed::default(),
-        executor: &executor,
+        agent: &agent,
         mint: &CountingMint::never(),
         verbs: &afr_tools::CLOSED,
         checkpoint: &Discard,

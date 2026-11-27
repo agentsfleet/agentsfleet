@@ -6,10 +6,11 @@
 use std::sync::Arc;
 
 use af_core::id::Uuid7;
+use af_guest_wire::Ending;
 use afr_engine::Allowlist;
 use afr_engine::EgressRefusal;
 use afr_engine::{Engine, Limits, ParkMode, SandboxSpec, SandboxState, fresh_sandbox_id};
-use afr_executor::{Ending, Spawn};
+use afr_guest_client::Spawn;
 
 use super::{UnsandboxedEngine, permitted};
 
@@ -43,10 +44,10 @@ async fn test_an_unsandboxed_runs_a_process_and_is_removed() {
     assert_eq!(
         sandbox.state(),
         SandboxState::Running,
-        "its executor is serving"
+        "its guest agent is serving"
     );
     let process = sandbox
-        .executor()
+        .agent()
         .spawn(&Spawn::program("/bin/echo").arg("hi"))
         .await
         .unwrap();
@@ -160,8 +161,8 @@ async fn test_a_run_directory_that_cannot_be_made_is_refused() {
 }
 
 #[tokio::test]
-async fn test_an_executor_that_never_answers_refuses_the_run_and_cleans_up() {
-    // A base so long the executor's socket path passes the operating
+async fn test_an_agent_that_never_answers_refuses_the_run_and_cleans_up() {
+    // A base so long the guest agent's socket path passes the operating
     // system's limit on one: it cannot bind, so nothing ever answers.
     let base = tempfile::Builder::new()
         .prefix(&"afr".repeat(40))
@@ -174,7 +175,7 @@ async fn test_an_executor_that_never_answers_refuses_the_run_and_cleans_up() {
         .prepare(SandboxSpec::granted_by(&engine, &id, Limits::DEFAULT).unwrap())
         .await;
 
-    // The executor's own failure, logged under the executor's code.
+    // The guest agent's own failure, logged under the guest agent's code.
     let refused = refused.unwrap_err();
     assert_eq!(
         refused.code(),
@@ -198,7 +199,7 @@ async fn test_destroy_aborts_a_lingering_server_and_removes_its_directory() {
     std::fs::create_dir(&dir).unwrap();
     let socket = dir.join(super::SOCKET_NAME);
     let listener = tokio::net::UnixListener::bind(&socket).unwrap();
-    let client = super::connect(&socket, afr_executor::Sizes::DEFAULT)
+    let client = super::connect(&socket, af_guest_wire::Sizes::DEFAULT)
         .await
         .unwrap();
     let (_peer, _) = listener.accept().await.unwrap();

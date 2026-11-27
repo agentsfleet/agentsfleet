@@ -10,12 +10,12 @@ use guffbolt::ToolOutput;
 use super::tests::{FILE_TOOLS, on};
 use crate::run::Run;
 use crate::runtime::ToolErrorCode;
-use crate::sandbox::ScriptedExecutor;
+use crate::sandbox::ScriptedGuest;
 use crate::testing::{call, call_in, hosted, offered};
 
 #[tokio::test]
 async fn an_empty_path_is_invalid_and_a_call_without_a_sandbox_is_refused() {
-    let executor = ScriptedExecutor::default();
+    let agent = ScriptedGuest::default();
     let (catalog, _sent) = hosted();
     let names: Vec<&str> = FILE_TOOLS.iter().map(|entry| entry.name()).collect();
     let selection = catalog.select(&names).unwrap();
@@ -23,7 +23,7 @@ async fn an_empty_path_is_invalid_and_a_call_without_a_sandbox_is_refused() {
 
     for entry in FILE_TOOLS {
         let tool = offered(&selection, entry);
-        let empty: ToolOutput = call_in(tool, &executor, &run, on(entry, "")).await;
+        let empty: ToolOutput = call_in(tool, &agent, &run, on(entry, "")).await;
         let unsandboxed = call(tool, &run, on(entry, "a.txt")).await;
 
         assert_eq!(

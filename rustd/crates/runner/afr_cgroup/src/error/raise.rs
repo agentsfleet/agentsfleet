@@ -31,12 +31,3 @@ pub(crate) fn cgroup_left(path: &std::path::Path) -> impl Fn(std::io::Error) -> 
         .into()
     }
 }
-
-/// Reports a cgroup that never reached `state` after it was asked to.
-pub(crate) fn cgroup_unsettled(path: &std::path::Path, state: &'static str) -> Error {
-    ErrorKind::CgroupUnsettled {
-        path: path.to_owned(),
-        state,
-    }
-    .into()
-}

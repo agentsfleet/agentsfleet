@@ -24,7 +24,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Batch:** B1, in the one M258 Pull Request, built after M258_001 and M258_003 (O1, D22)
 
-**Depends on:** M258_001, for the `afr_engine` seam, files through the executor, the `Snapshots` interface and trials, and the inner environment; M258_003, which deleted bubblewrap and runs production on Firecracker
+**Depends on:** M258_001, for the `afr_engine` seam, files through the guest agent, the `Snapshots` interface and trials, and the inner environment; M258_003, which deleted bubblewrap and runs production on Firecracker
 
 **Provenance:** LLM-drafted (Claude Opus 5.5, Nov 26, 2026) from Indy's rulings and the research in `~/.local/state/agentsfleet-m254/` (`vm-engines/object-store-workspace.md`, `vm-engines/fly-sprites-design-post.md`, `vm-engines/design.md`, `vm-engines/sprites-cloud.md`, `space/trait-comparison.md`). Each repository citation was re-read at `632ce4efa`. Rewritten by Aiwa on Nov 27, 2026 to the recorded rulings, with every citation re-read at `b5c0f99c7`.
 
@@ -56,7 +56,7 @@ wait today ≈ export(E, B) + read and SHA-256(B) + ⌈C/256⌉·RTT + N·(seal 
 E entries · B bytes · C chunks · N new chunks · P manifest pages · RTT one runner-to-daemon round trip
 ```
 
-**Solution summary.** §1 seals every checkpoint with one vault key per workspace, behind a cipher the daemon's file selects, so no table stores a key. §2 splits a save at the pin: under the pause the executor copies only changed bytes, then the run resumes and publication follows, with no read-back. §3 makes the walk read only what changed.
+**Solution summary.** §1 seals every checkpoint with one vault key per workspace, behind a cipher the daemon's file selects, so no table stores a key. §2 splits a save at the pin: under the pause the guest agent copies only changed bytes, then the run resumes and publication follows, with no read-back. §3 makes the walk read only what changed.
 
 §4 serves M258_001's `Snapshots` on Firecracker. §5 and §6 put the workspace on a host ublk device over a block-level chunk map in Postgres: §5 restores lazily, and §6 uploads dirty chunks continuously, so the host disk is only a cache.
 
@@ -66,8 +66,8 @@ E entries · B bytes · C chunks · N new chunks · P manifest pages · RTT one 
 keys (daemon only)
   vault.secrets row ─► afd_vault load() ─► the workspace's key, handed with each authorization ─► ChunkCipher (aes_256_gcm | plain)
 boundary
-  quiesce               the executor has a call in flight ─► the save skips
-  pause                 the executor freezes the guest's tenant leaf (D22)
+  quiesce               the guest agent has a call in flight ─► the save skips
+  pause                 the guest agent freezes the guest's tenant leaf (D22)
   pin   stage 1         statx walk of E entries; changed bytes ΔB copied to root-only host staging
         stages 2-3      guest flush (FIFREEZE or syncfs); one generation switch in the block server
   resume                tenant code and the next model call run on
@@ -112,7 +112,7 @@ restore
 - **PR title (eventual):** carried by M258_001's title for the one M258 Pull Request.
 - **Intent (one sentence):** A save stops a fleet's tools only while changed bytes are copied, and a restored run starts before its workspace arrives.
 - **Authoring handshake:** Indy wants the Sprites design applied to our checkpoint and restore "to make them faster". He ruled the map into Postgres, keys derived from one vault secret, R2's checksum in place of the read-back, and bubblewrap deleted first. ASSUMPTIONS I'M MAKING:
-  1. M258_001 and M258_003 land first on the branch. This spec builds on `import`, `export`, `Snapshots` and its trials, the inner environment and `Executor::renew`, and adds only the pin pause (D22).
+  1. M258_001 and M258_003 land first on the branch. This spec builds on `import`, `export`, `Snapshots` and its trials, the inner environment and `GuestAgent::renew`, and adds only the pin pause (D22).
   2. Every ruling in Discovery holds; D23 stays open until Dimension 3.4 settles it.
   3. Nothing is backward compatible. The manifest format, the checkpoint tables and the runner protocol edit in place, with one `VERSION` move, and the dev database is torn down.
   4. One commit per Section. §5 and §6 build only after their spikes pass.
@@ -141,8 +141,8 @@ restore
 | `rustd/crates/daemon/afd_api_tenant/src/handler/secret/**` | EDIT, if D24 is ruled as recommended | the secret routes refuse the checkpoint secret's name |
 | `rustd/crates/protocol/af_chunk_store/**` | CREATE | §2 to §5: the one storage crate both binaries share |
 | `rustd/crates/protocol/af_wire/src/{durable_task/checkpoint/**,run/turn_checkpoint/**,protocol/mod.rs}`, `public/openapi.json` | EDIT | `parent` on both plans; a block manifest; the read-back budget goes; `VERSION` moves once; OpenAPI regenerated with `--no-banner` |
-| `rustd/crates/runner/afr_engine/**` | EDIT | `WorkspaceVolume`, `SnapshotRef`'s fields, the executor digest in `Environment`, two trials |
-| `rustd/crates/runner/{afr_executor,afr_guest,afr_engine_firecracker}/**` | EDIT | §2: the pin pause verbs and the tenant-leaf freeze; §3: the identity walk, its cache and staging; §4: `Snapshots`; §5: the flush, the ublk and `/tmp` drives, rewind, boot refusal |
+| `rustd/crates/runner/afr_engine/**` | EDIT | `WorkspaceVolume`, `SnapshotRef`'s fields, the guest agent digest in `Environment`, two trials |
+| `rustd/crates/{guest/afg_agent,guest/afg_confine,guest/afg_entry,runner/afr_engine_firecracker}/**` | EDIT | §2: the pin pause verbs and the tenant-leaf freeze; §3: the identity walk, its cache and staging; §4: `Snapshots`; §5: the flush, the ublk and `/tmp` drives, rewind, boot refusal |
 | `rustd/crates/runner/afr_supervisor/src/{recovery/**,run_loop/**,client/turn_checkpoint.rs}`, `afr_agent/src/loop/recovery_boundary.rs` | EDIT | §2: the pause ends at the pin, publication after resume, no read-back, staging swept at boot; §3: delta chains |
 | `rustd/crates/runner/afr_volume/**` | CREATE | §5, §6: the ublk server, its chunk cache, fetch, dirty bitmap and writeback |
 | `rustd/crates/daemon/afd_fleet/tests/**`, `rustd/crates/e2e/af_e2e/{tests/recovery_process/**,benches/recovery/**}`, `rustd/crates/runner/main/examples/kernel_lane/**` | EDIT | keys, pins, chains, ancestors and collection against live Postgres, `identity_retention.rs` deleted; §3's chain restore and bench shape; the kernel trials of §2 to §5 |
@@ -217,7 +217,7 @@ This Section splits a save at the pin, with today's full walk behind it, so §3 
 
 **The storage crate.** `af_chunk_store`, an `af_` crate in `protocol/`, is the one crate Indy ruled (Discovery), with no public SDK. It starts with `Change`; §3 moves the delta chain's resolution and the restore's read check into it, §4 adds `ChunkSource` and `ChunkStore`, and §5 `BlockMap`.
 
-**The pin pause (D22).** Firecracker's quiesce reads only the executor's calls in flight, so a detached tenant process can write during an export (`afr_engine_firecracker/src/engine/vm.rs:114-120`; `afr_executor/src/server/session.rs:167-174`). **Implementation default:** the executor freezes the guest's tenant leaf through `afr_cgroup::Freezer` (`afr_engine_firecracker/src/guest/linux.rs:12-14,220-226`; `afr_cgroup/src/cgroup/freezer/mod.rs:44-71`). The executor sits in the guest's root cgroup beside the leaf (`guest/linux.rs:78-80`), so it keeps answering and the VM never stops.
+**The pin pause (D22).** Firecracker's quiesce reads only the guest agent's calls in flight, so a detached tenant process can write during an export (`afr_engine_firecracker/src/engine/vm.rs:114-120`; `afg_agent/src/server/session.rs:167-174`). **Implementation default:** the guest agent freezes the guest's tenant leaf through `afr_cgroup::Freezer` (`afr_engine_firecracker/src/guest/linux.rs:12-14,220-226`; `afr_cgroup/src/cgroup/freezer/mod.rs:44-71`). The guest agent sits in the guest's root cgroup beside the leaf (`guest/linux.rs:78-80`), so it keeps answering and the VM never stops.
 
 **Publication.** After resume the pipeline registers, seals, uploads, writes pages and commits. The receipt reaches the agent loop after resume, so the next model call does not wait, and a run's end waits for its owner's publication. A boundary that finds its owner's publication running skips, as an optional save skips a busy slot (`checkpoints.md:36`).
 
@@ -237,16 +237,16 @@ A restore still runs every check of "What stays" item 3. A runner that registere
 - **Dimension 2.3** — ✅ DONE — a failed publication keeps the previous generation → Test `a_publication_failing_after_resume_keeps_the_previous_generation` (integration, live Postgres). The store fails the third PUT, the head still names the previous generation, the staging file is gone, and `checkpoint_publication_failed` is logged. The next save's delta names that previous generation as its parent.
 - **Dimension 2.4** — ✅ DONE — one publication per owner → Test `a_boundary_finding_a_publication_running_skips` (unit, contention). With the first save's upload held, 50 boundaries released from a barrier each skip as busy and none pauses. Exactly one generation commits.
 - **Dimension 2.5** — ✅ DONE — a runner killed after resume loses nothing committed → Test `a_runner_killed_between_resume_and_commit_keeps_the_previous_generation` (integration, live Postgres). `SIGKILL` lands after resume and before commit, and the head names the previous generation. The next boot leaves no staging file, and a replacement restores that generation byte for byte.
-- **Dimension 2.6** — wired, not yet run on a KVM host — the pin pause freezes tenant code and keeps the executor → Test `the_pin_pause_freezes_tenant_code_and_keeps_the_executor_answering` (integration, kernel lane, Firecracker). A detached tenant loop's counter, started under `setsid`, holds still through the pause while `list_dir` answers, and advances after resume. A call still in flight skips the save as `BusyExecutor` with no pin taken, and the VM monitor's process identifier is unchanged.
+- **Dimension 2.6** — wired, not yet run on a KVM host — the pin pause freezes tenant code and keeps the guest agent → Test `the_pin_pause_freezes_tenant_code_and_keeps_the_agent_answering` (integration, kernel lane, Firecracker). A detached tenant loop's counter, started under `setsid`, holds still through the pause while `list_dir` answers, and advances after resume. A call still in flight skips the save as `BusyAgent` with no pin taken, and the VM monitor's process identifier is unchanged.
 - **Dimension 2.7** — ✅ DONE — publication reads nothing back → Test `a_publication_reads_no_object_back` (integration, live Postgres and the S3 fixture in `afd_fleet/tests/integration_durable_tasks/decisions/checkpoint_server.rs`). A save of 10 new chunks commits while the fixture counts 10 PUTs and zero GET or HEAD requests. An object whose PUT the runner reports failed stays without `verified_at`, and the commit refuses.
 - **Dimension 2.8** — ✅ DONE — a bucket that ignores the checksum blocks checkpoints → Test `a_bucket_that_accepts_a_wrong_checksum_blocks_checkpoints` (integration, the S3 fixture). A fixture that stores a body unlike its bound checksum leaves checkpoints unavailable, naming the checksum; one that refuses it lets them activate. A probe that checks only the write-once answer fails it.
 - **Dimension 2.9** — ✅ DONE — a restore refuses an object unlike its registration → Test `a_restore_refuses_an_object_unlike_its_registration` (unit, `af_chunk_store`'s read check, an in-memory store). An object whose ciphertext opens under its key but whose plaintext differs from its registered digest writes no file, and the previous checkpoint stays. A check of the tag alone fails it.
 
 ### §3 — Stage 1: a save reads only what changed
 
-**Identity cache.** The executor keeps each path's identity at the last committed pin: device, inode, size, and nanosecond modification and change times (`recovery/files.rs:16-36`). The cache is a hint that a restore never trusts. A missing cache, after a reboot or on a new host, costs one full hash.
+**Identity cache.** The guest agent keeps each path's identity at the last committed pin: device, inode, size, and nanosecond modification and change times (`recovery/files.rs:16-36`). The cache is a hint that a restore never trusts. A missing cache, after a reboot or on a new host, costs one full hash.
 
-**Under the pause.** The executor walks the tree with `statx` through directory descriptors, in place of an open and a stat per file. An unchanged identity is skipped unless its change time falls at or after the previous pin's clock tick, and that racy-clean guard re-reads it. Changed files are read, hashed with SHA-256 and streamed to staging over the executor's vsock link.
+**Under the pause.** The guest agent walks the tree with `statx` through directory descriptors, in place of an open and a stat per file. An unchanged identity is skipped unless its change time falls at or after the previous pin's clock tick, and that racy-clean guard re-reads it. Changed files are read, hashed with SHA-256 and streamed to staging over the guest agent's vsock link.
 
 **After resume.** Only changed chunks are registered. The manifest is a delta against the parent generation, holding changed entries and `Remove`, resolved by the chain code moved from `recovery/restore_manifest.rs:115-134` into `af_chunk_store`. Turns gain the same chain, and the restore's read check moves there too (`recovery/transfer.rs:170-212`).
 
@@ -254,7 +254,7 @@ A restore still runs every check of "What stays" item 3. A runner that registere
 
 **Ancestors.** **Implementation default:** `runner.checkpoints` gains `parent_checkpoint_id`, a foreign key to `runner.checkpoints` with no cascade, edited in place. Postgres then refuses to delete an ancestor that a delta names, and purge reads that refusal with `afd_db::constraint::violates_foreign_key`. A chain a full manifest has superseded is purged newest first.
 
-- **Dimension 3.1** — untouched files are neither read nor registered → Test `a_save_reads_and_registers_only_the_changed_files` (unit, `afr_executor` walker and `afr_supervisor` catalog, a counting reader). With 1,000 files and 3 rewritten, bytes read under the pause equal those 3 files' bytes, and registrations name only their chunks. A walker that reads everything but registers 3 fails it, and the restore equals the source tree.
+- **Dimension 3.1** — untouched files are neither read nor registered → Test `a_save_reads_and_registers_only_the_changed_files` (unit, `afg_agent` walker and `afr_supervisor` catalog, a counting reader). With 1,000 files and 3 rewritten, bytes read under the pause equal those 3 files' bytes, and registrations name only their chunks. A walker that reads everything but registers 3 fails it, and the restore equals the source tree.
 - **Dimension 3.2** — the pause does work in entries and changed bytes only → Test `a_pause_does_work_in_entries_and_changed_bytes_only` (unit, counters, sparse files). Workspaces of 1,000 entries, with 100 MiB or 64 GiB of untouched bytes and the same 3 changes, do equal work under the pause. Each counts 1,000 stats, the changed bytes, zero daemon calls and zero seals.
 - **Dimension 3.3** — a change the stat cannot see is still saved → Test `a_same_tick_same_size_rewrite_is_saved` (unit). A file is rewritten within the previous pin's clock tick at the same size, its modification time set back. The change-time guard re-reads it, the restore holds the new bytes, and the test fixes the guard's form.
 - **Dimension 3.4** — a write through a mapping is saved → Test `a_shared_mapping_write_is_saved_by_the_next_save` (integration, kernel lane, Firecracker). A tenant writes through `MAP_SHARED` to a page it wrote before the previous pin, and the next restore holds the new bytes. Whether that write moves the change time is D23, and a red blocks §3 until Indy rules.
@@ -269,9 +269,9 @@ A restore still runs every check of "What stays" item 3. A runner that registere
 
 **Our engine's snapshots.** `afr_engine_firecracker` declares snapshots, where it declares none today (`afr_engine_firecracker/src/capabilities.rs:18`). It serves `Snapshots` on the volume and a `ChunkStore` the supervisor hands it at `prepare`. `take(id)` pauses, pins, resumes and publishes one generation, and `forget` drops the ref, so maintenance may collect what nothing else names.
 
-**The ref.** `SnapshotRef` holds only its id today (`afr_engine/src/engine/snapshots/mod.rs:12-14`). It gains the sandbox's environment, the generation and its format, `Files` or `Blocks`. `Environment` gains the executor's digest here, at its first reader, as M258_001 §2 recorded.
+**The ref.** `SnapshotRef` holds only its id today (`afr_engine/src/engine/snapshots/mod.rs:12-14`). It gains the sandbox's environment, the generation and its format, `Files` or `Blocks`. `Environment` gains the guest agent's digest here, at its first reader, as M258_001 §2 recorded.
 
-**Restore inside the running VM.** `Executor::renew()` ends every process of the inner environment, empties the workspace and builds the environment again (`afr_executor/src/api/mod.rs:297-306`). The workspace is then rebuilt through `import` in stage 1 and by rewinding the block device in stage 2. The run's egress plan reads back in force before the executor answers, and the VM monitor keeps running.
+**Restore inside the running VM.** `GuestAgent::renew()` ends every process of the inner environment, empties the workspace and builds the environment again (`afr_guest_client/src/api/mod.rs`). The workspace is then rebuilt through `import` in stage 1 and by rewinding the block device in stage 2. The run's egress plan reads back in force before the guest agent answers, and the VM monitor keeps running.
 
 **The production caller.** On Firecracker the supervisor's recovery save is `take`, and its restore is `restore`. The debug engine, `unsandboxed`, declares no snapshots (`afr_engine_unsandboxed/src/unsandboxed/mod.rs:43`) and keeps the stage-1 volume through `export`.
 
@@ -279,13 +279,13 @@ A restore still runs every check of "What stays" item 3. A runner that registere
 
 | Saved state | Restores on | Never on, and why |
 |---|---|---|
-| A file-format generation | a Firecracker sandbox with the same toolbox and executor digests (`checkpoints.md:93`) | the debug engine, whose root is the host's own files, so the digest check refuses |
+| A file-format generation | a Firecracker sandbox with the same toolbox and guest agent digests (`checkpoints.md:93`) | the debug engine, whose root is the host's own files, so the digest check refuses |
 | A block-format generation | a Firecracker sandbox with the same digests | any host-kernel mount: nothing hands an unhashed image to the host's file-system parser (`afr_image/src/toolbox/mod.rs:9-12`) |
 | Memory | nowhere | no engine snapshots memory here; Firecracker restores memory only on identical host software and hardware |
 
 - **Dimension 4.1** — our engine passes every snapshot trial → Test `firecracker_passes_every_snapshot_trial` (integration, `make test-runner-kernel`). M258_001's four trials and this spec's two pass with the in-memory store, and no restore changes the VM monitor's process identifier. No trial reads skipped.
-- **Dimension 4.2** — a snapshot never crosses environments → Test `a_snapshot_never_crosses_environments` (unit, `afr_engine` trial over fakes and our engine). A ref naming another toolbox digest, another executor digest or the debug engine's host root is refused naming `environment`, before any chunk is read. A block-format ref offered to the debug engine is refused the same way.
-- **Dimension 4.3** — a restore never brings back an older plan → Test `a_restore_never_brings_back_an_older_plan` (unit trial over fakes; on Firecracker in 4.1's lane). A snapshot taken under plan generation 3 is restored while 4 is in force, and `in_force()` reads 4 before the executor answers. A fake whose restore brings back 3 fails the trial by name.
+- **Dimension 4.2** — a snapshot never crosses environments → Test `a_snapshot_never_crosses_environments` (unit, `afr_engine` trial over fakes and our engine). A ref naming another toolbox digest, another guest agent digest or the debug engine's host root is refused naming `environment`, before any chunk is read. A block-format ref offered to the debug engine is refused the same way.
+- **Dimension 4.3** — a restore never brings back an older plan → Test `a_restore_never_brings_back_an_older_plan` (unit trial over fakes; on Firecracker in 4.1's lane). A snapshot taken under plan generation 3 is restored while 4 is in force, and `in_force()` reads 4 before the guest agent answers. A fake whose restore brings back 3 fails the trial by name.
 - **Dimension 4.4** — no key or link reaches the guest → Test `no_key_or_link_reaches_the_guest_across_take_and_restore` (integration, kernel lane, Firecracker). After a take and a restore, M258_001's planted-token search covers the guest's files, environment and `/proc`. It finds no derived key, nonce or signed URL, and finds a canary planted on purpose.
 
 ### §5 — Stage 2: lazy restore behind a host ublk device
@@ -294,11 +294,11 @@ Stage 2 makes a restore wait only for the chunks a run reads. **Gate:** Indy app
 
 **Mechanism.** `afr_volume`, built on `libublk`, serves the workspace as `/dev/ublkbN`, Firecracker's data drive. Its origin is a block-level chunk map in Postgres (D16, D17). A read miss fetches one object through a daemon-signed link and runs `af_chunk_store`'s read check, and writes land in a local sparse file.
 
-**Block capture.** The server's dirty bitmap names the changed chunks. A pin is the executor's guest flush, `FIFREEZE` or `syncfs`, then one generation switch in the server. The pause then grows with the guest's dirty page cache alone.
+**Block capture.** The server's dirty bitmap names the changed chunks. A pin is the guest agent's guest flush, `FIFREEZE` or `syncfs`, then one generation switch in the server. The pause then grows with the guest's dirty page cache alone.
 
-**Restore in place.** The executor ends the inner environment and unmounts the workspace. The server rewinds the device to the target generation, dropping local writes, and the executor mounts it again (Fly's block-device post, L62).
+**Restore in place.** The guest agent ends the inner environment and unmounts the workspace. The server rewinds the device to the target generation, dropping local writes, and the guest agent mounts it again (Fly's block-device post, L62).
 
-**`/tmp` on its own disk (D19).** Today `/workspace` and `/tmp` share one drive (`afr_engine_firecracker/src/guest/linux.rs:64-69`), while a save holds only `/workspace` (`afr_executor/src/api/mod.rs:209-212`). The guest gains a scratch drive for `/tmp` that no save holds. **Implementation default:** each drive is a sparse file sized to the run's disk limit, because a sparse file costs the host only what is written.
+**`/tmp` on its own disk (D19).** Today `/workspace` and `/tmp` share one drive (`afg_entry/src/vm/linux.rs`), while a save holds only `/workspace` (`afr_guest_client/src/api/mod.rs`). The guest gains a scratch drive for `/tmp` that no save holds. **Implementation default:** each drive is a sparse file sized to the run's disk limit, because a sparse file costs the host only what is written.
 
 **Must be true first.**
 
@@ -354,7 +354,7 @@ af_chunk_store (protocol/)
   ChunkStore   ChunkSource + publish(changes)    supervisor over signed links; in memory behind test-util
   BlockMap     { volume_bytes, chunk_bytes, chunks: index -> object }   §5's origin, published as manifest pages
 Origin       Empty { bytes } | Generation { manifest, source: Arc<dyn ChunkSource>, fill: Eager | Lazy }
-Executor     pause() · resume() freeze and thaw the guest's tenant leaf
+Guest agent     pause() · resume() freeze and thaw the guest's tenant leaf
              pin_walk(parent) streams changed bytes (stage 1) · flush() is FIFREEZE or syncfs (stage 2)
 Snapshots on Firecracker
   take(id)     pause · pin · resume · publish
@@ -375,15 +375,15 @@ The runner protocol `VERSION` (`af_wire/src/protocol/mod.rs:15`) moves once, for
 | Publication fails after resume | failure | a PUT or the commit fails | the head keeps the previous generation; staging removed; the next save diffs against it | `a_publication_failing_after_resume_keeps_the_previous_generation` |
 | Publication still running | race | a boundary arrives mid-publication | the boundary skips as busy, with no pause | `a_boundary_finding_a_publication_running_skips` |
 | Runner killed after resume | failure | `SIGKILL` between resume and commit | the previous generation stays current; boot removes staging | `a_runner_killed_between_resume_and_commit_keeps_the_previous_generation` |
-| Executor still serving | failure | a call in flight at quiesce | the save skips as `BusyExecutor`; no pin | `the_pin_pause_freezes_tenant_code_and_keeps_the_executor_answering` |
+| Guest agent still serving | failure | a call in flight at quiesce | the save skips as `BusyAgent`; no pin | `the_pin_pause_freezes_tenant_code_and_keeps_the_agent_answering` |
 | Bucket ignores the checksum | dependency | a bucket stores a body unlike its bound SHA-256 | checkpoints stay unavailable, naming the checksum | `a_bucket_that_accepts_a_wrong_checksum_blocks_checkpoints` |
 | Object unlike its registration | failure | a runner uploaded other bytes than it registered | the restore's plaintext check refuses; no file is written | `a_restore_refuses_an_object_unlike_its_registration` |
 | Stat misses a change | failure | a same-tick, same-size rewrite | the change-time guard re-reads it | `a_same_tick_same_size_rewrite_is_saved` |
 | Mapped write unseen | failure | a shared-mapping write to a dirty page | saved, or §3 blocks until D23 is ruled | `a_shared_mapping_write_is_saved_by_the_next_save` |
 | Cache lost | failure | a reboot or a new host | one full hash and a full manifest | `a_save_without_its_cache_reads_everything_once` |
 | Ancestor purged | failure | maintenance or deletion under a delta | Postgres refuses; purge skips | `an_ancestor_of_a_ready_delta_is_never_purged` |
-| Snapshot across environments | security | a ref from another root, executor or format | refused before any chunk is read | `a_snapshot_never_crosses_environments` |
-| Plan rolled back | security | a snapshot taken under an older plan | the run's generation reads back before the executor answers | `a_restore_never_brings_back_an_older_plan` |
+| Snapshot across environments | security | a ref from another root, guest agent or format | refused before any chunk is read | `a_snapshot_never_crosses_environments` |
+| Plan rolled back | security | a snapshot taken under an older plan | the run's generation reads back before the guest agent answers | `a_restore_never_brings_back_an_older_plan` |
 | Key or link in the guest | security | a leak through take or restore | the planted-token search fails the lane | `no_key_or_link_reaches_the_guest_across_take_and_restore` |
 | Tampered chunk | security | ciphertext changed in R2 | an I/O error; no byte served; the run ends closed | `a_tampered_chunk_fails_its_read_and_serves_no_byte` |
 | Block layer missing or killed | dependency | no `ublk_drv`, or the server dies | boot refuses; re-attach, or the run ends closed | `a_block_layer_that_is_missing_or_killed_ends_closed` |
@@ -401,7 +401,7 @@ The runner protocol `VERSION` (`af_wire/src/protocol/mod.rs:15`) moves once, for
 5. An ancestor of a ready delta cannot be deleted, because `parent_checkpoint_id` is a foreign key with no cascade (Dimension 3.8).
 6. Every object is written once. Each upload link binds `If-None-Match: *` and the ciphertext's checksum, and the runner refuses a link without them (Dimension 6.2).
 7. A snapshot restores only into the environment it names. `restore` compares `SnapshotRef.environment` with the sandbox's before any read (Dimension 4.2).
-8. No guest receives a key, a link or a bucket token. `ChunkStore` lives in the supervisor, and no executor verb carries a key or a link (Dimension 4.4).
+8. No guest receives a key, a link or a bucket token. `ChunkStore` lives in the supervisor, and no guest agent verb carries a key or a link (Dimension 4.4).
 
 ## Metrics & Observability
 
@@ -457,7 +457,7 @@ The runner protocol `VERSION` (`af_wire/src/protocol/mod.rs:15`) moves once, for
 4. **Rebuild-vs-iterate** — iterate on keys and the publication pipeline for stage 1. Stages 2 and 3 rebuild the disk, each gated on its spike.
 5. **What we build** — derived keys, the pin seam, the identity cache, staging, delta chains, chunk-map snapshots, the ublk server and writeback.
 6. **What we do NOT build** — JuiceFS, SQLite with Litestream, a key table, a read-back, a journal, content-defined chunking, change hints, memory snapshots or a public SDK.
-7. **Fit with existing features** — compounds with M258_001's executor files and inner environment. It must not weaken the restore's checks before a generation is used.
+7. **Fit with existing features** — compounds with M258_001's guest agent files and inner environment. It must not weaken the restore's checks before a generation is used.
 8. **Surface order** — keys first, then the runner's pause, then the daemon's commit, refs and pins, then the architecture page; no command or page changes.
 9. **Dashboard restraint** — the app shows nothing new. Operators read the six log events.
 10. **Confused-user next step** — a refused restore names its reason, as today. `docs/architecture/checkpoints.md` states the keys, the pause, the chain and what a snapshot never crosses.
@@ -487,7 +487,7 @@ The runner protocol `VERSION` (`af_wire/src/protocol/mod.rs:15`) moves once, for
   - **D18** > Owner (Indy, Nov 26, 2026): chose "Measure 3 sizes, pick by data (Recommended)" — context: Dimension 5.1.
   - **D19** > Owner (Indy, Nov 26, 2026): chose "Separate /tmp disk (Recommended)" — context: §5.
   - **D21** > Owner (Indy, Nov 26, 2026): chose "Trust R2's own checksum" — context: §2. The daemon's read-back goes; a restore still checks each chunk's tag and identity against Postgres and fails closed.
-  - **D22** > Owner (Indy, Nov 26, 2026): chose "Delete bubblewrap before M258_002 (Recommended)" — context: build order M258_001, M258_003, M258_002; the pin pause is Firecracker's inner environment, frozen by the executor.
+  - **D22** > Owner (Indy, Nov 26, 2026): chose "Delete bubblewrap before M258_002 (Recommended)" — context: build order M258_001, M258_003, M258_002; the pin pause is Firecracker's inner environment, frozen by the guest agent.
   - **Storage crate** > Owner (Indy, Nov 26, 2026): chose "One crate now, SDK later (Recommended)" — context: `af_chunk_store`, §2.
   - **O1** > Owner (Indy, Nov 26, 2026): chose "One PR for all of M258".
 - **Open owner decisions.** Each stays open until Indy rules; each recommendation is Aiwa's.

@@ -42,7 +42,7 @@ impl Engine for TestEngine {
     }
 
     async fn prepare(&self, _: SandboxSpec<'_>) -> Result<Box<dyn Sandbox>> {
-        Err(crate::error::refused("test engine has no executor"))
+        Err(crate::error::refused("test engine has no guest agent"))
     }
 
     async fn sweep(&self, _: Sweep<'_>) -> Result<Swept> {

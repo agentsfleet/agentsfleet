@@ -125,11 +125,11 @@ async fn a_busy_tenant_skips_the_boundary_without_a_native_save() -> Result<()> 
 }
 
 #[tokio::test]
-async fn an_abandoned_executor_file_job_prevents_publication() -> Result<()> {
+async fn an_abandoned_agent_file_job_prevents_publication() -> Result<()> {
     let mut fixture = Fixture::new(unavailable)?;
     let run = fixture.run()?;
     let root = tempfile::tempdir()?;
-    let (engine, sandbox) = sandbox(root.path(), Parking::BusyExecutor).await?;
+    let (engine, sandbox) = sandbox(root.path(), Parking::BusyAgent).await?;
     let cell = OnceLock::from(sandbox);
     let state = OnceLock::new();
     let (_, mut owner) = BoundaryOwner::new(
@@ -141,7 +141,7 @@ async fn an_abandoned_executor_file_job_prevents_publication() -> Result<()> {
     );
     assert!(matches!(
         owner.capture(snapshot(&fixture)?).await,
-        Ok(RecoverySave::Skipped(RecoverySkip::BusyExecutor))
+        Ok(RecoverySave::Skipped(RecoverySkip::BusyAgent))
     ));
     assert_eq!(engine.parked.load(Ordering::SeqCst), 0);
     assert_eq!(

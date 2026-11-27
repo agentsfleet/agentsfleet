@@ -102,7 +102,7 @@ pub(crate) struct Runner {
     pub(crate) probe: HostProbe,
     /// What every sandbox enforces.
     pub(crate) limits: Limits,
-    /// How long a resumed parked sandbox's executor has to answer.
+    /// How long a resumed parked sandbox's guest agent has to answer.
     pub(crate) park_resume_timeout: std::time::Duration,
     /// The wall clock run deadlines are read against.
     pub(crate) clock: Arc<dyn Clock>,

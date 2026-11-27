@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use af_core::id::Uuid7;
 use af_wire::runner::{Isolation, SandboxEngine};
-use afr_executor::{Executor, Process, ProcessId, Spawn};
+use afr_guest_client::{GuestAgent, Process, ProcessId, Spawn};
 use bytes::Bytes;
 
 use crate::engine::{
@@ -26,23 +26,23 @@ const CAPABILITIES: Capabilities = Capabilities {
     resources: ResourceFacts::ENFORCED,
 };
 
-/// An executor nothing calls; a warm slot is only handed out, never driven.
+/// A guest agent nothing calls; a warm slot is only handed out, never driven.
 #[derive(Debug)]
 pub(super) struct Idle;
 
-fn unused<T>() -> afr_executor::Result<T> {
+fn unused<T>() -> af_guest_wire::Result<T> {
     Err(std::io::Error::other("an idle fake").into())
 }
 
 #[async_trait::async_trait]
-impl Executor for Idle {
-    async fn spawn(&self, _spawn: &Spawn) -> afr_executor::Result<Process> {
+impl GuestAgent for Idle {
+    async fn spawn(&self, _spawn: &Spawn) -> af_guest_wire::Result<Process> {
         unused()
     }
-    async fn write(&self, _process: ProcessId, _data: Bytes) -> afr_executor::Result<()> {
+    async fn write(&self, _process: ProcessId, _data: Bytes) -> af_guest_wire::Result<()> {
         unused()
     }
-    async fn kill(&self, _process: ProcessId) -> afr_executor::Result<()> {
+    async fn kill(&self, _process: ProcessId) -> af_guest_wire::Result<()> {
         unused()
     }
 }
@@ -59,7 +59,7 @@ pub(super) struct Named {
     environment: Environment,
     pub(super) destroyed: Arc<AtomicU64>,
     plans: Arc<Plans>,
-    executor: Idle,
+    agent: Idle,
 }
 
 #[async_trait::async_trait]
@@ -77,8 +77,8 @@ impl Sandbox for Named {
     fn granted(&self) -> &Granted {
         &self.granted
     }
-    fn executor(&self) -> &dyn Executor {
-        &self.executor
+    fn agent(&self) -> &dyn GuestAgent {
+        &self.agent
     }
     fn state(&self) -> SandboxState {
         if self.dead {
@@ -192,7 +192,7 @@ impl Engine for Counting {
             leaks: self.leaks,
             dead: self.dead,
             plans: Arc::clone(&self.plans),
-            executor: Idle,
+            agent: Idle,
         }))
     }
 }

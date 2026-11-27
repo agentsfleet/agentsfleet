@@ -13,8 +13,8 @@
 //! ```
 //!
 //! The workspace itself stays the engine's: files cross only through the
-//! executor's `import` and `export`, and both ends check the stream with the
-//! same [`afr_executor::tree`] functions. A tree crosses through an anonymous
+//! guest agent's `import` and `export`, and both ends check the stream with the
+//! same [`af_guest_wire::tree`] functions. A tree crosses through an anonymous
 //! spool beside the stage, never inside it, so no spool is packed or
 //! unpacked over.
 
@@ -24,7 +24,8 @@ use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 
 use af_core::id::Uuid7;
-use afr_executor::{Executor, Imported};
+use af_guest_wire::Imported;
+use afr_guest_client::GuestAgent;
 use cap_std::ambient_authority;
 use cap_std::fs::Dir;
 
@@ -143,29 +144,29 @@ impl Staged {
     }
 
     /// Packs what the stage holds under `at` and imports it at `at` in the
-    /// workspace `executor` serves; `.` is the whole stage and workspace.
+    /// workspace `agent` serves; `.` is the whole stage and workspace.
     ///
     /// # Errors
-    /// The stage would not pack, or the executor refused the stream.
-    pub async fn import(&self, executor: &dyn Executor, at: &str) -> Result<Imported> {
+    /// The stage would not pack, or the guest agent refused the stream.
+    pub async fn import(&self, agent: &dyn GuestAgent, at: &str) -> Result<Imported> {
         let (source, spool) = (self.path().join(at), self.spool()?);
         let packed = tokio::task::spawn_blocking(move || {
             let dir = Dir::open_ambient_dir(&source, ambient_authority())?;
-            afr_executor::tree::pack(&dir, &[Path::new(WHOLE)], &spool)?;
+            af_guest_wire::tree::pack(&dir, &[Path::new(WHOLE)], &spool)?;
             let mut rewind = &spool;
             rewind.seek(SeekFrom::Start(0))?;
-            Ok::<_, afr_executor::Error>(spool)
+            Ok::<_, af_guest_wire::Error>(spool)
         })
         .await?
         .map_err(|source| error::boundary(DETAIL_IMPORT, source))?;
         let mut stream = tokio::fs::File::from_std(packed);
-        executor
+        agent
             .import(at, &mut stream)
             .await
             .map_err(|source| error::boundary(DETAIL_IMPORT, source))
     }
 
-    /// Exports the whole workspace `executor` serves and unpacks it into the
+    /// Exports the whole workspace `agent` serves and unpacks it into the
     /// stage, every entry checked as an import checks it.
     ///
     /// The stream is spooled on the host, so it is held to `disk_bytes`, the
@@ -180,11 +181,11 @@ impl Staged {
     /// the export ends as too large and its stage is the caller's to drop.
     ///
     /// # Errors
-    /// The executor would not export; the stream, or the files it claims,
+    /// The guest agent would not export; the stream, or the files it claims,
     /// outgrew `disk_bytes`, which is the checkpoint-limit class; or an entry
     /// would leave the stage. The spool goes with the call either way.
-    pub async fn export(&self, executor: &dyn Executor, disk_bytes: u64) -> Result<()> {
-        let spool = spool_export(executor, disk_bytes, self.spool()?).await?;
+    pub async fn export(&self, agent: &dyn GuestAgent, disk_bytes: u64) -> Result<()> {
+        let spool = spool_export(agent, disk_bytes, self.spool()?).await?;
         self.unpack(spool, disk_bytes).await
     }
 
@@ -192,12 +193,12 @@ impl Staged {
     /// as an import checks it, and holds what its files claim to `disk_bytes`.
     ///
     /// # Errors
-    /// As [`Staged::export`], past the executor's own refusal.
+    /// As [`Staged::export`], past the guest agent's own refusal.
     pub(crate) async fn unpack(&self, spool: File, disk_bytes: u64) -> Result<()> {
         let into = self.path().to_owned();
         let unpacked = tokio::task::spawn_blocking(move || {
             let dir = Dir::open_ambient_dir(&into, ambient_authority())?;
-            afr_executor::tree::unpack(&dir, Path::new(WHOLE), &spool)
+            af_guest_wire::tree::unpack(&dir, Path::new(WHOLE), &spool)
         })
         .await?
         .map_err(|source| error::boundary(DETAIL_EXPORT, source))?;
@@ -207,20 +208,20 @@ impl Staged {
         Ok(())
     }
 
-    /// Imports a restored stage into the workspace `executor` serves, which
+    /// Imports a restored stage into the workspace `agent` serves, which
     /// must hold nothing yet: what lands is the checkpoint, nothing beside it.
     ///
     /// # Errors
     /// The workspace holds files, or the import failed.
-    pub async fn restore(&self, executor: &dyn Executor) -> Result<Imported> {
-        let listed = executor
+    pub async fn restore(&self, agent: &dyn GuestAgent) -> Result<Imported> {
+        let listed = agent
             .list_dir(WHOLE)
             .await
             .map_err(|source| error::boundary(DETAIL_IMPORT, source))?;
         if !listed.entries.is_empty() || listed.truncated {
             return Err(error::config(DETAIL_NOT_EMPTY));
         }
-        self.import(executor, WHOLE).await
+        self.import(agent, WHOLE).await
     }
 
     /// A spool beside the stage that no name reaches.
@@ -229,18 +230,18 @@ impl Staged {
     }
 }
 
-/// Exports the whole workspace `executor` serves into `spool`, held to
+/// Exports the whole workspace `agent` serves into `spool`, held to
 /// `disk_bytes` as [`Staged::export`] says, and hands the spool back.
 ///
 /// # Errors
-/// The executor would not export, or the stream outgrew `disk_bytes`.
+/// The guest agent would not export, or the stream outgrew `disk_bytes`.
 pub(crate) async fn spool_export(
-    executor: &dyn Executor,
+    agent: &dyn GuestAgent,
     disk_bytes: u64,
     spool: File,
 ) -> Result<File> {
     let mut stream = Bounded::new(tokio::fs::File::from_std(spool), disk_bytes);
-    let exported = executor.export(&[WHOLE], &mut stream).await;
+    let exported = agent.export(&[WHOLE], &mut stream).await;
     if stream.outgrown() {
         return Err(error::capture_limit(DETAIL_OUTGROWN));
     }

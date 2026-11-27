@@ -1,4 +1,4 @@
-//! Publication runs through the offered root tool and the executor/run boundaries.
+//! Publication runs through the offered root tool and the agent/run boundaries.
 
 #![expect(
     clippy::expect_used,
@@ -119,7 +119,7 @@ pub(super) fn candidate() -> String {
 pub(super) async fn publish(
     script: &Script,
     native: &Publisher,
-    executor: &afr_executor::ExecutorSlot<'_>,
+    agent: &afr_guest_client::AgentSlot<'_>,
 ) -> crate::Result<crate::RunOutput> {
     let tool = &afr_tools::catalog::EXEC_COMMAND;
     let engine = super::super::super::tests::engine(vec![Canned::boxed(tool, "unused")], script);
@@ -136,7 +136,7 @@ pub(super) async fn publish(
             recovered_durable_task: None,
             recovered_turn: None,
             memory: afr_memory::Seed::default(),
-            executor,
+            agent,
             mint: &af_egress::testing::CountingMint::never(),
             verbs: native,
             checkpoint: &crate::testing::Discard,

@@ -1,5 +1,5 @@
 //! Checkout and recovery cross into a workspace the host has no path to,
-//! through the executor's `import` and `export` (Dimension 3.3).
+//! through the guest agent's `import` and `export` (Dimension 3.3).
 
 #![expect(
     clippy::unwrap_used,
@@ -12,7 +12,8 @@ use std::path::Path;
 use std::time::Duration;
 
 use af_core::id::Uuid7;
-use afr_executor::{Client, Sizes};
+use af_guest_wire::Sizes;
+use afr_guest_client::Client;
 use afr_tools::sandbox::Checkout;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
@@ -80,15 +81,15 @@ fn digest(root: &Path, left_out: &str) -> String {
     af_core::etag::sha256_hex(&listing)
 }
 
-/// How long the executor may take to bind its socket.
+/// How long the guest agent may take to bind its socket.
 const BOUND_WITHIN: Duration = Duration::from_secs(1);
 
-/// A sandbox's workspace as the host meets it: a real executor serving a
+/// A sandbox's workspace as the host meets it: a real guest agent serving a
 /// directory over a socket, and nothing handed to the host to reach it by.
 struct Served {
     id: Uuid7,
     client: Client,
-    server: JoinHandle<afr_executor::Result<()>>,
+    server: JoinHandle<af_guest_wire::Result<()>>,
 }
 
 impl Served {
@@ -98,10 +99,10 @@ impl Served {
         let dir = base.join(id.as_str());
         let workspace = dir.join("workspace");
         fs::create_dir_all(&workspace).unwrap();
-        let socket = dir.join("executor.sock");
+        let socket = dir.join("agent.sock");
         let server = tokio::spawn({
             let socket = socket.clone();
-            async move { afr_executor::bind(&socket)?.serve(&workspace).await }
+            async move { afg_agent::bind(&socket)?.serve(&workspace).await }
         });
         let client = Client::connect_within(&socket, BOUND_WITHIN, Sizes::DEFAULT)
             .await
@@ -113,11 +114,11 @@ impl Served {
         &self.id
     }
 
-    const fn executor(&self) -> &Client {
+    const fn agent(&self) -> &Client {
         &self.client
     }
 
-    /// Hangs up, which ends the executor's session.
+    /// Hangs up, which ends the guest agent's session.
     async fn stop(self) {
         drop(self.client);
         self.server.await.unwrap().unwrap();
@@ -129,7 +130,7 @@ impl Served {
 // or a checkout imports a different tree than the host checkout makes;
 #[tokio::test]
 async fn test_checkout_fills_a_workspace_the_host_cannot_see() {
-    // Short: the executor's socket path is capped near a hundred bytes.
+    // Short: the guest agent's socket path is capped near a hundred bytes.
     let root = tempfile::Builder::new()
         .prefix("afr")
         .tempdir_in("/tmp")
@@ -157,17 +158,17 @@ async fn test_checkout_fills_a_workspace_the_host_cannot_see() {
     let first = Served::start(&sandboxes).await;
     let staged = staging.stage(first.id()).unwrap();
     mirrors
-        .land(request(), &staged, first.executor(), &stop)
+        .land(request(), &staged, first.agent(), &stop)
         .await
         .unwrap();
     drop(staged);
     let captured = staging.stage(first.id()).unwrap();
-    captured.export(first.executor(), DISK).await.unwrap();
+    captured.export(first.agent(), DISK).await.unwrap();
     let second = Served::start(&sandboxes).await;
-    captured.restore(second.executor()).await.unwrap();
+    captured.restore(second.agent()).await.unwrap();
     let restored = staging.stage(second.id()).unwrap();
-    restored.export(second.executor(), DISK).await.unwrap();
-    let refused = captured.restore(second.executor()).await;
+    restored.export(second.agent(), DISK).await.unwrap();
+    let refused = captured.restore(second.agent()).await;
     first.stop().await;
     second.stop().await;
 
@@ -202,7 +203,7 @@ async fn test_checkout_fills_a_workspace_the_host_cannot_see() {
 // Value: protects=a guest decides nothing about how much host disk, or host reading, its export takes;
 // fails_when=a stream longer than the run's granted disk is spooled or unpacked, or a file
 // claiming more than that disk is staged for a capture to read through;
-// seam=real executor and client over a Unix socket; no_claim=the capture that follows.
+// seam=real guest agent and client over a Unix socket; no_claim=the capture that follows.
 #[tokio::test]
 async fn test_an_export_past_the_granted_disk_is_refused_and_leaves_nothing() {
     const GRANTED: u64 = 64 * 1024;
@@ -216,7 +217,7 @@ async fn test_an_export_past_the_granted_disk_is_refused_and_leaves_nothing() {
     let workspace = sandbox.join("workspace");
     fs::write(workspace.join("small"), b"fits").unwrap();
     let within = staging.stage(served.id()).unwrap();
-    within.export(served.executor(), GRANTED).await.unwrap();
+    within.export(served.agent(), GRANTED).await.unwrap();
     // Each twice the disk it claims to live on: one in bytes the stream
     // carries, one in a hole it does not.
     let dense = |large: &Path| fs::write(large, vec![0xA5; 2 * 64 * 1024]).unwrap();
@@ -228,7 +229,7 @@ async fn test_an_export_past_the_granted_disk_is_refused_and_leaves_nothing() {
     for (kind, plant) in [("dense", &dense as &dyn Fn(&_)), ("holed", &holed)] {
         plant(&workspace.join("large"));
         let staged = staging.stage(served.id()).unwrap();
-        let refused = staged.export(served.executor(), GRANTED).await;
+        let refused = staged.export(served.agent(), GRANTED).await;
 
         assert_eq!(
             test_support::detail(&refused),

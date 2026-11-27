@@ -9,13 +9,19 @@
 #   protocol/    the types both binaries speak
 #   harness/     the model, secret and egress seams the agent harness drives
 #   runner/      `agentsfleet-runner` (`runner/main`) and the crates only it links
+#   guest/       `agentsfleet-guest` (`guest/main`), the in-VM agent, and the
+#                crates only it links
 #   daemon/      `agentsfleetd` (`daemon/main`) and the crates only it links
 #   e2e/         test-only crates that may depend on every layer; nothing
 #                depends on them
 #
 # A crate depends on its own layer or a lower one, `runner/` and `daemon/`
 # never on each other, and nothing on `e2e/`, in every dependency table: normal,
-# build and dev. `af_e2e`'s `tests/layers.rs` enforces it. The agent harness,
+# build and dev. `guest/` depends only on `foundation/` and `protocol/` (Indy,
+# Nov 27, 2026); `daemon/` never on `guest/`, and `runner/` only in a dev table
+# or through the debug engine, `afr_engine_unsandboxed`, which the shipped
+# runner, built without default features, does not carry. `af_e2e`'s
+# `tests/layers.rs` enforces it. The agent harness,
 # `guffbolt/`, and its provider side, `guffbolt-ai/`, sit beside `crates/`
 # rather than in a layer: each is publishable on its own and depends on no
 # `crates/` crate, so any layer may depend on either. guffbolt depends on
@@ -33,6 +39,7 @@
 resolver = "3"
 members = [
     # foundation: no product knowledge
+    "crates/foundation/af_cgroup",
     "crates/foundation/af_config",
     "crates/foundation/af_core",
     "crates/foundation/af_crypto",
@@ -41,6 +48,7 @@ members = [
     "crates/protocol/af_chunk_store",
     "crates/protocol/af_context",
     "crates/protocol/af_fleet_runtime",
+    "crates/protocol/af_guest_wire",
     "crates/protocol/af_observability",
     "crates/protocol/af_otlp",
     "crates/protocol/af_stream",
@@ -56,9 +64,8 @@ members = [
     "crates/runner/afr_engine",
     "crates/runner/afr_engine_firecracker",
     "crates/runner/afr_engine_unsandboxed",
-    "crates/runner/afr_executor",
     "crates/runner/afr_firewall",
-    "crates/runner/afr_guest",
+    "crates/runner/afr_guest_client",
     "crates/runner/afr_image",
     "crates/runner/afr_memory",
     "crates/runner/afr_supervisor",
@@ -66,6 +73,12 @@ members = [
     "crates/runner/afr_tools",
     # `agentsfleet_runner`, the runner binary; nothing depends on it.
     "crates/runner/main",
+    # guest: `agentsfleet-guest`, the in-VM agent, and the crates only it links
+    "crates/guest/afg_agent",
+    "crates/guest/afg_confine",
+    "crates/guest/afg_entry",
+    # `agentsfleet_guest`, the in-VM agent binary; nothing depends on it.
+    "crates/guest/main",
     # daemon: `agentsfleetd` and the crates only it links
     "crates/daemon/afd_admin",
     "crates/daemon/afd_api",
@@ -143,6 +156,8 @@ categories = ["network-programming"]
 af_config = { path = "crates/foundation/af_config" }
 # No-I/O primitives: ids, error codes and the error shell, limits, money, paging, clock.
 af_core = { path = "crates/foundation/af_core" }
+# The cgroup v2 file names and the freezer the runner and the in-VM agent share.
+af_cgroup = { path = "crates/foundation/af_cgroup" }
 # Envelope encryption, message authentication, entropy and secret types.
 af_crypto = { path = "crates/foundation/af_crypto" }
 # Bounds on untrusted input garde lacks: custom rules, a route-ceilinged `?limit`,
@@ -159,6 +174,8 @@ af_context = { path = "crates/protocol/af_context" }
 # The fleet Definition: configuration parsed once into the typed policy every
 # gate reads, and the setup proposal rules.
 af_fleet_runtime = { path = "crates/protocol/af_fleet_runtime" }
+# What the runner and the in-VM agent both speak, and nothing else of either.
+af_guest_wire = { path = "crates/protocol/af_guest_wire" }
 # The telemetry vocabulary, metric families and export machinery.
 af_observability = { path = "crates/protocol/af_observability" }
 # The OTLP transport both binaries build their pipelines through: the knobs,
@@ -185,19 +202,18 @@ af_secrets = { path = "crates/harness/af_secrets" }
 # --- runner: `agentsfleet-runner` and the crates only it links
 # The agent engine: one run's turn over guffbolt.
 afr_agent = { path = "crates/runner/afr_agent" }
-# The in-sandbox process and file executor and its socket protocol.
-afr_executor = { path = "crates/runner/afr_executor" }
+# The host's client for the in-VM agent: the seam the agent loop calls, the
+# redialling link, and the slot a run's agent is reached through.
+afr_guest_client = { path = "crates/runner/afr_guest_client" }
 # One run's memory, loaded and pushed through agentsfleetd.
 afr_memory = { path = "crates/runner/afr_memory" }
 # The seam every sandbox engine meets: traits, facts, admission, warm slots.
 afr_engine = { path = "crates/runner/afr_engine" }
-# Building blocks an engine composes: a run's cgroup and its tenant leaf; the
-# host's egress tables and links; the toolbox and workspace images; and what
-# the process inside a sandbox does to itself before it serves.
+# Building blocks an engine composes: a run's cgroup and its leaves; the
+# host's egress tables and links; and the toolbox and workspace images.
 afr_cgroup = { path = "crates/runner/afr_cgroup" }
 afr_firewall = { path = "crates/runner/afr_firewall" }
 afr_image = { path = "crates/runner/afr_image" }
-afr_guest = { path = "crates/runner/afr_guest" }
 # The engines, which only the runner binary and the e2e crate name: our
 # Firecracker microVM engine, and the debug engine that confines nothing.
 afr_engine_firecracker = { path = "crates/runner/afr_engine_firecracker" }
@@ -210,6 +226,14 @@ afr_supervisor = { path = "crates/runner/afr_supervisor" }
 afr_telemetry = { path = "crates/runner/afr_telemetry" }
 # The tool catalog and the handlers adapting guffbolt's tools.
 afr_tools = { path = "crates/runner/afr_tools" }
+
+# --- guest: `agentsfleet-guest`, the in-VM agent, and the crates only it links
+# The agent: one host connection, its processes and its file calls.
+afg_agent = { path = "crates/guest/afg_agent" }
+# The confinement a tenant process puts on itself, and the inner environment.
+afg_confine = { path = "crates/guest/afg_confine" }
+# The agent as a microVM's first process: its admission, mounts and listener.
+afg_entry = { path = "crates/guest/afg_entry" }
 
 # --- daemon: `agentsfleetd` and the crates only it links
 # The priced-model catalogue and platform-default metadata.
@@ -624,7 +648,7 @@ regex = { version = "1.13.2", default-features = false, features = ["std", "perf
 # The glob `find` and `grep` match a path against: ripgrep's matcher, not a
 # hand-written glob-to-regex translation.
 globset = { version = "0.4.20", default-features = false }
-# `find` and `grep` walk where the files are, the executor's disk or the
+# `find` and `grep` walk where the files are, the guest agent's disk or the
 # host's: ripgrep's walker, which skips what `.gitignore` names, and its line
 # searcher over its regex matcher, rather than a hand-written walk and scan.
 ignore = { version = "0.4.34", default-features = false }
@@ -1020,7 +1044,7 @@ serde_ignored = { version = "0.1.14", default-features = false }
 rustix = { version = "1.1.6", default-features = false, features = ["std", "fs", "mount", "process", "thread"] }
 landlock = { version = "0.4.8", default-features = false }
 seccompiler = { version = "0.5.0", default-features = false }
-# The JSON-RPC 2.0 envelope the executor protocol rides — request, response,
+# The JSON-RPC 2.0 envelope the guest agent's link rides — request, response,
 # notification and error object — rather than a hand-written copy of the spec.
 jsonrpsee-types = { version = "0.26.2", default-features = false }
 # Scratch directories and atomically persisted files: the report spool and
@@ -1048,18 +1072,18 @@ libtest-mimic = { version = "0.8.2", default-features = false }
 # `/proc/<pid>/status`, parsed: the thread count and capability sets a sandbox
 # checks before it serves, without a hand-written field reader.
 procfs-core = { version = "0.18.0", default-features = false }
-# The executor's file calls: a directory handle that refuses any path leaving
+# The guest agent's file calls: a directory handle that refuses any path leaving
 # it, through `..` or a symbolic link, on every platform — capability-based
 # confinement from the Bytecode Alliance rather than a hand-written resolver.
 cap-std = { version = "4.0.3", default-features = false }
-# The executor's spool for a tree crossing in chunks: an anonymous file opened
+# The guest agent's spool for a tree crossing in chunks: an anonymous file opened
 # through the workspace's own handle, on the workspace disk rather than a
 # tmpfs that would hold a whole repository in memory.
 cap-tempfile = { version = "4.0.3", default-features = false }
-# A tree crosses the executor link as a tar stream: the reader and writer
+# A tree crosses the guest agent's link as a tar stream: the reader and writer
 # every Rust archiver uses, rather than a hand-written header parser.
 tar = { version = "0.4.46", default-features = false }
-# A Firecracker guest's executor listens on vsock, the device its host dials
+# A Firecracker guest's agent listens on vsock, the device its host dials
 # through the monitor's Unix socket; the async listener over the kernel's
 # `AF_VSOCK`, rather than hand-written socket calls.
 tokio-vsock = { version = "0.7.3", default-features = false }

@@ -13,7 +13,7 @@ use super::{
     Sessions,
 };
 use crate::SandboxEnv;
-use crate::sandbox::{ScriptedExecutor, ScriptedProcess};
+use crate::sandbox::{ScriptedGuest, ScriptedProcess};
 
 /// How long making room may take when nothing it chooses is held.
 const ROOM_MADE_WITHIN: Duration = Duration::from_secs(5);
@@ -22,14 +22,14 @@ const SHELL: &str = "/bin/sh";
 /// The scripts [`full`] leaves for sessions a test starts itself.
 const STARTS_LEFT: usize = 2;
 
-/// The scripted executor, as the sessions' environment.
-fn env(executor: &ScriptedExecutor) -> SandboxEnv<'_> {
-    SandboxEnv::new(executor)
+/// The scripted guest agent, as the sessions' environment.
+fn env(agent: &ScriptedGuest) -> SandboxEnv<'_> {
+    SandboxEnv::new(agent)
 }
 
-/// Every kill `executor` was asked for, as the sessions name processes.
-fn kills(executor: &ScriptedExecutor) -> Vec<ProcessId> {
-    executor
+/// Every kill `agent` was asked for, as the sessions name processes.
+fn kills(agent: &ScriptedGuest) -> Vec<ProcessId> {
+    agent
         .killed()
         .into_iter()
         .map(|id| ProcessId::new(id.get()))
@@ -37,17 +37,17 @@ fn kills(executor: &ScriptedExecutor) -> Vec<ProcessId> {
 }
 
 /// Ends the scripted process `id` as having exited with `code`.
-fn exit(executor: &ScriptedExecutor, id: ProcessId, code: i32) -> bool {
-    executor.end(
-        afr_executor::ProcessId::new(id.get()),
-        afr_executor::Ending::Exited(code),
+fn exit(agent: &ScriptedGuest, id: ProcessId, code: i32) -> bool {
+    agent.end(
+        afr_guest_client::ProcessId::new(id.get()),
+        af_guest_wire::Ending::Exited(code),
     )
 }
 
 /// Starts the next scripted process and keeps it as a session.
-async fn opened(executor: &ScriptedExecutor, sessions: &Sessions) -> ProcessId {
-    let slot = sessions.make_room(&env(executor)).await;
-    let process = env(executor).spawn(&Spawn::program(SHELL)).await.unwrap();
+async fn opened(agent: &ScriptedGuest, sessions: &Sessions) -> ProcessId {
+    let slot = sessions.make_room(&env(agent)).await;
+    let process = env(agent).spawn(&Spawn::program(SHELL)).await.unwrap();
     let id = process.id;
     sessions.open(slot, process);
     id
@@ -66,21 +66,21 @@ fn endings(capture: &Capture) -> Vec<String> {
 #[tokio::test]
 async fn should_kill_every_running_session_and_forget_an_ended_one() {
     let capture = Capture::install();
-    let executor = ScriptedExecutor::new([
+    let agent = ScriptedGuest::new([
         ScriptedProcess::stays_open(""),
         ScriptedProcess::stays_open(""),
         ScriptedProcess::stays_open(""),
     ]);
     let sessions = Sessions::default();
-    let running = opened(&executor, &sessions).await;
-    let also_running = opened(&executor, &sessions).await;
-    let exited = opened(&executor, &sessions).await;
-    assert!(exit(&executor, exited, 0));
+    let running = opened(&agent, &sessions).await;
+    let also_running = opened(&agent, &sessions).await;
+    let exited = opened(&agent, &sessions).await;
+    assert!(exit(&agent, exited, 0));
 
-    let killed = sessions.close_all(&env(&executor)).await;
+    let killed = sessions.close_all(&env(&agent)).await;
 
     assert_eq!(killed, 2);
-    assert_eq!(kills(&executor), [running, also_running]);
+    assert_eq!(kills(&agent), [running, also_running]);
     for id in [running, also_running, exited] {
         assert!(sessions.get(id).is_none(), "{id:?} is gone");
     }
@@ -90,12 +90,12 @@ async fn should_kill_every_running_session_and_forget_an_ended_one() {
 #[tokio::test]
 async fn should_forget_a_session_whose_kill_is_refused() {
     let capture = Capture::install();
-    let executor = ScriptedExecutor::new([ScriptedProcess::stays_open("")]);
+    let agent = ScriptedGuest::new([ScriptedProcess::stays_open("")]);
     let sessions = Sessions::default();
-    let id = opened(&executor, &sessions).await;
-    assert!(executor.forget(afr_executor::ProcessId::new(id.get())));
+    let id = opened(&agent, &sessions).await;
+    assert!(agent.forget(afr_guest_client::ProcessId::new(id.get())));
 
-    let killed = sessions.close_all(&env(&executor)).await;
+    let killed = sessions.close_all(&env(&agent)).await;
 
     assert_eq!(killed, 1);
     assert!(sessions.get(id).is_none());
@@ -109,24 +109,24 @@ async fn should_forget_a_session_whose_kill_is_refused() {
 }
 
 #[tokio::test]
-async fn should_not_kill_a_session_whose_executor_is_gone() {
-    let executor = ScriptedExecutor::new([ScriptedProcess::vanishes("")]);
+async fn should_not_kill_a_session_whose_agent_is_gone() {
+    let agent = ScriptedGuest::new([ScriptedProcess::vanishes("")]);
     let sessions = Sessions::default();
-    opened(&executor, &sessions).await;
+    opened(&agent, &sessions).await;
 
-    let killed = sessions.close_all(&env(&executor)).await;
+    let killed = sessions.close_all(&env(&agent)).await;
 
     assert_eq!(killed, 0);
-    let killed = kills(&executor);
+    let killed = kills(&agent);
     assert!(killed.is_empty(), "{killed:?}");
 }
 
 #[tokio::test]
 async fn should_log_a_session_opening_and_closing_with_its_ending() {
     let capture = Capture::install();
-    let executor = ScriptedExecutor::new([ScriptedProcess::stays_open("")]);
+    let agent = ScriptedGuest::new([ScriptedProcess::stays_open("")]);
     let sessions = Sessions::default();
-    let id = opened(&executor, &sessions).await;
+    let id = opened(&agent, &sessions).await;
 
     sessions.close(id, Ending::Exited(3));
 
@@ -136,15 +136,15 @@ async fn should_log_a_session_opening_and_closing_with_its_ending() {
 }
 
 /// `count` running sessions, oldest first.
-async fn full(count: usize) -> (ScriptedExecutor, Sessions, Vec<ProcessId>) {
-    let executor =
-        ScriptedExecutor::new((0..count + STARTS_LEFT).map(|_| ScriptedProcess::stays_open("")));
+async fn full(count: usize) -> (ScriptedGuest, Sessions, Vec<ProcessId>) {
+    let agent =
+        ScriptedGuest::new((0..count + STARTS_LEFT).map(|_| ScriptedProcess::stays_open("")));
     let sessions = Sessions::default();
     let mut ids = Vec::new();
     for _ in 0..count {
-        ids.push(opened(&executor, &sessions).await);
+        ids.push(opened(&agent, &sessions).await);
     }
-    (executor, sessions, ids)
+    (agent, sessions, ids)
 }
 
 /// The sessions still open, by id.
@@ -154,12 +154,12 @@ fn still_open(sessions: &Sessions, ids: &[ProcessId]) -> usize {
 
 #[tokio::test]
 async fn should_leave_every_session_open_under_the_cap() {
-    let (executor, sessions, ids) = full(SESSIONS_PER_RUN_MAX - 1).await;
+    let (agent, sessions, ids) = full(SESSIONS_PER_RUN_MAX - 1).await;
 
-    sessions.make_room(&env(&executor)).await;
+    sessions.make_room(&env(&agent)).await;
 
     assert_eq!(still_open(&sessions, &ids), SESSIONS_PER_RUN_MAX - 1);
-    let killed = kills(&executor);
+    let killed = kills(&agent);
     assert!(killed.is_empty(), "{killed:?}");
 }
 
@@ -167,18 +167,15 @@ async fn should_leave_every_session_open_under_the_cap() {
 /// ended goes first, ahead of an older one still running, and is not killed.
 #[tokio::test]
 async fn should_make_room_by_forgetting_the_oldest_ended_session() {
-    let (executor, sessions, ids) = full(SESSIONS_PER_RUN_MAX).await;
+    let (agent, sessions, ids) = full(SESSIONS_PER_RUN_MAX).await;
     let ended = ids.get(2).copied().unwrap();
-    assert!(exit(&executor, ended, 0));
+    assert!(exit(&agent, ended, 0));
 
-    sessions.make_room(&env(&executor)).await;
+    sessions.make_room(&env(&agent)).await;
 
     assert!(sessions.get(ended).is_none());
     assert_eq!(still_open(&sessions, &ids), SESSIONS_PER_RUN_MAX - 1);
-    assert!(
-        kills(&executor).is_empty(),
-        "an ended session is not killed"
-    );
+    assert!(kills(&agent).is_empty(), "an ended session is not killed");
 }
 
 /// With none ended, the least recently used running session is killed; a
@@ -186,13 +183,13 @@ async fn should_make_room_by_forgetting_the_oldest_ended_session() {
 #[tokio::test]
 async fn should_make_room_by_killing_the_least_recently_used_session() {
     let capture = Capture::install();
-    let (executor, sessions, ids) = full(SESSIONS_PER_RUN_MAX).await;
+    let (agent, sessions, ids) = full(SESSIONS_PER_RUN_MAX).await;
     let (first, second) = (*ids.first().unwrap(), ids.get(1).copied().unwrap());
     sessions.get(first).unwrap();
 
-    sessions.make_room(&env(&executor)).await;
+    sessions.make_room(&env(&agent)).await;
 
-    assert_eq!(kills(&executor), [second]);
+    assert_eq!(kills(&agent), [second]);
     assert!(sessions.get(first).is_some());
     assert_eq!(endings(&capture), ["interrupted"]);
 }
@@ -201,24 +198,24 @@ async fn should_make_room_by_killing_the_least_recently_used_session() {
 /// of them already ended and every older one still runs.
 #[tokio::test]
 async fn should_never_prune_the_most_recently_used_sessions() {
-    let (executor, sessions, ids) = full(SESSIONS_PER_RUN_MAX).await;
+    let (agent, sessions, ids) = full(SESSIONS_PER_RUN_MAX).await;
     let recent = ids
         .get(SESSIONS_PER_RUN_MAX - SESSIONS_PROTECTED)
         .copied()
         .unwrap();
-    assert!(exit(&executor, recent, 0));
+    assert!(exit(&agent, recent, 0));
 
-    sessions.make_room(&env(&executor)).await;
+    sessions.make_room(&env(&agent)).await;
 
     assert!(sessions.get(recent).is_some(), "a recent session stays");
-    assert_eq!(kills(&executor), [*ids.first().unwrap()]);
+    assert_eq!(kills(&agent), [*ids.first().unwrap()]);
 }
 
 /// A session a call is reading is in use, so room is made from the next
 /// least recently used one, even though the held one is older.
 #[tokio::test]
 async fn should_never_prune_a_session_a_call_holds() {
-    let (executor, sessions, ids) = full(SESSIONS_PER_RUN_MAX).await;
+    let (agent, sessions, ids) = full(SESSIONS_PER_RUN_MAX).await;
     let (first, second) = (*ids.first().unwrap(), ids.get(1).copied().unwrap());
     let held = sessions.get(first).unwrap();
     let reading = held.lock().await;
@@ -229,14 +226,14 @@ async fn should_never_prune_a_session_a_call_holds() {
     }
 
     // A held session chosen would wait on its reader forever.
-    let made = tokio::time::timeout(ROOM_MADE_WITHIN, sessions.make_room(&env(&executor))).await;
+    let made = tokio::time::timeout(ROOM_MADE_WITHIN, sessions.make_room(&env(&agent))).await;
     assert!(
         made.is_ok(),
         "room is made without waiting on the session a call holds"
     );
 
     assert!(sessions.get(first).is_some(), "the held session stays");
-    assert_eq!(kills(&executor), [second]);
+    assert_eq!(kills(&agent), [second]);
     drop(reading);
 }
 
@@ -245,9 +242,9 @@ async fn should_never_prune_a_session_a_call_holds() {
 #[tokio::test]
 async fn should_log_a_session_ending_once_when_it_is_closed_twice() {
     let capture = Capture::install();
-    let executor = ScriptedExecutor::new([ScriptedProcess::stays_open("")]);
+    let agent = ScriptedGuest::new([ScriptedProcess::stays_open("")]);
     let sessions = Sessions::default();
-    let id = opened(&executor, &sessions).await;
+    let id = opened(&agent, &sessions).await;
 
     sessions.close(id, Ending::Exited(0));
     sessions.close(id, Ending::Exited(0));
@@ -259,15 +256,15 @@ async fn should_log_a_session_ending_once_when_it_is_closed_twice() {
 /// place before either process starts, so the second makes room.
 #[tokio::test]
 async fn should_hold_the_cap_when_two_sessions_start_at_once() {
-    let (executor, sessions, ids) = full(SESSIONS_PER_RUN_MAX - 1).await;
+    let (agent, sessions, ids) = full(SESSIONS_PER_RUN_MAX - 1).await;
 
     let slots = [
-        sessions.make_room(&env(&executor)).await,
-        sessions.make_room(&env(&executor)).await,
+        sessions.make_room(&env(&agent)).await,
+        sessions.make_room(&env(&agent)).await,
     ];
     let mut started = Vec::new();
     for slot in slots {
-        let process = env(&executor).spawn(&Spawn::program(SHELL)).await.unwrap();
+        let process = env(&agent).spawn(&Spawn::program(SHELL)).await.unwrap();
         started.push(process.id);
         sessions.open(slot, process);
     }
@@ -275,28 +272,28 @@ async fn should_hold_the_cap_when_two_sessions_start_at_once() {
     let open = ids.iter().chain(&started);
     let open = open.filter(|id| sessions.get(**id).is_some()).count();
     assert_eq!(open, SESSIONS_PER_RUN_MAX);
-    assert_eq!(kills(&executor), [*ids.first().unwrap()]);
+    assert_eq!(kills(&agent), [*ids.first().unwrap()]);
 }
 
 /// A place dropped unopened, as a failed spawn or a cancelled call drops it,
 /// is freed: the next start one short of the cap makes no room.
 #[tokio::test]
 async fn should_free_a_place_dropped_unopened() {
-    let (executor, sessions, _ids) = full(SESSIONS_PER_RUN_MAX - 1).await;
+    let (agent, sessions, _ids) = full(SESSIONS_PER_RUN_MAX - 1).await;
 
-    drop(sessions.make_room(&env(&executor)).await);
-    let _slot = sessions.make_room(&env(&executor)).await;
+    drop(sessions.make_room(&env(&agent)).await);
+    let _slot = sessions.make_room(&env(&agent)).await;
 
-    let killed = kills(&executor);
+    let killed = kills(&agent);
     assert!(killed.is_empty(), "{killed:?}");
 }
 
 #[tokio::test]
 async fn recovery_boundary_refuses_both_open_and_reserved_sessions() {
-    let executor = ScriptedExecutor::new([ScriptedProcess::stays_open("")]);
+    let agent = ScriptedGuest::new([ScriptedProcess::stays_open("")]);
     let sessions = Sessions::default();
     assert!(sessions.is_quiescent());
-    let reserved = sessions.make_room(&env(&executor)).await;
+    let reserved = sessions.make_room(&env(&agent)).await;
     assert!(
         !sessions.is_quiescent(),
         "a starting process already owns a place"
@@ -306,10 +303,10 @@ async fn recovery_boundary_refuses_both_open_and_reserved_sessions() {
         sessions.is_quiescent(),
         "cancelled starts release their reservation"
     );
-    let reserved = sessions.make_room(&env(&executor)).await;
-    let process = env(&executor).spawn(&Spawn::program(SHELL)).await.unwrap();
+    let reserved = sessions.make_room(&env(&agent)).await;
+    let process = env(&agent).spawn(&Spawn::program(SHELL)).await.unwrap();
     sessions.open(reserved, process);
     assert!(!sessions.is_quiescent(), "an open session prevents capture");
-    sessions.close_all(&env(&executor)).await;
+    sessions.close_all(&env(&agent)).await;
     assert!(sessions.is_quiescent());
 }

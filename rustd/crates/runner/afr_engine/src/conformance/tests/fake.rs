@@ -1,14 +1,13 @@
-//! An engine whose executor answers the suite's own commands as a faithful
+//! An engine whose guest agent answers the suite's own commands as a faithful
 //! engine would, with one flaw switched on at a time.
 
 use std::collections::BTreeMap;
 use std::net::Ipv4Addr;
 use std::sync::{Arc, Mutex, MutexGuard};
 
+use af_guest_wire::{Ending, FileContent, Imported, Stream};
 use af_wire::runner::{Isolation, SandboxEngine};
-use afr_executor::{
-    Ending, Events, Executor, FileContent, Imported, Process, ProcessId, Spawn, Stream,
-};
+use afr_guest_client::{Events, GuestAgent, Process, ProcessId, Spawn};
 use bytes::Bytes;
 use libtest_mimic::Failed;
 use tokio::io::{AsyncRead, AsyncReadExt as _, AsyncWrite, AsyncWriteExt as _};
@@ -126,7 +125,7 @@ impl Engine for Fake {
                 root: self.root.clone(),
             },
             snapshots: self.snapshots,
-            executor: FakeExecutor {
+            agent: FakeGuest {
                 flaw: self.flaw,
                 state: Arc::default(),
             },
@@ -154,14 +153,14 @@ struct Disk {
     tree: Vec<u8>,
 }
 
-/// The executor inside a fake sandbox.
+/// The guest agent inside a fake sandbox.
 #[derive(Debug)]
-struct FakeExecutor {
+struct FakeGuest {
     flaw: Flaw,
     state: Arc<Mutex<State>>,
 }
 
-impl FakeExecutor {
+impl FakeGuest {
     #[expect(
         clippy::expect_used,
         reason = "test fake: a poisoned lock fails the test loudly"
@@ -238,8 +237,8 @@ fn contains(haystack: &[u8], needle: &[u8]) -> bool {
 }
 
 #[async_trait::async_trait]
-impl Executor for FakeExecutor {
-    async fn spawn(&self, spawn: &Spawn) -> afr_executor::Result<Process> {
+impl GuestAgent for FakeGuest {
+    async fn spawn(&self, spawn: &Spawn) -> af_guest_wire::Result<Process> {
         let script = spawn.argv().get(2).map_or_default(String::as_str);
         let (said, status) = self.answer(script);
         let (feed, events) = Events::channel();
@@ -253,15 +252,15 @@ impl Executor for FakeExecutor {
         })
     }
 
-    async fn write(&self, _process: ProcessId, _data: Bytes) -> afr_executor::Result<()> {
+    async fn write(&self, _process: ProcessId, _data: Bytes) -> af_guest_wire::Result<()> {
         Ok(())
     }
 
-    async fn kill(&self, _process: ProcessId) -> afr_executor::Result<()> {
+    async fn kill(&self, _process: ProcessId) -> af_guest_wire::Result<()> {
         Ok(())
     }
 
-    async fn read_file(&self, path: &str, _max_bytes: u64) -> afr_executor::Result<FileContent> {
+    async fn read_file(&self, path: &str, _max_bytes: u64) -> af_guest_wire::Result<FileContent> {
         let data = self.state().disk.files.get(path).cloned();
         let data = data.ok_or_else(|| std::io::Error::from(std::io::ErrorKind::NotFound))?;
         Ok(FileContent {
@@ -270,7 +269,7 @@ impl Executor for FakeExecutor {
         })
     }
 
-    async fn write_file(&self, path: &str, data: Bytes) -> afr_executor::Result<()> {
+    async fn write_file(&self, path: &str, data: Bytes) -> af_guest_wire::Result<()> {
         self.state()
             .disk
             .files
@@ -282,7 +281,7 @@ impl Executor for FakeExecutor {
         &self,
         _at: &str,
         tree: &mut (dyn AsyncRead + Send + Unpin),
-    ) -> afr_executor::Result<Imported> {
+    ) -> af_guest_wire::Result<Imported> {
         let mut read = Vec::new();
         tree.read_to_end(&mut read).await?;
         self.state().disk.tree = read;
@@ -293,7 +292,7 @@ impl Executor for FakeExecutor {
         &self,
         _paths: &[&str],
         into: &mut (dyn AsyncWrite + Send + Unpin),
-    ) -> afr_executor::Result<()> {
+    ) -> af_guest_wire::Result<()> {
         let tree = self.state().disk.tree.clone();
         into.write_all(&tree).await?;
         Ok(())
@@ -308,7 +307,7 @@ pub(super) struct Landed;
 impl Checkout for Landed {
     async fn check_out(&self, sandbox: &dyn Sandbox, _token: &str) -> Result<(), Failed> {
         sandbox
-            .executor()
+            .agent()
             .write_file("README.md", Bytes::from_static(b"# widget\n"))
             .await?;
         Ok(())

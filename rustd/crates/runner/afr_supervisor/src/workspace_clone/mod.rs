@@ -5,12 +5,12 @@
 //!   fetch into the workspace's mirror  (HTTPS; the token rides an in-memory header)
 //!     ─► copy the mirror's objects into <stage>/<name>/.git
 //!     ─► origin = the plain URL, the base branch checked out
-//!     ─► pack <stage>/<name> and import it at <name>: the executor's user owns it
+//!     ─► pack <stage>/<name> and import it at <name>: the guest agent's user owns it
 //! ```
 //!
 //! One mirror per workspace and repository lives under the runner's storage
 //! home, so a later run fetches only what changed. The workspace gets a copy
-//! through the executor, never a link: nothing outside the sandbox resolves
+//! through the guest agent, never a link: nothing outside the sandbox resolves
 //! inside it, and no host path reaches it. Two workers never fetch into one
 //! mirror at once; each mirror has its own lock.
 
@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use afr_executor::Executor;
+use afr_guest_client::GuestAgent;
 use afr_tools::sandbox::Checkout;
 use base64::Engine as _;
 use tokio_util::sync::CancellationToken;
@@ -90,7 +90,7 @@ impl Mirrors {
     }
 
     /// Checks `request`'s repository out into `staged`, then imports it at
-    /// its name into the workspace `executor` serves; what the fetch found.
+    /// its name into the workspace `agent` serves; what the fetch found.
     ///
     /// # Errors
     /// The fetch, the checkout or the import failed, or `interrupt` stopped
@@ -99,11 +99,11 @@ impl Mirrors {
         &self,
         request: Request<'_>,
         staged: &Staged,
-        executor: &dyn Executor,
+        agent: &dyn GuestAgent,
         interrupt: &CancellationToken,
     ) -> Result<Fetched> {
         let fetched = self.check_out(request, staged.path(), interrupt).await?;
-        staged.import(executor, request.checkout.name).await?;
+        staged.import(agent, request.checkout.name).await?;
         Ok(fetched)
     }
 

@@ -1,0 +1,339 @@
+//! The guest entry as the guest kernel's `init`: mount, then serve.
+//!
+//! ```text
+//!   init (root) ─► /proc /sys /sys/fs/cgroup /dev /dev/pts /dev/shm
+//!               ─► memory always overcommitted; loopback up
+//!               ─► vda erofs at /toolbox; its /usr and /etc bound in place
+//!               ─► vdb ext4 at /disk; its workspace/ and tmp/ at /workspace, /tmp
+//!               ─► vdc, when attached: /etc/hosts and /etc/resolv.conf
+//!               ─► every mount shared, so a hosts file swapped in later
+//!                  reaches the inner environment, downstream of this namespace
+//!               ─► fork ─► guest agent: root, never the out-of-memory killer's
+//!                          pick, its files as the sandbox user, on vsock
+//!                          ├─► the tenant leaf, its memory counted, its
+//!                          │   processes capped and frozen for a pin,
+//!                          │   opened as root
+//!                          └─► the inner environment every tenant process runs in,
+//!                              each placed in the tenant leaf
+//!               ─► reaps until the guest agent ends, then powers the guest off
+//! ```
+//!
+//! The guest agent is the guest's root service and stays outside the inner
+//! environment it builds: process, mount and inter-process communication
+//! namespaces of their own, where each tenant process becomes the toolbox's sandbox user
+//! and puts today's confinement on itself — `no_new_privs`, Landlock and
+//! seccomp — before it execs. The guest agent can end that environment and
+//! build it again while the guest runs on, so a restore needs no reboot.
+//!
+//! The leaf has no memory limit of its own: the guest's memory is the run's,
+//! and the host bounds the whole microVM. Its `memory.events` counts each
+//! tenant process any out-of-memory killer ends, which is how the guest agent
+//! tells a run out of memory from any other kill. Its `pids.max` is the run's
+//! process cap: a fork bomb stops there, and the guest agent, outside the leaf,
+//! still answers. A save's pin pause freezes the leaf the same way: every
+//! tenant process stops, a detached one too, and the guest agent answers on.
+
+use std::ffi::CString;
+use std::fs::{self, DirBuilder, Permissions};
+use std::io;
+use std::os::unix::fs::{DirBuilderExt as _, PermissionsExt as _, symlink};
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+use af_cgroup::{
+    CGROUP_PROCS, CGROUP_ROOT, Freezer, MEMORY_EVENTS, PIDS_EVENTS, PIDS_MAX, SUBTREE_CONTROL,
+    TENANT_LEAF,
+};
+use af_guest_wire::{AGENT_PORT, GUEST_USER, GuestEntry, WORKSPACE_ROOT};
+use afg_agent::{InnerEnvironment, LeafFreezer, Tenant};
+use afg_confine::{DEV_SHM, Hardened, Namespaced};
+use rustix::fs::{Gid, Uid};
+use rustix::mount::{MountFlags, MountPropagationFlags, mount, mount_bind, mount_change};
+use tokio_vsock::{VMADDR_CID_ANY, VsockAddr, VsockListener, VsockStream};
+
+use super::{PeerConnections, host_connection, loopback};
+use crate::error::Result;
+
+/// The drives, as the guest kernel names them in the order they are attached.
+const TOOLBOX_DRIVE: &str = "/dev/vda";
+const WORKSPACE_DRIVE: &str = "/dev/vdb";
+const NAMES_DRIVE: &str = "/dev/vdc";
+/// Where each drive is mounted.
+const TOOLBOX: &str = "/toolbox";
+const DISK: &str = "/disk";
+/// The toolbox's trees the guest takes as its own, and the merged-`/usr`
+/// links Debian keeps beside them.
+const TOOLBOX_TREES: [&str; 2] = ["usr", "etc"];
+const USR_LINKS: [(&str, &str); 4] = [
+    ("/bin", "usr/bin"),
+    ("/sbin", "usr/sbin"),
+    ("/lib", "usr/lib"),
+    ("/lib64", "usr/lib64"),
+];
+/// The disk's two trees, each with the mode it is bound with: the workspace,
+/// and the scratch space beside it that shares the disk's limit.
+const DISK_TREES: [(&str, &str, u32); 2] = [
+    ("workspace", WORKSPACE_ROOT, 0o755),
+    ("tmp", "/tmp", 0o1777),
+];
+/// Where the names drive's files are written, and where each is bound: a
+/// re-plan's hosts file is staged in the same directory.
+const RUN: &str = "/run";
+const HOSTS: &str = "/etc/hosts";
+const NAMED: [(&str, &str); 2] = [
+    ("/run/hosts", HOSTS),
+    ("/run/resolv.conf", "/etc/resolv.conf"),
+];
+/// Where the guest kernel's overcommit policy is set.
+const OVERCOMMIT_MEMORY: &str = "/proc/sys/vm/overcommit_memory";
+/// The policy that never refuses an allocation.
+///
+/// The guest's memory is the run's whole limit, so under the kernel's
+/// default a process asking for more than the guest holds is refused the
+/// address space and fails on its own. With this it is given the space and
+/// ended by the out-of-memory killer as it fills it, which is what the
+/// tenant leaf counts and a run reports as out of memory.
+const ALWAYS: &str = "1";
+/// The controllers the tenant leaf needs: memory, for its `oom_kill` count,
+/// and pids, for its process cap. The guest's root cgroup may hold the
+/// guest agent beside it, as the root is exempt from cgroup v2's rule that an
+/// inner node holds no process.
+const TENANT_CONTROLLERS: &str = "+memory +pids";
+
+/// Mounts the guest's file systems, starts the guest agent in a process of its
+/// own and reaps every orphan until it ends, then powers the guest off.
+///
+/// # Errors
+/// A file system would not mount or the guest agent could not start; the kernel
+/// then ends the guest, since its `init` returned.
+pub(crate) fn serve_vm(entry: GuestEntry) -> Result<()> {
+    mount_all(entry)?;
+    fs::write(OVERCOMMIT_MEMORY, ALWAYS)?;
+    // A guest with no network device still serves its own processes on
+    // `127.0.0.1`, as a package index or a test server does.
+    loopback::raise()?;
+    // Shared, so a hosts file the guest agent swaps in later reaches the inner
+    // environment's namespace, downstream of this one.
+    mount_change(
+        "/",
+        MountPropagationFlags::REC | MountPropagationFlags::SHARED,
+    )
+    .map_err(io::Error::from)?;
+    // SAFETY: called from `init` before any thread exists, so the child is a
+    // whole copy of this one process and may run anything.
+    let child = unsafe { libc::fork() };
+    if child < 0 {
+        return Err(io::Error::last_os_error().into());
+    }
+    if child == 0 {
+        let served = agent(entry);
+        let status = i32::from(served.is_err());
+        // SAFETY: `_exit` ends the child at once, as a forked process must.
+        unsafe { libc::_exit(status) };
+    }
+    reap_until(child);
+    // SAFETY: `sync` flushes every file system and touches no memory of ours.
+    unsafe { libc::sync() };
+    // SAFETY: `init` ending its guest is what this call is for; on success it
+    // does not return.
+    unsafe { libc::reboot(libc::RB_AUTOBOOT) };
+    Err(io::Error::last_os_error().into())
+}
+
+/// Mounts every file system the guest serves from.
+fn mount_all(entry: GuestEntry) -> Result<()> {
+    let quiet = MountFlags::NOSUID | MountFlags::NODEV;
+    for (source, target, kind, flags, data) in [
+        ("proc", "/proc", "proc", quiet | MountFlags::NOEXEC, None),
+        ("sysfs", "/sys", "sysfs", quiet | MountFlags::NOEXEC, None),
+        (
+            "cgroup2",
+            CGROUP_ROOT,
+            "cgroup2",
+            quiet | MountFlags::NOEXEC,
+            None,
+        ),
+        ("devtmpfs", "/dev", "devtmpfs", MountFlags::NOSUID, None),
+        (
+            "devpts",
+            "/dev/pts",
+            "devpts",
+            quiet | MountFlags::NOEXEC,
+            None,
+        ),
+        ("tmpfs", RUN, "tmpfs", quiet | MountFlags::NOEXEC, None),
+        (
+            TOOLBOX_DRIVE,
+            TOOLBOX,
+            "erofs",
+            MountFlags::RDONLY | MountFlags::NODEV,
+            None,
+        ),
+        (WORKSPACE_DRIVE, DISK, "ext4", quiet, None),
+        (
+            "tmpfs",
+            DEV_SHM,
+            "tmpfs",
+            quiet,
+            Some(format!("size={},mode=1777", entry.shared_memory_bytes)),
+        ),
+    ] {
+        fs::create_dir_all(target)?;
+        let data = data
+            .map(CString::new)
+            .transpose()
+            .map_err(io::Error::other)?;
+        mount(source, target, kind, flags, data.as_deref()).map_err(io::Error::from)?;
+    }
+    for tree in TOOLBOX_TREES {
+        let target = Path::new("/").join(tree);
+        fs::create_dir_all(&target)?;
+        mount_bind(Path::new(TOOLBOX).join(tree), &target).map_err(io::Error::from)?;
+    }
+    for (link, to) in USR_LINKS {
+        if !Path::new(link).exists() {
+            symlink(to, link)?;
+        }
+    }
+    for (tree, target, mode) in DISK_TREES {
+        let on_disk = Path::new(DISK).join(tree);
+        if !on_disk.exists() {
+            DirBuilder::new().mode(mode).create(&on_disk)?;
+            fs::set_permissions(&on_disk, Permissions::from_mode(mode))?;
+            let (uid, gid) = GUEST_USER;
+            rustix::fs::chown(&on_disk, Some(Uid::from_raw(uid)), Some(Gid::from_raw(gid)))
+                .map_err(io::Error::from)?;
+        }
+        fs::create_dir_all(target)?;
+        mount_bind(&on_disk, target).map_err(io::Error::from)?;
+    }
+    names()
+}
+
+/// Binds the names drive's hosts and resolver files over the toolbox's, when
+/// the plan attached one: a hosts file, a NUL, a resolver file, then padding.
+fn names() -> Result<()> {
+    if !Path::new(NAMES_DRIVE).exists() {
+        return Ok(());
+    }
+    let drive = fs::read(NAMES_DRIVE)?;
+    let text = String::from_utf8_lossy(&drive);
+    let mut files = text.trim_end_matches('\0').splitn(2, '\0');
+    for (written, bound) in NAMED {
+        fs::write(written, files.next().unwrap_or_default())?;
+        if Path::new(bound).exists() {
+            mount_bind(written, bound).map_err(io::Error::from)?;
+        }
+    }
+    Ok(())
+}
+
+/// Waits on every child until `agent` has ended, reaping the orphans the
+/// kernel hands `init` on the way.
+fn reap_until(agent: libc::pid_t) {
+    loop {
+        let mut status = 0;
+        // SAFETY: `status` is a live integer the call writes for its duration.
+        let reaped = unsafe { libc::waitpid(-1, &raw mut status, 0) };
+        if reaped == agent || reaped < 0 {
+            return;
+        }
+    }
+}
+
+/// Makes the tenant leaf under the cgroup v2 mount `root`, its memory
+/// counted and its processes capped at `pids_max`, and answers it.
+fn leaf(root: &Path, pids_max: u32) -> Result<PathBuf> {
+    fs::write(root.join(SUBTREE_CONTROL), TENANT_CONTROLLERS)?;
+    let leaf = root.join(TENANT_LEAF);
+    fs::create_dir(&leaf)?;
+    fs::write(leaf.join(PIDS_MAX), pids_max.to_string())?;
+    Ok(leaf)
+}
+
+/// The tenant leaf `leaf`, its three files and its freezer's two opened
+/// while the guest agent still acts on files as user 0: the kernel checks each
+/// move into it against these open-time credentials, and each freeze file's
+/// access at its open.
+fn tenant(leaf: &Path) -> Result<Tenant> {
+    let procs = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(leaf.join(CGROUP_PROCS))?;
+    let events = fs::File::open(leaf.join(MEMORY_EVENTS))?;
+    let pids_events = fs::File::open(leaf.join(PIDS_EVENTS))?;
+    let freezer = LeafCgroup(Freezer::opened(leaf)?);
+    Ok(Tenant::new(
+        procs.into(),
+        events.into(),
+        pids_events.into(),
+        Arc::new(freezer),
+    )?)
+}
+
+/// The tenant leaf's own cgroup freezer, its files opened as user 0: the
+/// guest agent freezes it for a save's pin pause from outside the leaf.
+#[derive(Debug)]
+struct LeafCgroup(Freezer);
+
+impl LeafFreezer for LeafCgroup {
+    fn freeze(&self) -> io::Result<()> {
+        self.0.freeze().map_err(io::Error::other)
+    }
+
+    fn thaw(&self) -> io::Result<()> {
+        self.0.thaw().map_err(io::Error::other)
+    }
+}
+
+/// The guest agent: outside the inner environment it builds before any thread
+/// exists, serving each host connection on vsock in turn, every process it
+/// starts placed in the tenant leaf.
+fn agent(entry: GuestEntry) -> Result<()> {
+    let workspace = Path::new(WORKSPACE_ROOT);
+    let tenant = Arc::new(tenant(&leaf(Path::new(CGROUP_ROOT), entry.pids_max)?)?);
+    // The guest agent's choice, made here once: every tenant process is
+    // hardened, and no request names another confinement.
+    let inner: Arc<dyn InnerEnvironment> = Arc::new(Namespaced::build(
+        GUEST_USER,
+        workspace,
+        Path::new(HOSTS),
+        Path::new(RUN),
+        Box::new(Hardened::new()?),
+    )?);
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    runtime.block_on(async {
+        let mut listener = Listener(VsockListener::bind(VsockAddr::new(
+            VMADDR_CID_ANY,
+            AGENT_PORT,
+        ))?);
+        while let Ok(stream) = host_connection(&mut listener).await {
+            afg_agent::streamed(stream)
+                .with_sizes(entry.sizes())
+                .with_inner(Arc::clone(&inner))
+                .with_tenant(Arc::clone(&tenant))
+                .serve(workspace)
+                .await?;
+        }
+        Ok(())
+    })
+}
+
+/// The guest's vsock listener, each connection with its peer's identifier.
+struct Listener(VsockListener);
+
+#[async_trait::async_trait]
+impl PeerConnections for Listener {
+    type Stream = VsockStream;
+
+    async fn accept(&mut self) -> io::Result<(VsockStream, u32)> {
+        let (stream, peer) = self.0.accept().await?;
+        Ok((stream, peer.cid()))
+    }
+}
+
+#[cfg(test)]
+#[path = "linux_tests.rs"]
+mod tests;

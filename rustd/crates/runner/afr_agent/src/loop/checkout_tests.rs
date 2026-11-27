@@ -3,7 +3,7 @@
 
 use af_wire::policy::{RepositoryAccess, RepositoryBinding};
 use afr_tools::catalog::GIT;
-use afr_tools::sandbox::{ScriptedExecutor, ScriptedProcess};
+use afr_tools::sandbox::{ScriptedGuest, ScriptedProcess};
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
@@ -26,11 +26,11 @@ async fn git_runs_in_the_repository_the_supervisor_checked_out() {
         vec![call("c1", GIT.name(), json!({"args": ["status"]}))],
         vec![say("nothing to commit")],
     ]);
-    let executor = ScriptedExecutor::new([ScriptedProcess::exits("clean\n", 0)]);
+    let agent = ScriptedGuest::new([ScriptedProcess::exits("clean\n", 0)]);
 
-    drive_in(&script, &bound, &executor, &CancellationToken::new()).await;
+    drive_in(&script, &bound, &agent, &CancellationToken::new()).await;
 
-    let directories: Vec<_> = executor
+    let directories: Vec<_> = agent
         .spawned()
         .iter()
         .map(|spawn| spawn.working_directory().map(str::to_owned))

@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 use crate::catalog::{Entry, FILE_EDIT, FILE_READ, FILE_WRITE};
 use crate::run::Run;
 use crate::runtime::ToolErrorCode;
-use crate::sandbox::ScriptedExecutor;
+use crate::sandbox::ScriptedGuest;
 use crate::testing::{Live, call_in, hosted, offered};
 
 /// The argument names the calls spell.
@@ -100,10 +100,10 @@ async fn test_file_tools_operate_under_workspace() {
 }
 
 /// A path that climbs out by name is refused before any call: the scripted
-/// executor refuses every file call, and no refusal of its is read back.
+/// guest agent refuses every file call, and no refusal of its is read back.
 #[tokio::test]
 async fn test_file_tools_refuse_path_escape() {
-    let executor = ScriptedExecutor::default();
+    let agent = ScriptedGuest::default();
     let (catalog, _sent) = hosted();
     let names: Vec<&str> = FILE_TOOLS.iter().map(|entry| entry.name()).collect();
     let selection = catalog.select(&names).unwrap();
@@ -116,8 +116,7 @@ async fn test_file_tools_refuse_path_escape() {
             "a/../../b",
             "/workspace/../x",
         ] {
-            let refused =
-                call_in(offered(&selection, entry), &executor, &run, on(entry, path)).await;
+            let refused = call_in(offered(&selection, entry), &agent, &run, on(entry, path)).await;
 
             assert_eq!(
                 refused.error_code,
@@ -128,7 +127,7 @@ async fn test_file_tools_refuse_path_escape() {
         }
     }
     assert!(
-        executor.spawned().is_empty(),
+        agent.spawned().is_empty(),
         "nothing was asked of the sandbox"
     );
 }
@@ -137,14 +136,14 @@ async fn test_file_tools_refuse_path_escape() {
 /// a missing file or a refused path: the caller's next step differs.
 #[tokio::test]
 async fn a_sandbox_that_cannot_serve_a_file_call_reads_back_as_unavailable() {
-    let executor = ScriptedExecutor::default();
+    let agent = ScriptedGuest::default();
     let (catalog, _sent) = hosted();
     let names: Vec<&str> = FILE_TOOLS.iter().map(|entry| entry.name()).collect();
     let selection = catalog.select(&names).unwrap();
     let run = Run::default();
 
     for entry in FILE_TOOLS {
-        let failed = call_in(offered(&selection, entry), &executor, &run, on(entry, TODO)).await;
+        let failed = call_in(offered(&selection, entry), &agent, &run, on(entry, TODO)).await;
 
         assert_eq!(
             failed.error_code,
@@ -154,15 +153,15 @@ async fn a_sandbox_that_cannot_serve_a_file_call_reads_back_as_unavailable() {
         );
         assert!(
             !failed.text.is_empty(),
-            "the executor's sentence is carried"
+            "the guest agent's sentence is carried"
         );
     }
 }
 
-/// A link that leaves the workspace is caught by the executor's handle, and
+/// A link that leaves the workspace is caught by the guest agent's handle, and
 /// reads back under the same code; what it points at is untouched.
 #[tokio::test]
-async fn a_link_out_of_the_workspace_is_refused_by_the_executor_under_the_same_code() {
+async fn a_link_out_of_the_workspace_is_refused_by_the_agent_under_the_same_code() {
     let live = Live::start().await;
     let outside = live.outside();
     std::fs::write(outside.join("secret"), b"secret").unwrap();
@@ -279,9 +278,9 @@ async fn an_edit_refuses_text_the_file_holds_twice() {
 }
 
 /// A refusal that is neither a path out nor a missing name reads back as the
-/// sandbox being unavailable, in the executor's own words.
+/// sandbox being unavailable, in the guest agent's own words.
 #[tokio::test]
-async fn a_directory_given_as_a_file_reads_the_executors_own_sentence() {
+async fn a_directory_given_as_a_file_reads_the_agents_own_sentence() {
     let live = Live::start().await;
     std::fs::create_dir(live.root.join("dir")).unwrap();
     let (catalog, _sent) = hosted();

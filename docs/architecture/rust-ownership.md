@@ -36,10 +36,12 @@ New code calls the owner; it never writes a second copy.
 | Egress slots | `afr_firewall`'s `Kernel::slots()` | one pool per running kernel; a fake per test |
 | Sandbox engines | `afr_engine`'s `Engine`, `Sandbox` and `Parked` traits | one `afr_engine_*` crate per engine; only the runner binary and `af_e2e` name one |
 | Egress plan read-back | `afr_engine::enforce`, retried through `backon` | each engine's `EgressEnforcer` and the stale-plan refusal |
-| Trees into and out of a sandbox | `afr_executor::tree`, over `tar` and `cap-std` | the confinement checks, run by both the executor and the host stage |
+| Trees into and out of a sandbox | `af_guest_wire::tree`, over `tar` and `cap-std` | the confinement checks, run by both the guest agent and the host stage |
 | Toolbox and workspace images | `afr_image` | verify, stage, adopt and holds; loop devices and mounts |
-| Cgroup limits and the freezer | `afr_cgroup` | tenant attribution |
-| Sandbox-side hardening | `afr_guest`, over `landlock` and `seccompiler` | the refused system calls and the inner environment |
+| Cgroup limits | `afr_cgroup` | tenant attribution |
+| Cgroup v2 file names and the freezer | `af_cgroup` | the host's run cgroups and the guest's tenant leaf alike |
+| The guest agent's link | `af_guest_wire`'s messages, framing and refusals; `afr_guest_client` on the host, `afg_agent` in the guest | no other crate speaks the link, and neither end links the other's crate |
+| Sandbox-side hardening | `afg_confine`, over `landlock` and `seccompiler` | the refused system calls and the inner environment |
 | Available memory | `procfs-core`'s `Meminfo` | the overcommit ratio and the per-microVM reservation |
 | Path-segment and `LIKE` escaping | `af_validate::rules`; `afd_db` | nothing |
 | Approval status words | `afd_api_wire::approval` | nothing |

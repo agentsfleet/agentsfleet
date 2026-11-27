@@ -3,7 +3,8 @@
 
 use std::time::Duration;
 
-use afr_executor::{Ending, Executor, Spawn};
+use af_guest_wire::Ending;
+use afr_guest_client::{GuestAgent, Spawn};
 use libtest_mimic::Failed;
 
 use crate::engine::{EgressPlan, Engine, Limits, Sandbox, SandboxSpec, fresh_sandbox_id};
@@ -28,7 +29,7 @@ pub(super) const TWO_OUTCOMES: &str = "two outcomes";
 /// mechanism can end it, keeps its identifier in the workspace's
 /// `.background`, where a later command finds it on whatever the sandbox
 /// kept, and prints `started` once it
-/// leads that session: the executor ends what is left in a command's group as
+/// leads that session: the guest agent ends what is left in a command's group as
 /// its shell exits, and `setsid` is in that group until it has made its own.
 pub(super) const START_BACKGROUND: &str = "setsid sleep 600 >/dev/null 2>&1 </dev/null & \
      pid=$!; echo $pid > .background; tries=0; \
@@ -59,8 +60,8 @@ pub struct Outcome {
 ///
 /// # Errors
 /// It could not start, hung, or ended without saying how.
-pub async fn run(executor: &dyn Executor, spawn: Spawn) -> Result<Outcome, Failed> {
-    run_within(executor, spawn, COMMAND_TIMEOUT).await
+pub async fn run(agent: &dyn GuestAgent, spawn: Spawn) -> Result<Outcome, Failed> {
+    run_within(agent, spawn, COMMAND_TIMEOUT).await
 }
 
 /// Runs `spawn` to its end, calling it hung past `timeout`, and gathers its
@@ -69,11 +70,11 @@ pub async fn run(executor: &dyn Executor, spawn: Spawn) -> Result<Outcome, Faile
 /// # Errors
 /// It could not start, hung, or ended without saying how.
 pub async fn run_within(
-    executor: &dyn Executor,
+    agent: &dyn GuestAgent,
     spawn: Spawn,
     timeout: Duration,
 ) -> Result<Outcome, Failed> {
-    let process = executor.spawn(&spawn).await?;
+    let process = agent.spawn(&spawn).await?;
     let mut output = Vec::new();
     let gathered = tokio::time::timeout(
         timeout,
@@ -109,7 +110,7 @@ pub fn expect(holds: bool, why: impl Into<String>) -> Result<(), Failed> {
 
 /// What `script` printed in `sandbox`, trimmed.
 pub(super) async fn said(sandbox: &dyn Sandbox, script: &str) -> Result<String, Failed> {
-    Ok(run(sandbox.executor(), shell(script))
+    Ok(run(sandbox.agent(), shell(script))
         .await?
         .output
         .trim()
@@ -158,7 +159,7 @@ pub(super) async fn in_sandbox_each(
     within(build(engine, limits).await?, async |sandbox| {
         let mut outcomes = Vec::with_capacity(scripts.len());
         for script in scripts {
-            outcomes.push(run(sandbox.executor(), shell(script)).await?);
+            outcomes.push(run(sandbox.agent(), shell(script)).await?);
         }
         Ok(outcomes)
     })

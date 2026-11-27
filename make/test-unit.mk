@@ -6,7 +6,7 @@
 # changes its shard rather than dropping it. af_e2e's tests/layers.rs proves
 # every member lands in exactly one. `_rust_lane` fails a shard that selects
 # nothing.
-RUSTD_UNIT_RUNNER_DIRS := crates/harness/* crates/runner/* guffbolt guffbolt-ai
+RUSTD_UNIT_RUNNER_DIRS := crates/harness/* crates/runner/* crates/guest/* guffbolt guffbolt-ai
 RUSTD_UNIT_DAEMON_DIRS := crates/daemon/main crates/e2e/*
 RUSTD_UNIT_DAEMON_LIBS_DIRS := crates/foundation/* crates/protocol/* crates/daemon/afd_*
 _rustd_manifest_name = $(shell awk -F'"' '/^name = /{print $$2; exit}' $(1))

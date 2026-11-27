@@ -1,5 +1,5 @@
-//! A session against the real executor, served in-process on a scratch
-//! socket, so the handlers cross the socket a sandbox's executor answers on.
+//! A session against the real guest agent, served in-process on a scratch
+//! socket, so the handlers cross the socket a sandbox's guest agent answers on.
 
 #![expect(
     clippy::unwrap_used,
@@ -9,7 +9,7 @@
 
 use std::time::Duration;
 
-use afr_executor::Client;
+use afr_guest_client::Client;
 use guffbolt::ToolOutput;
 use serde_json::json;
 
@@ -19,7 +19,7 @@ use crate::run::Run;
 use crate::runtime::ToolErrorCode;
 use crate::testing::{Live, call_in, hosted, offered};
 
-/// How long the suite waits on the executor before failing.
+/// How long the suite waits on the guest agent before failing.
 const PATIENCE: Duration = Duration::from_secs(20);
 /// How long each write waits for `cat` to echo: ample on a loaded machine.
 const ECHO_YIELD_MS: u64 = 1_000;
@@ -37,14 +37,14 @@ fn session_id(output: &ToolOutput) -> u64 {
 #[tokio::test]
 async fn test_exec_session_survives_across_calls() {
     let scratch = tempfile::tempdir().unwrap();
-    let socket = scratch.path().join("executor.sock");
+    let socket = scratch.path().join("agent.sock");
     let root = scratch.path().join("workspace");
     std::fs::create_dir(&root).unwrap();
     let server = tokio::spawn({
         let (socket, root) = (socket.clone(), root.clone());
-        async move { afr_executor::serve(&socket, &root).await }
+        async move { afg_agent::serve(&socket, &root).await }
     });
-    let client = Client::connect_within(&socket, PATIENCE, afr_executor::Sizes::DEFAULT)
+    let client = Client::connect_within(&socket, PATIENCE, af_guest_wire::Sizes::DEFAULT)
         .await
         .unwrap();
     let (catalog, _sent) = hosted();
@@ -86,7 +86,7 @@ async fn test_exec_session_survives_across_calls() {
     drop(client);
     tokio::time::timeout(PATIENCE, server)
         .await
-        .expect("the executor stops once its client hangs up")
+        .expect("the guest agent stops once its client hangs up")
         .unwrap()
         .unwrap();
 }
@@ -131,7 +131,7 @@ async fn a_missing_or_escaping_workdir_reads_as_the_callers_mistake() {
     live.stop().await;
 }
 
-/// A session that has printed past the half mebibyte the executor once sent
+/// A session that has printed past the half mebibyte the guest agent once sent
 /// live is still heard: what it says next reaches the next call, not only
 /// its end.
 #[tokio::test]
@@ -170,8 +170,8 @@ async fn test_a_session_is_heard_past_its_first_half_mebibyte() {
     live.stop().await;
 }
 
-/// A write the real executor refuses, because the process closed its input,
-/// reads as the fixed sentence and the session running on: the executor's
+/// A write the real guest agent refuses, because the process closed its input,
+/// reads as the fixed sentence and the session running on: the guest agent's
 /// words stay on the host.
 #[tokio::test]
 async fn test_a_write_the_process_will_not_take_says_so_and_runs_on() {

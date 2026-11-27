@@ -10,7 +10,7 @@ use super::sniffed;
 use crate::catalog::IMAGE;
 use crate::run::Run;
 use crate::runtime::ToolErrorCode;
-use crate::sandbox::ScriptedExecutor;
+use crate::sandbox::ScriptedGuest;
 use crate::testing::{Live, call, call_in, hosted, offered};
 use guffbolt::tools::Limits;
 
@@ -190,7 +190,7 @@ fn each_kind_is_told_by_its_first_bytes() {
 #[tokio::test]
 async fn a_missing_image_a_path_out_and_no_sandbox_read_their_codes() {
     let live = Live::start().await;
-    let scripted = ScriptedExecutor::default();
+    let scripted = ScriptedGuest::default();
     let (catalog, _sent) = hosted();
     let selection = catalog.select(&[IMAGE.name()]).unwrap();
     let tool = offered(&selection, &IMAGE);

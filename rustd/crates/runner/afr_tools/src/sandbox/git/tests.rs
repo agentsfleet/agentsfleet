@@ -5,14 +5,14 @@
 
 use af_core::test_util::trace::Capture;
 use af_egress::fixture::REPOSITORY;
-use afr_executor::Spawn;
+use afr_guest_client::Spawn;
 use serde_json::{Value, json};
 
 use super::{EVENT_REFUSED, GIT_REFUSED_SUBCOMMANDS, subcommand};
 use crate::catalog::{Entry, GIT};
 use crate::run::Run;
 use crate::runtime::ToolErrorCode;
-use crate::sandbox::{Checkout, ScriptedExecutor, ScriptedProcess};
+use crate::sandbox::{Checkout, ScriptedGuest, ScriptedProcess};
 use crate::testing::{Live, call, call_in};
 
 /// The directory the fixture repository is checked out in.
@@ -27,9 +27,9 @@ fn running(args: &[&str]) -> Value {
     json!({"args": args})
 }
 
-/// The one spawn `executor` was asked for.
-fn only_spawn(executor: &ScriptedExecutor) -> Spawn {
-    match executor.spawned().as_slice() {
+/// The one spawn `agent` was asked for.
+fn only_spawn(agent: &ScriptedGuest) -> Spawn {
+    match agent.spawned().as_slice() {
         [spawn] => spawn.clone(),
         other => panic!("one spawn, got {other:?}"),
     }
@@ -52,14 +52,14 @@ fn widgets() -> Checkout<'static> {
 
 #[tokio::test]
 async fn test_git_tool_runs_in_the_one_checked_out_repository() {
-    let executor = ScriptedExecutor::new([ScriptedProcess::exits("On branch dev\n", 0)]);
+    let agent = ScriptedGuest::new([ScriptedProcess::exits("On branch dev\n", 0)]);
     let run = holding(vec![widgets()]);
 
-    let output = call_in(git(), &executor, &run, running(&["status"])).await;
+    let output = call_in(git(), &agent, &run, running(&["status"])).await;
 
     assert_eq!(output.text, "On branch dev\n");
     assert_eq!((output.exit_code, output.error_code), (Some(0), None));
-    let spawn = only_spawn(&executor);
+    let spawn = only_spawn(&agent);
     assert_eq!(spawn.argv(), ["git", "status"]);
     assert_eq!(spawn.working_directory(), Some(WIDGETS));
     assert_eq!(
@@ -73,23 +73,22 @@ async fn test_git_tool_runs_in_the_one_checked_out_repository() {
 
 #[tokio::test]
 async fn should_run_in_the_workspace_root_with_no_or_several_checkouts() {
-    let executor =
-        ScriptedExecutor::new([ScriptedProcess::exits("", 0), ScriptedProcess::exits("", 0)]);
+    let agent = ScriptedGuest::new([ScriptedProcess::exits("", 0), ScriptedProcess::exits("", 0)]);
     let other = Checkout {
         name: "gadgets",
         ..widgets()
     };
 
-    call_in(git(), &executor, &holding(Vec::new()), running(&["log"])).await;
+    call_in(git(), &agent, &holding(Vec::new()), running(&["log"])).await;
     call_in(
         git(),
-        &executor,
+        &agent,
         &holding(vec![widgets(), other]),
         running(&["-C", WIDGETS, "log"]),
     )
     .await;
 
-    let directories: Vec<_> = executor
+    let directories: Vec<_> = agent
         .spawned()
         .iter()
         .map(|spawn| spawn.working_directory().map(str::to_owned))
@@ -100,11 +99,11 @@ async fn should_run_in_the_workspace_root_with_no_or_several_checkouts() {
 #[tokio::test]
 async fn test_git_tool_refuses_network_subcommands() {
     let capture = Capture::install();
-    let executor = ScriptedExecutor::new([]);
+    let agent = ScriptedGuest::new([]);
     let run = holding(vec![widgets()]);
 
     for refused in GIT_REFUSED_SUBCOMMANDS {
-        let output = call_in(git(), &executor, &run, running(&[refused, "origin"])).await;
+        let output = call_in(git(), &agent, &run, running(&[refused, "origin"])).await;
 
         assert_eq!(
             output.error_code,
@@ -119,7 +118,7 @@ async fn test_git_tool_refuses_network_subcommands() {
             )
         );
     }
-    assert!(executor.spawned().is_empty(), "nothing ran");
+    assert!(agent.spawned().is_empty(), "nothing ran");
     let logged: Vec<String> = capture
         .events()
         .iter()
@@ -131,12 +130,12 @@ async fn test_git_tool_refuses_network_subcommands() {
 
 #[tokio::test]
 async fn should_find_the_subcommand_after_global_options() {
-    let executor = ScriptedExecutor::new([]);
+    let agent = ScriptedGuest::new([]);
     let run = holding(vec![widgets()]);
 
     let output = call_in(
         git(),
-        &executor,
+        &agent,
         &run,
         running(&["-c", "user.name=x", "--no-pager", "-C", WIDGETS, "push"]),
     )
@@ -184,13 +183,7 @@ async fn should_refuse_without_a_sandbox_and_on_a_refused_spawn() {
     let run = holding(vec![widgets()]);
 
     let unsandboxed = call(git(), &run, running(&["status"])).await;
-    let refused = call_in(
-        git(),
-        &ScriptedExecutor::new([]),
-        &run,
-        running(&["status"]),
-    )
-    .await;
+    let refused = call_in(git(), &ScriptedGuest::new([]), &run, running(&["status"])).await;
 
     assert_eq!(
         unsandboxed.error_code,
@@ -205,15 +198,15 @@ async fn should_refuse_without_a_sandbox_and_on_a_refused_spawn() {
 
 #[tokio::test]
 async fn should_refuse_arguments_that_are_not_a_list_of_strings() {
-    let executor = ScriptedExecutor::new([]);
+    let agent = ScriptedGuest::new([]);
 
-    let output = call_in(git(), &executor, &Run::default(), json!({"args": "status"})).await;
+    let output = call_in(git(), &agent, &Run::default(), json!({"args": "status"})).await;
 
     assert_eq!(
         output.error_code,
         Some(ToolErrorCode::InvalidArguments.into())
     );
-    let spawned = executor.spawned();
+    let spawned = agent.spawned();
     assert!(spawned.is_empty(), "{spawned:?}");
 }
 

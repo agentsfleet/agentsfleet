@@ -1,5 +1,5 @@
 //! Fakes for the supervisor's seams: the daemon, the engine, its sandbox and
-//! executor, and the agent. Every one is driven by the suites that use it.
+//! guest agent, and the agent. Every one is driven by the suites that use it.
 #![expect(
     clippy::unwrap_used,
     clippy::assertions_on_result_states,
@@ -19,7 +19,7 @@ use af_wire::tool_detail::{ItemKind, ItemStatus, ToolCallRecord};
 use af_wire::tool_trace::{ToolCallStatus, ToolTrace, ToolTraceCall};
 use afr_agent::{AgentEngine, AgentRun, Needs, RunOutput};
 use afr_agent::{Completed, ExecutionResult, ResultOutcome};
-use afr_executor::{Executor, ProcessId, Spawn, Unavailable};
+use afr_guest_client::{GuestAgent, ProcessId, Spawn, Unavailable};
 use afr_tools::Catalog;
 use afr_tools::catalog::{FILE_READ, GIT, HTTP_REQUEST, UPDATE_PLAN};
 use afr_tools::stub::Stub;
@@ -43,8 +43,8 @@ pub(crate) use self::git_fixture::{FIRST_README, FIXTURE_BRANCH, commit, git, he
 pub(crate) use self::resolver::{Stalled, assigned};
 pub(crate) use self::rig::{Rig, daemon, position, reported};
 pub(crate) use self::sandbox::{
-    Builds, CAPABILITIES, DESTROY, EXECUTOR_GONE, FakeEngine, KILL, Kill, NO_PARK, NO_REFILL,
-    Parking, STILL_RUNNING,
+    AGENT_GONE, Builds, CAPABILITIES, DESTROY, FakeEngine, KILL, Kill, NO_PARK, NO_REFILL, Parking,
+    STILL_RUNNING,
 };
 pub(crate) use af_egress::testing::FakeResolver;
 
@@ -113,7 +113,7 @@ pub(crate) fn detail<T>(result: &crate::Result<T>) -> Option<&'static str> {
 /// What the fake agent does with a run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Behaviour {
-    /// Emits one chunk, drives the executor, and answers with one memory delta.
+    /// Emits one chunk, drives the guest agent, and answers with one memory delta.
     Answer,
     /// Answers as [`Behaviour::Answer`] does, with three calls' records and
     /// their trace.
@@ -147,7 +147,7 @@ pub(crate) struct FakeAgent {
     /// suite to set beside when its sandbox was ready.
     pub(crate) began: Option<mpsc::UnboundedSender<Instant>>,
     /// Where each run reports what its sandbox source lent it: none for an
-    /// executor, or why there was none. [`Rig`] reads it back.
+    /// guest agent, or why there was none. [`Rig`] reads it back.
     pub(crate) lent: Option<mpsc::UnboundedSender<Option<Unavailable>>>,
     running: AtomicUsize,
     catalog: Catalog,
@@ -200,12 +200,12 @@ impl AgentEngine for FakeAgent {
             }));
         if !matches!(self.behaviour, Behaviour::Talks | Behaviour::Break) {
             // The turn's first sandbox-side call: it waits for the build.
-            let lent = run.executor.get().await;
+            let lent = run.agent.get().await;
             if let Some(reader) = &self.lent {
                 let _reader_gone = reader.send(lent.err());
             }
-            if let Ok(executor) = lent {
-                exercise(executor).await;
+            if let Ok(agent) = lent {
+                exercise(agent).await;
             }
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
@@ -214,7 +214,7 @@ impl AgentEngine for FakeAgent {
             Behaviour::Answer | Behaviour::Talks => Ok(answer()),
             Behaviour::Calls => Ok(with_calls(3)),
             Behaviour::Break => {
-                Err(afr_executor::Error::from(std::io::Error::other("engine broke")).into())
+                Err(af_guest_wire::Error::from(std::io::Error::other("engine broke")).into())
             }
             Behaviour::Hang => std::future::pending().await,
             Behaviour::Stops => {
@@ -231,15 +231,15 @@ impl AgentEngine for FakeAgent {
     }
 }
 
-/// Calls every executor method, as a turn's tools would.
-async fn exercise(executor: &dyn Executor) {
+/// Calls every guest agent method, as a turn's tools would.
+async fn exercise(agent: &dyn GuestAgent) {
     let id = ProcessId::new(1);
-    assert!(executor.spawn(&Spawn::program("true")).await.is_err());
-    assert!(executor.write(id, Bytes::new()).await.is_ok());
-    assert!(executor.kill(id).await.is_ok());
-    assert!(executor.read_file("a", 1).await.is_ok());
-    assert!(executor.write_file("a", Bytes::new()).await.is_ok());
-    let entries = executor.list_dir("/").await.unwrap().entries;
+    assert!(agent.spawn(&Spawn::program("true")).await.is_err());
+    assert!(agent.write(id, Bytes::new()).await.is_ok());
+    assert!(agent.kill(id).await.is_ok());
+    assert!(agent.read_file("a", 1).await.is_ok());
+    assert!(agent.write_file("a", Bytes::new()).await.is_ok());
+    let entries = agent.list_dir("/").await.unwrap().entries;
     assert!(entries.is_empty(), "{entries:?}");
 }
 

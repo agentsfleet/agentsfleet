@@ -43,7 +43,7 @@ pub(super) async fn no_secret_in_sandbox(
             context.checkout.check_out(sandbox, CANARY).await?;
             let after_checkout = said(sandbox, &search()).await?;
             sandbox
-                .executor()
+                .agent()
                 .write_file(PLANTED, Bytes::from_static(CANARY.as_bytes()))
                 .await?;
             Ok((after_checkout, said(sandbox, &search()).await?))

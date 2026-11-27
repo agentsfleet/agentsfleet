@@ -1,9 +1,9 @@
 //! The sandbox-side tools in a real microVM: each trial calls the tool a
 //! run's model calls, built as the runner builds a run's tools, over the
-//! guest's executor.
+//! guest's agent.
 
 use afr_engine::Engine as _;
-use afr_executor::{Executor, ExecutorSlot};
+use afr_guest_client::{AgentSlot, GuestAgent};
 use afr_tools::catalog::SHELL;
 use afr_tools::{Backends, Run, ToolContext, ToolErrorCode};
 use guffbolt::{CallRef, ToolOutput};
@@ -44,16 +44,16 @@ pub(crate) fn shell(command: &str, timeout_ms: Option<u64>) -> Value {
 }
 
 /// Calls `name` with `arguments` at step `step`, the tool built as a run
-/// builds it over the sandbox `executor` serves, and lent the call the way
+/// builds it over the sandbox `agent` serves, and lent the call the way
 /// the router lends a sandbox-side one.
 pub(crate) async fn called(
-    executor: &dyn Executor,
+    agent: &dyn GuestAgent,
     run: &Run<'_>,
     step: u64,
     name: &str,
     arguments: &Value,
 ) -> Result<ToolOutput, Failed> {
-    let slot = ExecutorSlot::ready(executor);
+    let slot = AgentSlot::ready(agent);
     let backends = Backends::new(run, &slot, None);
     let tools = backends.tools(&[name])?;
     let tool = tools.tool(name).ok_or("the run builds it")?;
@@ -63,7 +63,7 @@ pub(crate) async fn called(
         call_id: format!("call-{step}"),
     };
     let context = ToolContext {
-        executor: Some(executor),
+        agent: Some(agent),
         run,
         call_ref: &call_ref,
     };
@@ -85,8 +85,8 @@ pub(crate) fn shell_calls(
         let run = Run::default();
         let mut outputs = Vec::with_capacity(calls.len());
         for (step, arguments) in (1_u64..).zip(calls) {
-            let executor = sandbox.executor();
-            outputs.push(called(executor, &run, step, SHELL.name(), arguments).await?);
+            let agent = sandbox.agent();
+            outputs.push(called(agent, &run, step, SHELL.name(), arguments).await?);
         }
         sandbox.destroy().await?;
         Ok(outputs)
@@ -131,7 +131,7 @@ pub(crate) fn shell_inherits_sandbox(lane: &Lane) -> Result<(), Failed> {
     let calls = [shell(OWN_STATUS, None), shell(REACH_OUT, None)];
     let outputs = shell_calls(lane, "shell-confined", &calls)?;
     let [status, reach] = answers(&outputs)?;
-    afr_guest::capabilities_dropped(&status.text)?;
+    afg_confine::capabilities_dropped(&status.text)?;
     expect(
         reach.text.contains(UNREACHABLE),
         format!("no route out, got {:?}", reach.text),

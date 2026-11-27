@@ -5,12 +5,12 @@
 //!  shell ─┐                         ┌─► LocalEnv: this host's processes and files
 //!  exec_command, write_stdin ─┼─► Env ─┤
 //!  file_*, apply_patch, ls ──┤         └─► an embedder's sandbox, such as a
-//!  find, grep: one search ──┘              microVM's executor over a socket
+//!  find, grep: one search ──┘              microVM's guest agent over a socket
 //! ```
 //!
 //! A tool never starts a process or opens a file itself: it asks its
 //! [`Env`], so one tool serves a laptop and a sandbox alike. The shape is the
-//! executor's a sandboxing embedder already has: start a process and read its
+//! guest agent's a sandboxing embedder already has: start a process and read its
 //! events, write to it, kill it, read, write, delete and list files under
 //! one root, and search them where they are. Every path is relative to that
 //! root, and one that leaves it, by name or through a link, is the

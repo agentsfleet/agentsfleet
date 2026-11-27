@@ -14,6 +14,7 @@ pub(crate) enum Layer {
     Protocol,
     Harness,
     Runner,
+    Guest,
     Daemon,
     E2e,
     Standalone,
@@ -34,6 +35,7 @@ impl Layer {
             "protocol" => Self::Protocol,
             "harness" => Self::Harness,
             "runner" => Self::Runner,
+            "guest" => Self::Guest,
             "daemon" => Self::Daemon,
             "e2e" => Self::E2e,
             _ => return None,
@@ -62,6 +64,8 @@ pub(crate) struct Dep {
     pub(crate) features: Vec<String>,
     /// Linked only when a feature turns it on.
     pub(crate) optional: bool,
+    /// Whether the edge turns on the target's `default` feature.
+    pub(crate) default_features: bool,
 }
 
 /// One workspace member.
@@ -190,11 +194,16 @@ fn edges(table: &Table) -> Vec<Dep> {
                 .get("optional")
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
+            let default_features = value
+                .get("default-features")
+                .and_then(Value::as_bool)
+                .unwrap_or(true);
             deps.push(Dep {
                 name,
                 kind,
                 features,
                 optional,
+                default_features,
             });
         }
     }

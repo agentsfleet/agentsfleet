@@ -52,7 +52,10 @@ jiff.workspace = true
 afr_agent.workspace = true
 # Physical decisions reuse the existing guarded provider protocols.
 af_providers.workspace = true
-afr_executor.workspace = true
+# The guest agent a run's sandbox serves, through the host's client, and the
+# values, tree format and refusals its link carries.
+afr_guest_client.workspace = true
+af_guest_wire.workspace = true
 # The memory seed a run starts from, and the recall seam past its window.
 afr_memory.workspace = true
 # The seam every sandbox engine meets: the supervisor names no engine and no
@@ -101,6 +104,9 @@ tracing.workspace = true
 futures-util.workspace = true
 
 [dev-dependencies]
+# The real agent, served in-process on a scratch socket: a dev-dependency
+# only, which the layer rule allows; the shipped runner links no guest crate.
+afg_agent.workspace = true
 http-body-util.workspace = true
 af_stream = { workspace = true, features = ["test-util"] }
 # Verified local HTTPS object storage boundary for recovery transfer tests.
@@ -119,8 +125,8 @@ af_egress = { workspace = true, features = ["test-util"] }
 afr_tools = { workspace = true, features = ["test-util"] }
 # A test engine answers a build of unknown outcome as a real engine would.
 afr_engine = { workspace = true, features = ["test-util"] }
-# The fake engine's `Behaviour::Break` answers an executor failure, and the
-# lift from `afr_executor::Error` into `afr_agent::Error` exists only under
+# The fake engine's `Behaviour::Break` answers a guest agent failure, and the
+# lift from `af_guest_wire::Error` into `afr_agent::Error` exists only under
 # this feature; named here so the tests build when this crate is selected
 # alone.
 afr_agent = { workspace = true, features = ["test-util"] }

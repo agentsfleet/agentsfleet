@@ -2,7 +2,7 @@
 //!
 //! A tool tells the model what it is without any call's context
 //! ([`Describe`]) and runs a call with the context its embedder lends it
-//! ([`Tool`]), a tool's spec kept apart from its executor. [`Tools`] is the
+//! ([`Tool`]), a tool's spec kept apart from its guest agent. [`Tools`] is the
 //! set one loop holds: it looks a call up by name and answers a name it holds
 //! no tool for with the harness's own refusal, so no embedder writes that
 //! sentence twice.

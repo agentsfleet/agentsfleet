@@ -117,8 +117,8 @@ pub(super) async fn run_with(
             prepared_durable_task: None,
             run: payload,
             memory: afr_memory::Seed::default(),
-            executor: &afr_executor::ExecutorSlot::unavailable(
-                afr_executor::Unavailable::NoSandbox,
+            agent: &afr_guest_client::AgentSlot::unavailable(
+                afr_guest_client::Unavailable::NoSandbox,
             ),
             mint: &CountingMint::never(),
             verbs: &afr_tools::CLOSED,

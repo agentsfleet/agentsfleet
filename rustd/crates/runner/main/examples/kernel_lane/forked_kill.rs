@@ -25,7 +25,7 @@ const FORKED_HOG: &str =
 const SHELL_KILLED: &str = "137";
 
 /// The child is killed for memory and its shell exits 137, which the
-/// executor reads as `out_of_memory`; the monitor's leaf counted no kill.
+/// guest agent reads as `out_of_memory`; the monitor's leaf counted no kill.
 pub(crate) fn forked_oom(lane: &Lane) -> Result<(), Failed> {
     let limits = Limits {
         memory_bytes: SMALL_MEMORY,
@@ -37,7 +37,7 @@ pub(crate) fn forked_oom(lane: &Lane) -> Result<(), Failed> {
         let sandbox = engine
             .prepare(spec(&engine, &id, limits, Network::Isolated)?)
             .await?;
-        let hog = run_in(sandbox.executor(), shell(FORKED_HOG)).await;
+        let hog = run_in(sandbox.agent(), shell(FORKED_HOG)).await;
         let events = fs::read_to_string(monitor_events(lane, RUN)).unwrap_or_default();
         sandbox.destroy().await?;
         Ok::<_, Failed>((hog?, events))

@@ -1,5 +1,5 @@
 //! Native task files and base custody remain separate from event-owned recovery.
-//! Files cross through a stage on the host and the executor's `import` and
+//! Files cross through a stage on the host and the guest agent's `import` and
 //! `export`, never a host path into the workspace.
 
 use af_core::id::Uuid7;
@@ -41,7 +41,7 @@ impl Run<'_> {
             }
             .run(
                 Some((staged.path().to_owned(), Staged::owner())),
-                staged.restore(sandbox.executor()),
+                staged.restore(sandbox.agent()),
             )
             .await?;
             return Ok(State {
@@ -57,7 +57,7 @@ impl Run<'_> {
         {
             let staged = self.lessee.staging.stage(sandbox.id())?;
             let disk_bytes = sandbox.granted().limits().disk_bytes;
-            staged.export(sandbox.executor(), disk_bytes).await?;
+            staged.export(sandbox.agent(), disk_bytes).await?;
             verify_fresh_checkout(staged.path(), repository, head).await?;
             return self
                 .native_base(task, staged.path().to_owned(), scope, toolbox, permit)

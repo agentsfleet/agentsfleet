@@ -13,10 +13,10 @@
 use std::fs;
 use std::time::Duration;
 
+use af_guest_wire::Ending;
 use afr_engine::conformance::ENOSPC;
 use afr_engine::{Engine as _, Limits, Network};
 use afr_engine_firecracker::FirecrackerEngine;
-use afr_executor::Ending;
 use libtest_mimic::Failed;
 
 use crate::exhaustion::{NO_OOM_KILLS, OK, monitor_events};
@@ -53,7 +53,7 @@ struct Seen {
 }
 
 /// Four runs fill `/tmp` and `/workspace` at once; each fill ends in
-/// `ENOSPC`, no monitor is killed, and each executor runs a command
+/// `ENOSPC`, no monitor is killed, and each guest agent runs a command
 /// afterwards.
 pub(crate) fn writable_state_exhaustion_spares_the_sandbox(lane: &Lane) -> Result<(), Failed> {
     let engine = lane.microvms()?;
@@ -87,11 +87,11 @@ async fn fill(engine: &FirecrackerEngine, lane: &Lane, run_id: &str) -> Result<S
         .prepare(spec(engine, &id, limits, Network::Isolated)?)
         .await
         .map_err(|error| step(run_id, "prepare", &error))?;
-    let executor = sandbox.executor();
+    let agent = sandbox.agent();
     let seen = async {
-        let tmp = run_within(executor, shell(FILL_TMP), FILL_TIMEOUT).await?;
-        let workspace = run_within(executor, shell(FILL_WORKSPACE), FILL_TIMEOUT).await?;
-        let after = run_in(executor, shell(&format!("echo {OK}"))).await?;
+        let tmp = run_within(agent, shell(FILL_TMP), FILL_TIMEOUT).await?;
+        let workspace = run_within(agent, shell(FILL_WORKSPACE), FILL_TIMEOUT).await?;
+        let after = run_in(agent, shell(&format!("echo {OK}"))).await?;
         let events = fs::read_to_string(monitor_events(lane, run_id)).unwrap_or_default();
         Ok::<_, Failed>(Seen {
             tmp,
@@ -114,7 +114,7 @@ fn step(run_id: &str, name: &str, error: &afr_engine::Error) -> Failed {
     format!("{run_id} {name}: {error:?}").into()
 }
 
-/// Both fills ended at the disk, the executor still runs, and the monitor
+/// Both fills ended at the disk, the guest agent still runs, and the monitor
 /// was not killed.
 fn survived(run_id: &str, seen: &Seen) -> Result<(), Failed> {
     expect(
@@ -131,7 +131,7 @@ fn survived(run_id: &str, seen: &Seen) -> Result<(), Failed> {
     expect(
         seen.after.output.trim() == OK && seen.after.ending == Ending::Exited(0),
         format!(
-            "{run_id}: the executor runs a command afterwards, got {:?}",
+            "{run_id}: the guest agent runs a command afterwards, got {:?}",
             seen.after
         ),
     )?;

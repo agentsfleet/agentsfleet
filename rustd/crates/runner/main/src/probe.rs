@@ -22,10 +22,12 @@ pub(crate) fn probe() -> ExitCode {
 /// directory is named, so the answer says nothing about direct I/O.
 pub(crate) fn host() -> HostProbe {
     HostProbe {
-        landlock: afr_guest::landlock_enforceable()
-            && afr_guest::landlock_listed(Path::new(afr_guest::LSM_PATH)),
-        seccomp: afr_guest::seccomp_offered(Path::new(afr_guest::SECCOMP_ACTIONS_PATH)),
-        cgroup_controllers: afr_cgroup::delegated_controllers(Path::new(afr_cgroup::CGROUP_ROOT)),
+        landlock: afr_engine_firecracker::landlock_enforceable()
+            && afr_engine_firecracker::landlock_listed(Path::new(afr_engine_firecracker::LSM_PATH)),
+        seccomp: afr_engine_firecracker::seccomp_offered(Path::new(
+            afr_engine_firecracker::SECCOMP_ACTIONS_PATH,
+        )),
+        cgroup_controllers: afr_cgroup::delegated_controllers(Path::new(af_cgroup::CGROUP_ROOT)),
         kvm: afr_engine_firecracker::probe(Path::new(afr_engine_firecracker::KVM_PATH)),
         toolbox_filesystem: afr_image::toolbox_filesystem(Path::new(afr_image::FILESYSTEMS_PATH)),
         workspace_direct_io: None,

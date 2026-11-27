@@ -151,7 +151,7 @@ async fn an_ordinary_restore_without_its_actual_workspace_asks_nothing() -> Chec
             .restore(
                 &assignment,
                 workspace,
-                Some((&staged, sandbox.executor())),
+                Some((&staged, sandbox.agent())),
                 &CancellationToken::new(),
                 None,
             )

@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use af_core::id::Uuid7;
-use afr_executor::Executor;
+use afr_guest_client::GuestAgent;
 
 use crate::error::{Error, Result};
 use crate::network::{Network, NetworkKind};
@@ -147,9 +147,9 @@ pub fn fresh_sandbox_id() -> Uuid7 {
 /// Whether a sandbox can still serve.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SandboxState {
-    /// Its executor is up.
+    /// Its guest agent is up.
     Running,
-    /// Its executor or its processes are gone; it serves nothing more and is
+    /// Its guest agent or its processes are gone; it serves nothing more and is
     /// only destroyed.
     Ended,
 }
@@ -157,7 +157,7 @@ pub enum SandboxState {
 /// What [`Sandbox::quiesce`] read from the engine's own mechanism.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Quiescence {
-    /// No tenant process remains; only the resident executor may run, and
+    /// No tenant process remains; only the resident guest agent may run, and
     /// its memory is never captured.
     Quiet,
     /// A tenant process still runs, so the disk may still change.
@@ -218,7 +218,7 @@ pub trait Engine: Send + Sync + fmt::Debug {
     /// of their runs builds them for. One that builds per run ignores it.
     fn network_assigned(&self, _kind: NetworkKind) {}
 
-    /// Builds the sandbox `spec` names, with its executor ready, or refuses.
+    /// Builds the sandbox `spec` names, with its guest agent ready, or refuses.
     ///
     /// A sandbox that cannot be built refuses the run; nothing ever runs
     /// unsandboxed in its place. A build whose outcome the engine cannot
@@ -280,13 +280,13 @@ pub trait Sandbox: Send + Sync + fmt::Debug {
     /// What it enforces.
     fn granted(&self) -> &Granted;
 
-    /// The executor running inside it.
-    fn executor(&self) -> &dyn Executor;
+    /// The guest agent running inside it.
+    fn agent(&self) -> &dyn GuestAgent;
 
     /// Whether it can still serve. A warm slot whose sandbox ended while it
     /// waited is discarded on claim rather than handed to a run, and a run
     /// whose sandbox ended under it ends unavailable. Read through `&self`, so
-    /// a run reads it while its turn borrows the executor.
+    /// a run reads it while its turn borrows the guest agent.
     fn state(&self) -> SandboxState;
 
     /// Whether any tenant process remains, read from the engine's own
@@ -342,7 +342,7 @@ pub trait Parked: Send + Sync + fmt::Debug {
     /// How it is parked.
     fn mode(&self) -> ParkMode;
 
-    /// Serves again; returns once its executor answers.
+    /// Serves again; returns once its guest agent answers.
     ///
     /// # Errors
     /// It would not resume, and the engine has destroyed it; its run gets a

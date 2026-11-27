@@ -34,7 +34,10 @@ af_wire.workspace = true
 af_validate.workspace = true
 # A run's outbound guard, and the mint seam the supervisor implements.
 af_egress.workspace = true
-afr_executor.workspace = true
+# The guest agent a run's tools reach, through the host's client, and the
+# values and refusals its link carries.
+afr_guest_client.workspace = true
+af_guest_wire.workspace = true
 # The fleet's memory a run's calls share, and the deltas it pushes.
 afr_memory.workspace = true
 # The model a run drives, behind one trait.
@@ -69,6 +72,9 @@ tracing.workspace = true
 test-util = []
 
 [dev-dependencies]
+# The real agent, served in-process on a scratch socket: a dev-dependency
+# only, which the layer rule allows; the shipped runner links no guest crate.
+afg_agent.workspace = true
 # Real encoded images: the image tool decodes every file it reads.
 image.workspace = true
 base64.workspace = true

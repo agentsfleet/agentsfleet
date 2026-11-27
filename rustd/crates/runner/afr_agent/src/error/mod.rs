@@ -86,15 +86,15 @@ pub(crate) enum ErrorKind {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
-    /// The sandbox's executor failed under a call the scripted engine made;
-    /// the loop routes no executor failure here, so only the lanes' engine
+    /// The sandbox's guest agent failed under a call the scripted engine made;
+    /// the loop routes no guest agent failure here, so only the lanes' engine
     /// builds it.
     #[cfg(feature = "test-util")]
-    #[error("the executor failed")]
-    Executor {
-        /// The executor's failure.
+    #[error("the guest agent failed")]
+    GuestAgent {
+        /// The guest agent's failure.
         #[source]
-        source: afr_executor::Error,
+        source: af_guest_wire::Error,
     },
 
     /// The model provider the policy names could not be reached.
@@ -157,7 +157,7 @@ impl Error {
             ErrorKind::DurableTaskContext { source } => source.code(),
             ErrorKind::Scrub { .. } => error_code::INTERNAL_OPERATION_FAILED,
             #[cfg(feature = "test-util")]
-            ErrorKind::Executor { .. } => error_code::INTERNAL_OPERATION_FAILED,
+            ErrorKind::GuestAgent { .. } => error_code::INTERNAL_OPERATION_FAILED,
             ErrorKind::Checkpoint { code, .. } => *code,
             ErrorKind::Provider { source } => source.code(),
             ErrorKind::Tools { source } => source.code(),
@@ -182,7 +182,7 @@ impl Error {
             ErrorKind::Provider { source } => source.unhosted_provider().map(Unhosted::Provider),
             ErrorKind::Checkpoint { .. } | ErrorKind::Scrub { .. } => None,
             #[cfg(feature = "test-util")]
-            ErrorKind::Executor { .. } => None,
+            ErrorKind::GuestAgent { .. } => None,
         }
     }
 }

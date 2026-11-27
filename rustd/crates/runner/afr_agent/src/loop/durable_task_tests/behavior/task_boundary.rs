@@ -81,8 +81,8 @@ async fn a_committed_boundary_receipt_advances_the_task_checkpoint_it_reports() 
             recovered_durable_task: None,
             recovered_turn: None,
             memory: afr_memory::Seed::default(),
-            executor: &afr_executor::ExecutorSlot::unavailable(
-                afr_executor::Unavailable::NoSandbox,
+            agent: &afr_guest_client::AgentSlot::unavailable(
+                afr_guest_client::Unavailable::NoSandbox,
             ),
             mint: &af_egress::testing::CountingMint::never(),
             verbs: &native,
@@ -133,8 +133,8 @@ async fn recovered_history_without_a_current_native_task_is_refused_before_any_m
             recovered_durable_task: Some(&recovered),
             recovered_turn: None,
             memory: afr_memory::Seed::default(),
-            executor: &afr_executor::ExecutorSlot::unavailable(
-                afr_executor::Unavailable::NoSandbox,
+            agent: &afr_guest_client::AgentSlot::unavailable(
+                afr_guest_client::Unavailable::NoSandbox,
             ),
             mint: &af_egress::testing::CountingMint::never(),
             verbs: &native,

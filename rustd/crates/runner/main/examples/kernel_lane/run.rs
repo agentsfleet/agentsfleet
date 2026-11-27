@@ -32,7 +32,7 @@ pub(crate) fn in_sandbox(
 
 /// Runs each of `scripts` in turn in one fresh sandbox the trial names
 /// `name`, under `limits` and reaching `network`, then destroys it: what the
-/// executor does after a command exhausted something is only seen on the
+/// guest agent does after a command exhausted something is only seen on the
 /// same sandbox.
 pub(crate) fn in_sandbox_each(
     lane: &Lane,
@@ -47,7 +47,7 @@ pub(crate) fn in_sandbox_each(
         let sandbox = engine.prepare(spec(&engine, &id, limits, network)?).await?;
         let mut outcomes = Vec::with_capacity(scripts.len());
         for script in scripts {
-            match run(sandbox.executor(), shell(script.as_ref())).await {
+            match run(sandbox.agent(), shell(script.as_ref())).await {
                 Ok(outcome) => outcomes.push(outcome),
                 Err(failed) => {
                     sandbox.destroy().await?;

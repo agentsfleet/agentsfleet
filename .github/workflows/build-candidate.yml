@@ -31,6 +31,15 @@ jobs:
             package: agentsfleet_runner
             binary: agentsfleet-runner
             filename: agentsfleet-runner-linux-amd64
+          # The in-VM agent: a candidate file so guest.json's `init` is
+          # checked against it, packed only into guest.cpio, never released
+          # as an archive of its own.
+          - arch: amd64
+            cache: cargo-dist-guest-amd64
+            runner: ubuntu-latest
+            package: agentsfleet_guest
+            binary: agentsfleet-guest
+            filename: agentsfleet-guest-linux-amd64
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -117,19 +126,19 @@ jobs:
   guest:
     # What a Firecracker microVM boots from, beside the toolbox it mounts. The
     # kernel's bytes are the compiler's output, so the builder is pinned like
-    # the toolbox's. The initramfs is built around this run's own runner, the
-    # binary the candidate ships, which `make candidate-create` then checks.
+    # the toolbox's. The initramfs is built around this run's own guest agent,
+    # agentsfleet-guest, which `make candidate-create` then checks.
     needs: linux
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: candidate-part-agentsfleet-runner-linux-amd64
-          path: ${{ runner.temp }}/runner
+          name: candidate-part-agentsfleet-guest-linux-amd64
+          path: ${{ runner.temp }}/guest
       - uses: ./.github/actions/guest-set
         with:
-          runner-binary: ${{ runner.temp }}/runner/bin/agentsfleet-runner-linux-amd64
+          guest-binary: ${{ runner.temp }}/guest/bin/agentsfleet-guest-linux-amd64
           output-dir: dist/candidate/toolbox
       - uses: ./.github/actions/toolbox-tools
       - uses: ./.github/actions/scan-guest

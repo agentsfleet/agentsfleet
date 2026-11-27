@@ -7,7 +7,7 @@
 
 use super::publication_fixture::*;
 use super::*;
-use afr_tools::sandbox::{ScriptedExecutor, ScriptedProcess};
+use afr_tools::sandbox::{ScriptedGuest, ScriptedProcess};
 
 #[tokio::test]
 async fn validated_unchanged_candidate_publishes_only_native_target_and_reconciles_receipt()
@@ -21,7 +21,7 @@ async fn validated_unchanged_candidate_publishes_only_native_target_and_reconcil
         ),
         ended(false),
     ]]);
-    let executor = ScriptedExecutor::new([
+    let agent = ScriptedGuest::new([
         ScriptedProcess::exits(&candidate(), 0),
         ScriptedProcess::exits("checks passed", 0),
         ScriptedProcess::exits(&candidate(), 0),
@@ -29,7 +29,7 @@ async fn validated_unchanged_candidate_publishes_only_native_target_and_reconcil
     let output = publish(
         &script,
         &native,
-        &afr_executor::ExecutorSlot::ready(&executor),
+        &afr_guest_client::AgentSlot::ready(&agent),
     )
     .await?;
     let requests = native
@@ -42,7 +42,7 @@ async fn validated_unchanged_candidate_publishes_only_native_target_and_reconcil
     let report = output.task.ok_or_else(crate::decision::unavailable)?;
     assert_eq!(report.effect_watermark, 1);
     assert_eq!(report.disposition, DurableTaskDisposition::Waiting);
-    assert_eq!(executor.spawned().len(), 3);
+    assert_eq!(agent.spawned().len(), 3);
     assert_evidence(&native, "checks passed")?;
     assert_evidence(&native, "native_publication_receipt")?;
     assert!(
@@ -67,16 +67,16 @@ async fn passing_validation_with_truncated_output_publishes_and_says_so() -> cra
         ),
         ended(false),
     ]]);
-    let executor = ScriptedExecutor::new([
+    let agent = ScriptedGuest::new([
         ScriptedProcess::exits(&candidate(), 0),
-        ScriptedProcess::ends_abandoned("checks passed", afr_executor::Ending::Exited(0)),
+        ScriptedProcess::ends_abandoned("checks passed", af_guest_wire::Ending::Exited(0)),
         ScriptedProcess::exits(&candidate(), 0),
     ]);
 
     publish(
         &script,
         &native,
-        &afr_executor::ExecutorSlot::ready(&executor),
+        &afr_guest_client::AgentSlot::ready(&agent),
     )
     .await?;
 
@@ -105,11 +105,11 @@ async fn failed_incomplete_or_changed_validation_never_publishes() -> crate::Res
             ),
             ended(false),
         ]]);
-        let executor = ScriptedExecutor::new(processes);
+        let agent = ScriptedGuest::new(processes);
         let output = publish(
             &script,
             &native,
-            &afr_executor::ExecutorSlot::ready(&executor),
+            &afr_guest_client::AgentSlot::ready(&agent),
         )
         .await?;
         assert!(
@@ -143,7 +143,7 @@ async fn invalid_publication_arguments_or_absent_workspace_refuse_before_spawn()
         let output = publish(
             &script,
             &native,
-            &afr_executor::ExecutorSlot::unavailable(afr_executor::Unavailable::NoSandbox),
+            &afr_guest_client::AgentSlot::unavailable(afr_guest_client::Unavailable::NoSandbox),
         )
         .await?;
         assert!(
@@ -192,11 +192,11 @@ async fn api_only_durable_task_cannot_publish_even_when_model_invents_the_tool_c
         ),
         ended(false),
     ]]);
-    let executor = ScriptedExecutor::new([]);
+    let agent = ScriptedGuest::new([]);
     let output = publish(
         &script,
         &native,
-        &afr_executor::ExecutorSlot::ready(&executor),
+        &afr_guest_client::AgentSlot::ready(&agent),
     )
     .await?;
     assert_eq!(
@@ -206,7 +206,7 @@ async fn api_only_durable_task_cannot_publish_even_when_model_invents_the_tool_c
             .effect_watermark,
         0
     );
-    assert_eq!(executor.spawned().len(), 0);
+    assert_eq!(agent.spawned().len(), 0);
     assert!(
         native
             .published
@@ -253,7 +253,7 @@ fn failed_validations() -> Vec<(Vec<ScriptedProcess>, &'static str)> {
         (
             vec![ScriptedProcess::ends_abandoned(
                 &candidate(),
-                afr_executor::Ending::Exited(0),
+                af_guest_wire::Ending::Exited(0),
             )],
             "capture was incomplete",
         ),

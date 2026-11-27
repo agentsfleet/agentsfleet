@@ -57,8 +57,8 @@ async fn the_memory_is_checkpointed_every_n_calls() {
             prepared_durable_task: None,
             run: &run,
             memory: afr_memory::Seed::default(),
-            executor: &afr_executor::ExecutorSlot::unavailable(
-                afr_executor::Unavailable::NoSandbox,
+            agent: &afr_guest_client::AgentSlot::unavailable(
+                afr_guest_client::Unavailable::NoSandbox,
             ),
             mint: &CountingMint::never(),
             verbs: &afr_tools::CLOSED,
@@ -138,8 +138,8 @@ async fn store_then_answer(checkpoint: &dyn Checkpoint) -> RunOutput {
             prepared_durable_task: None,
             run: &run,
             memory: afr_memory::Seed::default(),
-            executor: &afr_executor::ExecutorSlot::unavailable(
-                afr_executor::Unavailable::NoSandbox,
+            agent: &afr_guest_client::AgentSlot::unavailable(
+                afr_guest_client::Unavailable::NoSandbox,
             ),
             mint: &CountingMint::never(),
             verbs: &afr_tools::CLOSED,
@@ -215,8 +215,8 @@ async fn a_checkpoint_that_never_answers_does_not_outlive_the_run() {
             prepared_durable_task: None,
             run: &run,
             memory: afr_memory::Seed::default(),
-            executor: &afr_executor::ExecutorSlot::unavailable(
-                afr_executor::Unavailable::NoSandbox,
+            agent: &afr_guest_client::AgentSlot::unavailable(
+                afr_guest_client::Unavailable::NoSandbox,
             ),
             mint: &CountingMint::never(),
             verbs: &afr_tools::CLOSED,
@@ -252,8 +252,8 @@ async fn a_cadence_with_nothing_stored_pushes_nothing() {
             prepared_durable_task: None,
             run: &run,
             memory: afr_memory::Seed::default(),
-            executor: &afr_executor::ExecutorSlot::unavailable(
-                afr_executor::Unavailable::NoSandbox,
+            agent: &afr_guest_client::AgentSlot::unavailable(
+                afr_guest_client::Unavailable::NoSandbox,
             ),
             mint: &CountingMint::never(),
             verbs: &afr_tools::CLOSED,

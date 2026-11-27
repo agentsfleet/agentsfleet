@@ -1,0 +1,48 @@
+[package]
+name = "afg_entry"
+description = "The in-VM agent as a microVM's first process: the check that it is process 1 with vsock, the guest's mounts and tenant leaf, and the vsock connection it serves the host on."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+af_core.workspace = true
+# The tenant leaf's kernel files and the freezer a save's pin pause uses.
+af_cgroup.workspace = true
+# What the guest kernel's command line says, and the vsock port and user.
+af_guest_wire.workspace = true
+# The agent every microVM serves, and the confinement every tenant process
+# puts on itself.
+afg_agent.workspace = true
+afg_confine.workspace = true
+# The listener seam a test drives without a vsock device.
+async-trait.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt"] }
+tracing.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# The fork into the agent, the reaping, and the power-off that ends the
+# virtual machine.
+libc.workspace = true
+# Loopback, raised over route netlink in the one request it takes.
+netlink-sys.workspace = true
+netlink-packet-core.workspace = true
+netlink-packet-route.workspace = true
+# The mount, ownership and identity calls, and the vsock probe of admission.
+rustix = { workspace = true, features = ["net"] }
+# The agent listens on vsock.
+tokio-vsock.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+tokio = { workspace = true, features = ["io-util", "macros", "rt"] }

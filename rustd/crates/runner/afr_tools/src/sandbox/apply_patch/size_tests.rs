@@ -4,7 +4,7 @@
 )]
 
 //! A patch never writes a file it cannot read back whole. Landing re-reads an
-//! update through `whole`, which refuses a file longer than the executor's
+//! update through `whole`, which refuses a file longer than the guest agent's
 //! read cap, so a hunk that would grow a file past the cap is refused as it is
 //! planned, before anything lands, and the file is left as it was. Planning
 //! holds each spelling of a file apart, so hunks through a link and through
@@ -12,7 +12,7 @@
 
 use std::os::unix::fs::symlink;
 
-use afr_executor::MAX_READ_BYTES;
+use af_guest_wire::MAX_READ_BYTES;
 
 use super::tests::{KEEP, apply, planted};
 use crate::runtime::ToolErrorCode;

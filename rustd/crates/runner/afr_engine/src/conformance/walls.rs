@@ -7,7 +7,7 @@
 //! memory limit, one full `/dev/shm` would get every later command in the
 //! run killed for memory at its first allocation.
 
-use afr_executor::Ending;
+use af_guest_wire::Ending;
 use libtest_mimic::Failed;
 
 use super::Context;

@@ -5,7 +5,7 @@ mod process;
 use super::Harness;
 use crate::router::Lent;
 use af_wire::durable_task::{DurableTaskEffectInput, DurableTaskFileChange, DurableTaskTarget};
-use afr_executor::Spawn;
+use afr_guest_client::Spawn;
 use afr_tools::{SandboxEnv, ToolErrorCode};
 use guffbolt::tools::Schema;
 use guffbolt::{Describe, Tool, ToolFuture, ToolOutput, ToolSpec};
@@ -158,9 +158,9 @@ impl Harness<'_, '_> {
                 "Wait for child agents to finish before validating and publishing.",
             ));
         }
-        let executor = self
+        let agent = self
             .shared
-            .executor
+            .agent
             .peek()
             .ok_or_else(|| refused("Publication requires the task workspace."))?;
         // No background session may keep editing while this root validates.
@@ -168,7 +168,7 @@ impl Harness<'_, '_> {
             .shared
             .run
             .sessions
-            .close_all(&SandboxEnv::new(executor))
+            .close_all(&SandboxEnv::new(agent))
             .await
             > 0
         {
@@ -204,9 +204,7 @@ impl Harness<'_, '_> {
             .split_once('/')
             .map(|(_, name)| name)
             .ok_or_else(|| refused("Native repository identity is invalid."))?;
-        let (before, output) = self
-            .validated_candidate(executor, name, tree, &input)
-            .await?;
+        let (before, output) = self.validated_candidate(agent, name, tree, &input).await?;
         let effect = self.submit_candidate(task, head, before).await?;
         let confirmed = effect.state == af_wire::durable_task::DurableTaskEffectState::Confirmed
             && effect.commit.is_some();
@@ -258,12 +256,12 @@ impl Harness<'_, '_> {
 
     async fn validated_candidate(
         &self,
-        executor: &dyn afr_executor::Executor,
+        agent: &dyn afr_guest_client::GuestAgent,
         name: &str,
         tree: &str,
         input: &Invocation,
     ) -> Result<(Candidate, Vec<u8>), ToolOutput> {
-        let before = self.candidate(executor, name, tree).await?;
+        let before = self.candidate(agent, name, tree).await?;
         if before.changes.is_empty() {
             return Err(refused("There are no local changes to publish."));
         }
@@ -278,7 +276,7 @@ impl Harness<'_, '_> {
             .env("TERM", "dumb")
             .env("LANG", "C.UTF-8");
         let output = process::run(
-            executor,
+            agent,
             validation,
             Duration::from_secs(u64::from(input.timeout_seconds)),
             &self.stop,
@@ -286,7 +284,7 @@ impl Harness<'_, '_> {
             false,
         )
         .await?;
-        let after = self.candidate(executor, name, tree).await?;
+        let after = self.candidate(agent, name, tree).await?;
         if before != after {
             return Err(refused(
                 "Validation changed the candidate tree. Review those changes and validate again before publication.",
@@ -297,7 +295,7 @@ impl Harness<'_, '_> {
 
     async fn candidate(
         &self,
-        executor: &dyn afr_executor::Executor,
+        agent: &dyn afr_guest_client::GuestAgent,
         repository: &str,
         tree: &str,
     ) -> Result<Candidate, ToolOutput> {
@@ -305,7 +303,7 @@ impl Harness<'_, '_> {
             .args(["-I", "-S", "-c", CANDIDATE_SCRIPT, tree])
             .cwd(repository);
         let bytes = process::run(
-            executor,
+            agent,
             spawn,
             Duration::from_secs(60),
             &self.stop,

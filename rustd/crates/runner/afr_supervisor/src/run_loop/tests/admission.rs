@@ -12,7 +12,7 @@ use af_core::test_util::trace::Capture;
 use af_wire::policy::ExecutionPolicy;
 use af_wire::run::RunPayload;
 use afr_agent::{AgentEngine, AgentRun, Needs, RunOutput};
-use afr_executor::Unavailable;
+use afr_guest_client::Unavailable;
 use afr_tools::catalog::{FILE_READ, FLEET_STEER, HTTP_REQUEST, UPDATE_PLAN};
 
 use super::{

@@ -57,7 +57,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 - **The daemon is not told the engine.** The capability report is five Linux booleans (`af_wire/src/runner/capability.rs:25-52`, working tree). A host without usable KVM fails its self-test, though bubblewrap needs none (`afr_supervisor/src/capability/tests.rs:39-65`).
 - **Nothing proves two engines alike.** The kernel lane builds a concrete `BubblewrapEngine` (`main/examples/kernel_lane/lane.rs:96-99`).
 
-**Solution summary.** The seam is split by the concerns Indy named: lifecycle and identity, resources, storage, the executor's transport, networking and credentials. Files cross through the executor, the egress plan is in force before the first command, and every engine states its facts. The seam moves to its own crate, and each engine to a crate of its own.
+**Solution summary.** The seam is split by the concerns Indy named: lifecycle and identity, resources, storage, the guest agent's transport, networking and credentials. Files cross through the guest agent, the egress plan is in force before the first command, and every engine states its facts. The seam moves to its own crate, and each engine to a crate of its own.
 
 One conformance suite runs over `&dyn Engine`. Bubblewrap passes it, then a Firecracker engine passes it, and the dev host switches.
 
@@ -73,12 +73,12 @@ supervisor (names afr_engine only)
         drive vda  toolbox EROFS, read-only, from the verified descriptor
         drive vdb  workspace ext4 image, read-write, never host-mounted
         tap  ─► host table afegress<slot>: listed IPv4 set, reserved ranges dropped
-        vsock ─► CONNECT <port> ─► executor (the runner's own binary as guest entry)
-     returns once egress generation N is in force and the executor answers
-  checkout: fetch in the host mirror with the token ─► tar stream ─► executor import
-  capture:  executor export ─► today's encrypted manifest ─► R2
+        vsock ─► CONNECT <port> ─► guest agent (the runner's own binary as guest entry)
+     returns once egress generation N is in force and the guest agent answers
+  checkout: fetch in the host mirror with the token ─► tar stream ─► guest agent import
+  capture:  guest agent export ─► today's encrypted manifest ─► R2
   park:     quiesce, guest sync, VMM stopped, disk kept; resume boots a fresh VM on it
-  restore:  the executor (the VM's root service) tears down the inner environment,
+  restore:  the guest agent (the VM's root service) tears down the inner environment,
             swaps the workspace, builds it again; the VM never reboots
 ```
 
@@ -113,7 +113,7 @@ supervisor (names afr_engine only)
 
 1. `rustd/crates/runner/afr_sandbox/src/engine/mod.rs` — the seam §2 to §4 reshape, with its four defaults that answer nothing.
 2. `rustd/crates/runner/main/examples/kernel_lane/lane.rs` — the lane whose trials become the conformance suite in §6.
-3. `rustd/crates/runner/afr_supervisor/src/run_loop/checkout.rs` — the host-path checkout §3 moves onto the executor.
+3. `rustd/crates/runner/afr_supervisor/src/run_loop/checkout.rs` — the host-path checkout §3 moves onto the guest agent.
 4. `docs/reviews/space-sandbox/sandbox_evaluation.md` — the Oct 25, 2026 review: the first wrapper, its build order, and what a copied file must name.
 5. https://github.com/firecracker-microvm/firecracker/blob/v1.18.0/docs/prod-host-setup.md — the jailer, host settings and the egress filtering Firecracker leaves to us.
 
@@ -125,26 +125,31 @@ supervisor (names afr_engine only)
 | `docs/v2/reviews/m258-firecracker-spike.md` | CREATE | §1's record of commands, outputs and measurements; spike helpers stay outside the repository |
 | `rustd/crates/runner/afr_sandbox/**` | DELETE | §5 splits it; `git grep -w afr_sandbox` counts 404 hits in 141 files outside the crate, each renamed in §5 |
 | `rustd/crates/runner/afr_engine/**` | CREATE | §2 to §6: the seam traits and types, the error, boot admission, warm slots, and the suite behind `test-util` |
-| `rustd/crates/runner/{afr_image,afr_firewall,afr_cgroup,afr_guest}/**` | CREATE | §5: images; the host firewall table; cgroups and tenant attribution; the sandbox-side entry |
+| `rustd/crates/runner/{afr_image,afr_firewall,afr_cgroup}/**` | CREATE | §5: images; the host firewall table; cgroups and tenant attribution |
 | `rustd/crates/runner/{afr_engine_bubblewrap,afr_engine_unsandboxed}/**` | CREATE | §5: today's engine as one crate; the debug engine and the recovery-drill engine |
 | `rustd/crates/runner/afr_engine_firecracker/**` | CREATE | §7 and §8 |
-| `rustd/crates/runner/afr_executor/**` | EDIT | §3: a transport over any byte stream, a redialling client, `import` and `export`; §7: the guest listens on vsock |
-| `rustd/crates/runner/afr_supervisor/**` | EDIT | §2 to §4, §8: parking by mode, files through the executor, the egress plan, the engine's evidence, credits capped by memory |
+| `rustd/crates/runner/afr_executor/**`, `rustd/crates/runner/afr_guest/**` | DELETE | §3: a transport over any byte stream, a redialling client, `import` and `export`; §7: split by Indy's ruling of Nov 27, 2026 into the crates below, with no alias |
+| `rustd/crates/protocol/af_guest_wire/**` | CREATE | §7: what the runner and the guest agent both speak: messages, framing, refusals, the tree's tar stream, the guest's command line |
+| `rustd/crates/runner/afr_guest_client/**` | CREATE | §7: the host's client, the `GuestAgent` seam and the agent slot |
+| `rustd/crates/guest/{afg_agent,afg_confine,afg_entry,main}/**` | CREATE | §7: the guest layer: the agent, the confinement and inner environment, the first-process entry, and `agentsfleet-guest` |
+| `rustd/crates/foundation/af_cgroup/**` | CREATE | §7: the cgroup v2 file names and the freezer both ends write |
+| `rustd/crates/runner/afr_supervisor/**` | EDIT | §2 to §4, §8: parking by mode, files through the guest agent, the egress plan, the engine's evidence, credits capped by memory |
 | `rustd/crates/runner/main/**` | EDIT | §5, §7: features per engine, `EngineChoice::Firecracker`, the kernel lane over `&dyn Engine` |
 | `rustd/crates/protocol/af_wire/src/runner/capability.rs`, `af_wire/src/protocol/mod.rs` | EDIT | §2: the report names engine, isolation, KVM and the memory bound; `VERSION` moves once |
 | `rustd/crates/daemon/afd_runner/src/reconcile.rs` | EDIT | §2: `proven_by` reads hardware-VM evidence |
-| `rustd/crates/e2e/af_e2e/Cargo.toml`, `af_e2e/tests/layers.rs`, `af_e2e/tests/layers/rules.rs` | EDIT | §5: the engine-crate rule and its planted twin |
+| `rustd/crates/e2e/af_e2e/Cargo.toml`, `af_e2e/tests/layers.rs`, `af_e2e/tests/layers/{rules,workspace}.rs` | EDIT | §5: the engine-crate rule and its planted twin; §7: the guest layer's rules, the released runner's graph and the release recipe, each with its twin |
 | `rustd/crates/foundation/af_core/tests/backtrace.rs` | EDIT | §5: names the moved crate |
 | `rustd/Cargo.toml`, `rustd/Cargo.lock` | EDIT | members; `tokio-vsock` for the guest; `procfs-core`, already pinned, for available memory |
-| `make/test-unit.mk` | EDIT | §6, §7: `test-runner-kernel` takes `ENGINE`; no new target |
+| `make/{test-unit.mk,test-integration-rustd.mk,build.mk}` | EDIT | §6, §7: `test-runner-kernel` takes `ENGINE`; the `guest/` layer joins the runner shards; `guest-set` takes `GUEST_BINARY`; no new target |
+| `scripts/build-candidate.sh`, `scripts/release_candidate/model.py`, `scripts/test_release_candidate.py` | EDIT | §7: every candidate builds with `--no-default-features`; `agentsfleet-guest` is a candidate file `guest.json`'s `init` is checked against, never an archive |
 | `scripts/toolbox/**` | EDIT | §7: the 6.18 guest kernel build with EROFS; a new script file there needs Indy's sign-off |
-| `deploy/baremetal/{agentsfleet-runner.service,toolbox.sh}`, `playbooks/lib/runner/{prepare.sh,common.sh}` | EDIT | §7, §9: pinned binaries, the jail root, KSM and swap off, the engine flag |
+| `deploy/baremetal/{agentsfleet-runner.service,agentsfleet-runner.toml,toolbox.sh,deploy.sh,deploy_inputs_test.sh}`, `playbooks/lib/runner/{prepare.sh,common.sh}` | EDIT | §7, §9: pinned binaries, the jail root, KSM and swap off, the engine flag; `[guest]`; a guest set must name its agent's version |
 | `deploy/local/{linux.sh,linux_test.sh,linux-runner.sh,linux-runner.Dockerfile}` | EDIT | §9: the acceptance runner gets `/dev/kvm` and `--engine firecracker` |
-| `.github/workflows/{build-candidate.yml,acceptance-on-demand.yml}`, `.github/actions/sign-toolbox/action.yml`, `scripts/release_candidate/signature.py` | EDIT, with Indy's approval at build | the guest kernel ships signed with the toolbox; the acceptance runner opens `/dev/kvm` |
+| `.github/workflows/{build-candidate.yml,acceptance-on-demand.yml,test-integration-rustd.yml}`, `.github/actions/{sign-toolbox,guest-set}/action.yml`, `scripts/release_candidate/signature.py` | EDIT, with Indy's approval at build | the guest kernel ships signed with the toolbox; the acceptance runner opens `/dev/kvm` |
 | `cli/src/commands/platform/runners.ts`, `cli/test/platform-output.unit.test.ts` | EDIT | §2: print the reported engine; `DEFAULT_ENGINE` goes |
 | `public/openapi.json` | EDIT | regenerated with `--no-banner` for the report's new fields |
 | `docs/architecture/{runner_execution,runner_fleet,checkpoints,concurrency,rust-ownership,README}.md`, `docs/development.md`, `docs/AUTH.md`, `docs/RUST_ERROR_STANDARD.md`, `SECURITY.md` | EDIT | two engines, the crate map, the KVM lane; `checkpoints.md:164` wrongly says no deployment sets `[checkpoint.storage]` |
-| `.orly/LOCAL.md` | EDIT, with Indy's approval | its Linux-only line names `afr_sandbox` |
+| `.orly/LOCAL.md` | EDIT, with Indy's approval | its Linux-only line names `afr_sandbox`; §7: the `guest/` layer, the `afg_` prefix and `agentsfleet-guest` (Indy, Nov 27, 2026) |
 | `~/Projects/docs` self-hosting pages and `changelog.mdx` | EDIT, on that repository's own branch after merge | a tenant runner host needs usable KVM to run Firecracker |
 
 ## Applicable Rules
@@ -174,7 +179,7 @@ supervisor (names afr_engine only)
   - Pause, suspend and stop kept apart; network policy as numbered data, with start waiting until it is in force (`proto/net/gateway/v1/gateway.proto:44-52`).
   - The jailer's flag order and a one-file boot (`crates/l40_api/node/runtime/core/src/launch/os/linux.rs:651-723`, `boot/firecracker.rs:1-63`).
   - The vsock `CONNECT` handshake with peer pinning (`crates/l40_api/spaced/client/src/vsock.rs:64-158`).
-- **Divergence:** none of SPACE's services, gRPC, SQLite node state, operation queue or guest agent. Our executor is the guest agent, and the daemon's run fence stays the authority. No identifier, comment or test names SPACE; only a copied file's licence notice may.
+- **Divergence:** none of SPACE's services, gRPC, SQLite node state, operation queue or guest agent. Our guest agent is the guest agent, and the daemon's run fence stays the authority. No identifier, comment or test names SPACE; only a copied file's licence notice may.
 - **Reference:** `docs/reviews/space-sandbox/sandbox_evaluation.md`, "First Firecracker wrapper" and "Selective SPACE reuse". §1 follows its build order, and a copied file names the six things it lists.
 - **Reference:** Fly.io's "The Design & Implementation of Sprites" (https://fly.io/blog/design-and-implementation/), adopted on Indy's word. Its pools of empty VMs become §8's gated pool, and its object-store disk is M258_002's, behind §3's snapshot interface. Its inside-out design becomes §7's guest layout.
 - **CLI practices:** the one CLI change keeps all six. Layered command, handler and error; handlers that neither print nor exit; one renderer. Structured JSON errors; three test tiers; JSON when stdout is not a terminal.
@@ -190,16 +195,16 @@ Build order: §1 is the spike, committing only its record. §2 to §4 reshape th
 Boot one VM on the dev runner host before any code, with Firecracker and the jailer 1.18.x. The guest kernel is 6.18 from Firecracker's CI configuration, plus `CONFIG_EROFS_FS` with LZ4. The toolbox is a read-only drive and a workspace image the data drive; the record lands in `docs/v2/reviews/m258-firecracker-spike.md`.
 
 - **Dimension 1.1** — ✅ DONE (Nov 26, 2026; `docs/v2/reviews/m258-firecracker-spike.md`) — the toolbox boots as a VM's root → Test `firecracker_boots_the_toolbox_by_hand` (manual). Aiwa records `uname -r`, threads per core, the toolbox's SHA-256, idle resident set size (RSS), and create-to-ready as a median over a stated count of boots. A root other than our toolbox's digest is a false pass.
-- **Dimension 1.2** — ✅ DONE (Nov 26, 2026; `docs/v2/reviews/m258-firecracker-spike.md`) — the executor answers over vsock → Test `the_executor_answers_through_the_vsock_handshake` (manual). The runner's own binary is the guest entry, as an initramfs or a third drive, whichever boots. `CONNECT <port>` answers `OK` and `list_dir` answers; a wrong port answers no `OK`.
+- **Dimension 1.2** — ✅ DONE (Nov 26, 2026; `docs/v2/reviews/m258-firecracker-spike.md`) — the guest agent answers over vsock → Test `the_agent_answers_through_the_vsock_handshake` (manual). The runner's own binary is the guest entry, as an initramfs or a third drive, whichever boots. `CONNECT <port>` answers `OK` and `list_dir` answers; a wrong port answers no `OK`.
 - **Dimension 1.3** — ✅ DONE (Nov 26, 2026; `docs/v2/reviews/m258-firecracker-spike.md`) — a stopped VM loses no byte → Test `a_signal_stopped_vm_keeps_its_synced_disk` (manual). With the data drive's `cache_type` `Writeback`: write, sync in the guest, stop the VMM by signal, boot, and the file reads back. With `Unsafe` the record states what was lost, and no boot made an API call.
 
 ### §2 — Lifecycle, identity and resources, named on every heartbeat
 
 **(5) Lifecycle and identity.** `Engine` gains a required `capabilities()`, which names the engine itself. `Sandbox` gains a required `id()`, `environment()` and `granted()`, and its four defaults go.
 
-`environment()` replaces `toolbox_digest()`, which defaulted to none. It names the engine and the root: our toolbox by its SHA-256, or the host's own file system for the debug engine. The executor's digest joins it in M258_002, where a snapshot first compares it (Indy: "Add it with its first reader"). Today's check refuses a restore across roots (`docs/architecture/checkpoints.md:90`).
+`environment()` replaces `toolbox_digest()`, which defaulted to none. It names the engine and the root: our toolbox by its SHA-256, or the host's own file system for the debug engine. The guest agent's digest joins it in M258_002, where a snapshot first compares it (Indy: "Add it with its first reader"). Today's check refuses a restore across roots (`docs/architecture/checkpoints.md:90`).
 
-`prepare` takes a `SandboxSpec` whose `id` names every directory, cgroup and device the engine makes; the supervisor names a run's sandbox by the run's `Uuid7`, and warm slots mint theirs with `af_crypto::entropy`. `RunName` goes. `freeze` and `thaw` become `park(self, mode) -> Parked` and `Parked::resume(self) -> Sandbox`, so a parked sandbox is a type that can run nothing, and `recovery_quiescent` becomes `quiesce() -> Quiescence`. Capture and restore now read quiescence alone: the executor idle and no tenant process left, since only the supervisor starts one. `sweep(scope)` destroys what a crash (`Sweep::Leftovers`, at boot) or an ambiguous build (`Sweep::Sandbox(id)`) left.
+`prepare` takes a `SandboxSpec` whose `id` names every directory, cgroup and device the engine makes; the supervisor names a run's sandbox by the run's `Uuid7`, and warm slots mint theirs with `af_crypto::entropy`. `RunName` goes. `freeze` and `thaw` become `park(self, mode) -> Parked` and `Parked::resume(self) -> Sandbox`, so a parked sandbox is a type that can run nothing, and `recovery_quiescent` becomes `quiesce() -> Quiescence`. Capture and restore now read quiescence alone: the guest agent idle and no tenant process left, since only the supervisor starts one. `sweep(scope)` destroys what a crash (`Sweep::Leftovers`, at boot) or an ambiguous build (`Sweep::Sandbox(id)`) left.
 
 **State authority:** each engine's own per-id state, a directory, jail or remote name. **Guarded transition:** a second `prepare` for a live id is refused naming that sandbox, since only a redelivered assignment, a forbidden retry or a warm-slot race could ask. **Failure assumption:** a build of unknown outcome answers `Ambiguous`, and the caller sweeps it, never repeating it.
 
@@ -215,22 +220,22 @@ Boot one VM on the dev runner host before any code, with Firecracker and the jai
 - **Dimension 2.6** — ✅ DONE — a VM report proves the cage → Test `test_a_hardware_vm_report_proves_the_cage_guarantees` (unit, `afd_runner`). `engine: firecracker` with `isolation: hardware_vm` under `landlock_full` reads healthy. `engine: unsandboxed` under it reads degraded with its own reason.
 - **Dimension 2.7** — ✅ DONE — the CLI prints what the runner reported → Test `platform runners show prints the reported engine` (unit, handler). A row whose report names `firecracker` prints it, and a row with no report prints `unknown`. Neither prints `Bubblewrap` from a constant.
 
-### §3 — Storage and the executor's transport
+### §3 — Storage and the guest agent's transport
 
-**(1) Storage.** The executor gains `import(at, tree)` and `export(paths)`: a tar stream, confined to `/workspace`, each entry owned by the sandbox user. It is chunked under the 64 MiB frame (`afr_executor/src/protocol/mod.rs:48`), so a repository of any size crosses.
+**(1) Storage.** The guest agent gains `import(at, tree)` and `export(paths)`: a tar stream, confined to `/workspace`, each entry owned by the sandbox user. It is chunked under the 64 MiB frame (`af_guest_wire/src/protocol/mod.rs:48`), so a repository of any size crosses.
 
-Checkout fetches into the host mirror with the token, checks the tree out into a host stage, and imports it. Capture exports into a stage and today's catalog reads the stage; restore writes a stage and imports it. A stage is `<storage home>/staging/<sandbox id>-<random>/`, mode `0700`, owned by the runner, removed when its step ends and swept at boot. Host and executor share one confined `afr_executor::tree::{pack, unpack}` over a `cap-std` directory, so the host unpacks a tenant's tree with the same checks the executor does. An import spools on the workspace disk so it is checked whole before its first write; an export streams as it is read and spools nothing. `HostWorkspace` and `Sandbox::workspace()` go; the images stay engine-internal, loop-mounted by bubblewrap and attached as drives by a VM.
+Checkout fetches into the host mirror with the token, checks the tree out into a host stage, and imports it. Capture exports into a stage and today's catalog reads the stage; restore writes a stage and imports it. A stage is `<storage home>/staging/<sandbox id>-<random>/`, mode `0700`, owned by the runner, removed when its step ends and swept at boot. Host and guest agent share one confined `afr_agent::tree::{pack, unpack}` over a `cap-std` directory, so the host unpacks a tenant's tree with the same checks the guest agent does. An import spools on the workspace disk so it is checked whole before its first write; an export streams as it is read and spools nothing. `HostWorkspace` and `Sandbox::workspace()` go; the images stay engine-internal, loop-mounted by bubblewrap and attached as drives by a VM.
 
 **The snapshot interface.** The storage concern carries `Snapshots`: take a snapshot under a caller-minted id, restore one, forget one. Both VM engines implement it later: ours on M258_002's chunk map, Sprites on Fly's own checkpoints in M260_001. §6 holds every implementation to one observable behaviour, and this spec designs no mechanism behind it.
 
 **Today's file checkpoint path keeps working, unchanged, until M258_002 replaces it.** It scans the workspace, encrypts 8 MiB chunks, uploads them to R2 once each, and keeps manifests in Postgres (`docs/architecture/checkpoints.md:42-43,111,119-121,129`). Only its byte source moves, from the host path to `export` and `import`; §7's Dimension 7.6 proves it on Firecracker.
 
-**(4) Transport.** The executor client speaks the same JSON lines over any byte stream an `ExecutorRoute` dials. It redials once when a call finds the link closed. Bubblewrap dials its socket pair once, Firecracker dials vsock after every boot, and a process the old link carried reads `Interrupted` (`afr_executor/src/client/mod.rs:1-8`).
+**(4) Transport.** The guest agent client speaks the same JSON lines over any byte stream an `AgentRoute` dials. It redials once when a call finds the link closed. Bubblewrap dials its socket pair once, Firecracker dials vsock after every boot, and a process the old link carried reads `Interrupted` (`afr_agent/src/client/mod.rs:1-8`).
 
 - **Dimension 3.1** — ✅ DONE — files cross with no host path → Test `test_import_then_export_returns_the_same_tree` (unit, unsandboxed engine). A fixture tree with modes, relative links and an empty directory is imported. The exported tree's SHA-256 digest equals the imported one.
-- **Dimension 3.2** — ✅ DONE — nothing lands outside the workspace → Test `test_an_import_entry_leaving_its_root_is_refused` (unit, `afr_executor`). `../x`, an absolute link and a link out of `/workspace` are each refused, and nothing is written.
+- **Dimension 3.2** — ✅ DONE — nothing lands outside the workspace → Test `test_an_import_entry_leaving_its_root_is_refused` (unit, `afr_guest_client` over `afg_agent`). `../x`, an absolute link and a link out of `/workspace` are each refused, and nothing is written.
 - **Dimension 3.3** — ✅ DONE — checkout and recovery need no host path → Test `test_checkout_fills_a_workspace_the_host_cannot_see` (integration, `afr_supervisor`). An engine with no host path checks out the fixture with today's tree digest. The recovery drill engine captures with today's checkpoint path through `export` and restores it byte for byte.
-- **Dimension 3.4** — ✅ DONE — the link redials after a park → Test `test_the_executor_link_redials_after_a_park` (unit, over `tokio::io::duplex`). The far end closes, the client redials once, and the next call answers. A process the old link carried reads `Interrupted`.
+- **Dimension 3.4** — ✅ DONE — the link redials after a park → Test `test_the_agent_link_redials_after_a_park` (unit, over `tokio::io::duplex`). The far end closes, the client redials once, and the next call answers. A process the old link carried reads `Interrupted`.
 
 ### §4 — Networking and credentials
 
@@ -242,7 +247,7 @@ Checkout fetches into the host mirror with the token, checks the tree out into a
 
 **(6) Credentials.** One rule, with no engine trait: no secret enters a sandbox. Checkout keeps the fetch token in the host mirror, and model keys and minted tokens stay in the supervisor (`docs/architecture/runner_execution.md:26-28`). §6's planted-token trial proves it on every engine.
 
-- **Dimension 4.1** — ✅ DONE — nothing runs before the plan is in force → Test `test_prepare_returns_only_after_the_plan_is_in_force` (unit, a fake enforcer). When read-back lags two calls, `prepare` waits and the executor sees no command. When the enforcer fails, `prepare` refuses and destroys the sandbox.
+- **Dimension 4.1** — ✅ DONE — nothing runs before the plan is in force → Test `test_prepare_returns_only_after_the_plan_is_in_force` (unit, a fake enforcer). When read-back lags two calls, `prepare` waits and the guest agent sees no command. When the enforcer fails, `prepare` refuses and destroys the sandbox.
 - **Dimension 4.2** — ✅ DONE — an old plan cannot replace a newer one → Test `test_a_stale_generation_is_refused` and `test_each_plan_is_numbered_above_the_last` (unit). With generation 4 in force, applying 3 is refused, and 4 reads back.
 - **Dimension 4.3** — ✅ DONE — every plan refuses the reserved ranges → Test `test_a_fleet_host_at_a_blocked_address_refuses_the_run` and `each_policy_binds_to_its_network` (unit, the plan compiler), which already held this; the registry exception above is `test_a_registry_host_at_a_private_address_is_admitted`. No-network compiles to no device. A listed or public plan drops private, `169.254.0.0/16`, `100.64.0.0/10`, loopback and IPv6 destinations before any accept.
 - **Dimension 4.4** — ✅ DONE — the fetch token never crosses → Test `test_the_checkout_stream_carries_no_fetch_token` (unit, `afr_supervisor`). A canary token fetches the fixture. No byte of the imported stream holds it, `.git/config` included.
@@ -253,7 +258,7 @@ Indy asked for better crate management, with the runner using an engine crate. E
 
 - **`afr_engine`**, the seam only: the traits, the per-concern traits for storage, egress, transport and resources, and capability and limit types. It holds the error type through `error_shell!`, boot admission, warm slots and the suite behind `test-util`. It has no operating-system code, so the supervisor depends on it alone.
 - **Building blocks:** `afr_image` (toolbox verify, stage, adopt and holds; the workspace image; loop devices and mounts), `afr_firewall` (today's `egress`, slots and links) and `afr_cgroup` (limits, the freezer, tenant attribution).
-- **`afr_guest`**, `harden` and `serve`, the sandbox-side entry, plus §7's inner environment. It departs from the coordinator's proposal, which put both in the bubblewrap crate: the Firecracker guest hardens and serves too.
+- **`afr_guest`**, `harden` and `serve`, the sandbox-side entry, plus §7's inner environment; §7 moves it to the `guest/` layer as `afg_confine`. It departs from the coordinator's proposal, which put both in the bubblewrap crate: the Firecracker guest hardens and serves too.
 - **Engines:** `afr_engine_bubblewrap`, deleted whole in M258_003; `afr_engine_unsandboxed`, the debug engine with the recovery-drill engine behind `test-util`, used by `main` and `af_e2e`; `afr_engine_firecracker` (§7).
 - **Next:** `afr_engine_sprites` arrives in M260_001 (O2). `afr_engine_bubblewrap` lives only inside this branch, and M258_003 deletes it before the Pull Request opens.
 
@@ -263,7 +268,7 @@ Indy asked for better crate management, with the runner using an engine crate. E
 
 - **Dimension 5.1** — ✅ DONE — the layout passes the layer rules → Test `only_the_runner_binary_and_e2e_name_an_engine_crate` (unit, `af_e2e/tests/layers.rs`). The workspace's manifests pass it. They also pass `every_crate_depends_on_its_own_layer_or_lower` and `every_crate_runs_in_exactly_one_unit_shard`.
 - **Dimension 5.2** — ✅ DONE — a planted violation is named → Test `an_engine_crate_named_by_the_supervisor_or_another_engine_is_refused` (unit, `layers.rs`). Planted manifests have `afr_supervisor` depend on `afr_engine_x`, and `afr_engine_a` on `afr_engine_b`. Both edges are named.
-- **Dimension 5.3** — ✅ DONE — the supervisor names the seam alone → Test `the_supervisor_names_the_seam_alone` (unit, `layers.rs`). `afr_supervisor`'s manifest lists `afr_engine`. It lists no `afr_engine_` crate and none of `afr_image`, `afr_firewall`, `afr_cgroup` or `afr_guest`.
+- **Dimension 5.3** — ✅ DONE — the supervisor names the seam alone → Test `the_supervisor_names_the_seam_alone` (unit, `layers.rs`). `afr_supervisor`'s manifest lists `afr_engine`. It lists no `afr_engine_` crate and none of `afr_image`, `afr_firewall` or `afr_cgroup`; since §7 a guest crate is no building block, and the guest layer's rule governs it.
 
 ### §6 — The conformance suite, which bubblewrap passes
 
@@ -287,11 +292,11 @@ Indy asked for better crate management, with the runner using an engine crate. E
 
 Firecracker boots from one `--config-file`. The toolbox drive is the loop device today's verification attached from the hashed descriptor, and the workspace image is a writable drive. That drive has `cache_type` `Writeback` and a rate limit of today's I/O cap.
 
-**Guest layout, inside out.** The guest entry is the runner's own binary, attached as §1 found, and the executor is the VM's root service on vsock. Tenant code runs in an inner environment the executor builds, with its own mount and process namespaces. Inside it, today's hardening holds: `no_new_privs`, Landlock, and seccomp with the `unshare` refusal.
+**Guest layout, inside out.** The guest entry is the runner's own binary, attached as §1 found, and the guest agent is the VM's root service on vsock. Tenant code runs in an inner environment the guest agent builds, with its own mount and process namespaces. Inside it, today's hardening holds: `no_new_privs`, Landlock, and seccomp with the `unshare` refusal.
 
-The executor can tear the inner environment down and build it again without rebooting the VM. A restore swaps the workspace under it, and a plan's names reach the inner `/etc/hosts` when the plan is applied. The VM is the tenant wall; inside it, confinement applies to the inner environment, not to the executor.
+The guest agent can tear the inner environment down and build it again without rebooting the VM. A restore swaps the workspace under it, and a plan's names reach the inner `/etc/hosts` when the plan is applied. The VM is the tenant wall; inside it, confinement applies to the inner environment, not to the guest agent.
 
-**What §7 built, and what is open.** `afr_engine_firecracker` launches each sandbox through the jailer from one `--config-file`, holds an exclusive lock on its workspace image, dials the executor over vsock with the `CONNECT` handshake, refuses a non-host peer, parks by `Stop` and resumes on the kept disk, sweeps leftovers, and is its own egress enforcer on a tap. A listed plan admits its set alone, so a registry at a private address stays reachable; a public plan drops the reserved ranges first. The runner binary gains a `guest` subcommand as the VM's PID 1, and `[firecracker]` in its TOML names `firecracker`, `jailer`, `kernel`, `initrd` and `first_jail_id`. The inner environment is built: `afr_guest::Namespaced` starts an init in new PID and mount namespaces, the executor spawns tenant processes into it hardened, and `Executor::renew()` ends it, empties the workspace and builds it again, so a restore is `renew()` then `import` and the VMM keeps running. Open: the guest's `/etc/hosts` on a re-plan; public-plan DNS; quiesce reads only the executor's idleness; kill does not wait for the VMM to exit; the guest kernel and initramfs build, whose script needs Indy's sign-off.
+**What §7 built, and what is open.** `afr_engine_firecracker` launches each sandbox through the jailer from one `--config-file`, holds an exclusive lock on its workspace image, dials the guest agent over vsock with the `CONNECT` handshake, refuses a non-host peer, parks by `Stop` and resumes on the kept disk, sweeps leftovers, and is its own egress enforcer on a tap. A listed plan admits its set alone, so a registry at a private address stays reachable; a public plan drops the reserved ranges first. The runner binary gained a `guest` subcommand as the VM's PID 1, since split out as below, and `[firecracker]` in its TOML names `firecracker`, `jailer`, `kernel`, `initrd` and `first_jail_id`. The inner environment is built: `afr_guest::Namespaced` starts an init in new PID and mount namespaces, the guest agent spawns tenant processes into it hardened, and `GuestAgent::renew()` ends it, empties the workspace and builds it again, so a restore is `renew()` then `import` and the VMM keeps running. Open: the guest's `/etc/hosts` on a re-plan; public-plan DNS; quiesce reads only the guest agent's idleness; kill does not wait for the VMM to exit; the guest kernel and initramfs build, whose script needs Indy's sign-off. By Indy's ruling of Nov 27, 2026 the guest side is its own static binary, `agentsfleet-guest`, built from the `guest/` layer (`afg_agent`, `afg_confine`, `afg_entry`) over `af_guest_wire` and shipped only inside `guest.cpio`, the host reaches it through `afr_guest_client`, the runner loses its `guest` entry and is released with `--no-default-features` so it links no guest crate, and each microVM's console is logged line by line as `sandbox_console`.
 
 **Implementation default:** the toolbox drive is the verified loop device, because it keeps "nothing reopens the image by path" with no new release format; in-guest dm-verity waits. Memory is the guest's size and processors are whole virtual CPUs, rounded up. The process cap is a declared `None`, because the VM is the wall.
 
@@ -311,7 +316,7 @@ The executor can tear the inner environment down and build it again without rebo
 - SMT stays on, by Indy's ruling ("On everywhere", Nov 26, 2026), so two VMs may share a physical core. `SECURITY.md` records the cross-VM cache-timing risk as accepted.
 - A pooled VM serves one run and is then destroyed (Dimension 8.3).
 
-**Only the host reaches the executor.** The guest kernel is built without `CONFIG_VSOCKETS_LOOPBACK`, so no guest process can dial the executor's port, as §1 found. The executor also refuses a connection whose peer is not the host's context identifier, 2. The host socket lives in the jail, owned by that jail's user.
+**Only the host reaches the guest agent.** The guest kernel is built without `CONFIG_VSOCKETS_LOOPBACK`, so no guest process can dial the guest agent's port, as §1 found. The guest agent also refuses a connection whose peer is not the host's context identifier, 2. The host socket lives in the jail, owned by that jail's user.
 
 - **Dimension 7.1** — wired, not yet run on a KVM host — Firecracker passes the same suite → Test `make test-runner-kernel ENGINE=firecracker` (integration, the dev host). Every trial passes or asserts `Unsupported` as declared, the verdict matrix, planted token and toolbox digest included. Counts go in the Session Notes.
 - **Dimension 7.2** — ✅ DONE (unit) — no KVM, no Firecracker, no fallback → Test `firecracker_refuses_a_host_without_usable_kvm` (unit, `afr_engine_firecracker`). With `Kvm::Denied` or `Kvm::Absent`, boot refuses naming `kvm`, and no engine starts. `--engine firecracker` parses.
@@ -319,7 +324,7 @@ The executor can tear the inner environment down and build it again without rebo
 - **Dimension 7.4** — wired, not yet run on a KVM host — a park keeps the disk, not the VM → Test `a_stopped_park_resumes_on_its_own_disk` (integration, kernel lane, Firecracker). A file is written, then a park leaves no VMM running. On resume the file reads back, no earlier process remains, and the plan reads back in force.
 - **Dimension 7.5** — wired, not yet run on a KVM host — a restore needs no reboot → Test `a_restore_inside_a_running_vm_replaces_the_workspace` (integration, kernel lane, Firecracker). A background process runs and a file is written; then a different file checkpoint is restored in place. The workspace equals that checkpoint's tree, no process of the old inner environment survives, and the VMM's process identifier is unchanged.
 - **Dimension 7.7** — ✅ DONE (unit) — one VM per workspace image → Test `a_second_vmm_cannot_attach_a_held_workspace_image` (integration, kernel lane, Firecracker). With a sandbox running, a second `prepare` naming its workspace image is refused naming the image's lock, and no second VMM process starts.
-- **Dimension 7.8** — ✅ DONE (unit) — only the host reaches the executor → Test `a_guest_process_cannot_reach_the_executor` (integration, kernel lane, Firecracker). From the inner environment, dialing the executor's vsock port at context identifiers 1, 2 and 3 fails. A connection whose peer identifier is not 2 is refused, in a unit test over a fake listener.
+- **Dimension 7.8** — ✅ DONE (unit) — only the host reaches the guest agent → Test `a_guest_process_cannot_reach_the_agent` (integration, kernel lane, Firecracker). From the inner environment, dialing the guest agent's vsock port at context identifiers 1, 2 and 3 fails. A connection whose peer identifier is not 2 is refused, in a unit test over a fake listener.
 - **Dimension 7.9** — wired, not yet run on a KVM host — one sandbox never reaches another → Test `one_sandbox_cannot_reach_another` (integration, kernel lane, Firecracker). Two sandboxes run. From A, a dial to B's tap address on any port fails, and a vsock dial to B's context identifier fails. A's jail user cannot open B's workspace image or socket, and no page is merged between them.
 - **Dimension 7.6** — wired, not yet run on a KVM host — today's checkpoints still work on Firecracker → Test `test_supervisor_repository_durable_task_retains_base_then_incremental` (integration, `make test-runner-kernel ENGINE=firecracker`). This existing trial passes unchanged in what it asserts: a base, then an incremental checkpoint, saved and restored. So does `test_supervisor_api_durable_task_captures_frozen_workspace`, renamed only if its "frozen" no longer holds.
 
@@ -355,14 +360,14 @@ The dev runner host restarts with `--engine firecracker` once §7 passes there. 
 
 ```text
 Engine:  capabilities() · grant(Limits) -> Granted · prepare(SandboxSpec) -> Box<dyn Sandbox> · sweep(Sweep) -> Swept
-Sandbox: id() · environment() · granted() · workspace() · state() · executor() · quiesce() -> Quiescence
+Sandbox: id() · environment() · granted() · workspace() · state() · guest agent() · quiesce() -> Quiescence
          park(self, ParkMode) -> Box<dyn Parked> · reallow (until §4) · kill() -> Killed · destroy(self)
 Parked:  id() · mode() · resume(self) -> Box<dyn Sandbox> · destroy(self)
 SandboxSpec { id: &Uuid7, granted: Granted, network }      ParkMode: Pause | Stop      Sweep: Leftovers | Sandbox(&Uuid7)
 Capabilities { engine, isolation, parks, resources: ResourceFacts { memory, cpu, pids, disk: Enforced | Absent } }
-Environment { engine, root: Toolbox { digest } | Host }    executor digest: M258_002
+Environment { engine, root: Toolbox { digest } | Host }    guest agent digest: M258_002
 NetworkSpec { mode: None | Listed | Public, allow, generation: u64 }   Egress: apply(&NetworkSpec) · in_force()   (§4)
-Executor: today's ten verbs + import(at, tree) · export(paths)          Transport: dial() -> byte stream   (§3)
+Guest agent: today's ten verbs + import(at, tree) · export(paths)          Transport: dial() -> byte stream   (§3)
 Snapshots: take(id: Uuid7) -> SnapshotRef · restore(&SnapshotRef) · forget(&SnapshotRef)   (M258_002)
 Error kinds added: Unsupported{engine, operation} · Ambiguous{sandbox, operation} · SandboxExists{sandbox} · Entropy
 ```
@@ -381,7 +386,7 @@ Error kinds added: Unsupported{engine, operation} · Ambiguous{sandbox, operatio
 | Plan not in force | security | the enforcer lags or fails | `prepare` waits, or refuses and destroys | `prepare_returns_only_after_the_plan_is_in_force` |
 | Stale plan | race | an older plan applied after a newer one | refused; the newer stays | `a_stale_generation_is_refused` |
 | Hostile tree | security | an import entry escapes `/workspace` | refused; nothing written | `an_import_entry_leaving_its_root_is_refused` |
-| Link dropped | failure | a park or a closed socket | one redial; old processes `Interrupted` | `the_executor_link_redials_after_a_hold` |
+| Link dropped | failure | a park or a closed socket | one redial; old processes `Interrupted` | `the_agent_link_redials_after_a_hold` |
 | Memory bound reached | capacity | one more VM than the overcommitted bound | `admit` refuses; credits stop | `a_sandbox_past_the_memory_bound_is_refused` |
 | Guests outgrow the host | capacity | overcommitted guests touch more memory than the host has | the host ends one VMM; its run ends `sandbox_unavailable` and resumes from its last checkpoint; others run on | `a_vmm_ended_by_the_host_ends_only_its_own_run` |
 | Secret in a sandbox | security | a token in the tree or environment | the planted-token trial fails the lane | `no_secret_in_sandbox` |
@@ -389,7 +394,7 @@ Error kinds added: Unsupported{engine, operation} · Ambiguous{sandbox, operatio
 | False capability | failure | an engine claims a mode it lacks | the suite fails by name | `a_false_capability_fails_the_suite` |
 | Park loses bytes | failure | the VMM stops with writes unflushed | guest sync and a `Writeback` drive | `a_stopped_park_resumes_on_its_own_disk` |
 | Workspace attached twice | failure | a leftover or second VMM names a live image | the image's exclusive lock refuses the second attach; no VMM starts | `a_second_vmm_cannot_attach_a_held_workspace_image` |
-| Guest dials the executor | security | tenant code opens a vsock connection | no loopback in the guest kernel; the executor refuses a non-host peer | `a_guest_process_cannot_reach_the_executor` |
+| Guest dials the guest agent | security | tenant code opens a vsock connection | no loopback in the guest kernel; the guest agent refuses a non-host peer | `a_guest_process_cannot_reach_the_agent` |
 | One sandbox dials another | security | tenant code in VM A targets VM B | the tap table drops private destinations; vsock and files are per-jail | `one_sandbox_cannot_reach_another` |
 | Old process outlives a restore | security | a tenant process escapes the teardown | the inner process namespace ends with its init; the restore refuses if any remains | `a_restore_inside_a_running_vm_replaces_the_workspace` |
 
@@ -457,7 +462,7 @@ Error kinds added: Unsupported{engine, operation} · Ambiguous{sandbox, operatio
 1. **Successful user moment** — an operator reads `engine: firecracker` on the dev runner, and a fleet's run answers as it did on bubblewrap.
 2. **Preserved user behaviour** — every tool, park, checkpoint and network policy works as today, and a fleet sees no new setting.
 3. **Optimal-way check** — implement the existing trait once more. The gap is the host path, which §3 closes for every engine.
-4. **Rebuild-vs-iterate** — iterate on the trait and the executor. Rebuild the crate layout, which Indy asked for.
+4. **Rebuild-vs-iterate** — iterate on the trait and the guest agent. Rebuild the crate layout, which Indy asked for.
 5. **What we build** — the split seam, the crate layout, the suite, the Firecracker engine, overcommitted memory admission, a pool of four, the heartbeat fields and the dev host switch.
 6. **What we do NOT build** — memory snapshots, a second VMM, a Mac engine or SPACE's services. None is needed to retire bubblewrap.
 7. **Fit with existing features** — compounds with checkpoints in R2, parked sandboxes and tenant runners. It must not destabilize the egress verdicts.
@@ -504,6 +509,6 @@ Error kinds added: Unsupported{engine, operation} · Ambiguous{sandbox, operatio
 - > Owner (Indy, Nov 27, 2026): chose "Bound with an overcommit ration" and "8" — "I think for singular shell command and such you dont need 2GB of memory or 10GB whatever disk space, a larger memory is needed when the git is worked on." — context: workspace images are sparse, so §8 also bounds a host's sandboxes by `disk_overcommit` (8) times its free disk over one sandbox's granted disk, a `[firecracker]` TOML key; `sandboxes_max` is the lesser of the memory and disk bounds.
 - > Owner (Indy, Nov 27, 2026): chose "Soft limit (Recommended)" — context: host page cache holding a guest's unsaved writes is charged to its monitor's cgroup (`memory.max` = guest memory + 64 MiB), and the kernel killed the monitor in lane runs 1, 4, 5 and 6 (`usage 589824kB, limit 589824kB`, `file_dirty 194134016`); each monitor's cgroup gains a `memory.high` below its `memory.max`, so the kernel throttles and writes back instead of killing.
 - > Owner (Indy, Nov 27, 2026): "I think we dont distrub the runner side it works with our crude command approach on the streams received. No this will only be needed on the public apis. So i think tell about this and we can keep rporceeding with this milestone to keep runner channel with tokio-quic* on the current http/3, decide on how to revamp on http/3 gprc(no 161 spec needed) just the decision recorded somewhere. And support both aws-lc-sys (all the af_crypto) reused across. the runner uses http/3 tokio-quiche crate as now." — context: the runner channel keeps `af_stream` on tokio-quiche for HTTP/3 and tokio-boring for HTTP/2, with its length-prefixed JSON frames (`docs/architecture/runner_protocol.md`). gRPC is for the public APIs only, decided when that work starts: tonic over HTTP/2 on rustls and aws-lc is the mature stack; gRPC over HTTP/3 needs either an adapter that carries trailers over tokio-quiche's driver (`af_stream/src/body/mod.rs:64` refuses trailers today; the driver sends them, `tokio-quiche-0.23.0/src/http3/driver/mod.rs:378`) or the `h3` crate (0.0.8, May 6, 2025). Our own crypto goes through `af_crypto` on aws-lc; BoringSSL stays inside the runner channel's transport.
-- > Owner (Indy, Nov 27, 2026): chose all four constants to TOML (writeback headroom 256 MiB, monitor reserve 64 MiB, CPU per VM 2 cores, park resume wait 2 s), "i think rename writeback to better one" and "tell me more and rename them appropriately", and "bring the toolbox cap to 160mb" — context: `[firecracker] monitor_overhead_mib` (64), `[firecracker] write_cache_mib` (256), `[sandbox] cpu_millicores` (2000) and `[sandbox] park_resume_timeout_seconds` (2), each defaulting to today's value with its source beside it; the toolbox image's cap is under 160,000,000 bytes. Then chose "Enforce + TOML (Recommended)" for the process limit — context: `[sandbox] pids_max` (512) is applied as `pids.max` on the guest's tenant cgroup, the executor outside it, so a fork bomb stops at the limit while the executor still answers. Then "I think lets start with that monitor and fix that as we move forward" — context: 512 stays the default, and a run whose forks hit the limit logs `sandbox_pids_limit_hit` and counts in a runner metric, so the value is tuned from data.
+- > Owner (Indy, Nov 27, 2026): chose all four constants to TOML (writeback headroom 256 MiB, monitor reserve 64 MiB, CPU per VM 2 cores, park resume wait 2 s), "i think rename writeback to better one" and "tell me more and rename them appropriately", and "bring the toolbox cap to 160mb" — context: `[firecracker] monitor_overhead_mib` (64), `[firecracker] write_cache_mib` (256), `[sandbox] cpu_millicores` (2000) and `[sandbox] park_resume_timeout_seconds` (2), each defaulting to today's value with its source beside it; the toolbox image's cap is under 160,000,000 bytes. Then chose "Enforce + TOML (Recommended)" for the process limit — context: `[sandbox] pids_max` (512) is applied as `pids.max` on the guest's tenant cgroup, the guest agent outside it, so a fork bomb stops at the limit while the guest agent still answers. Then "I think lets start with that monitor and fix that as we move forward" — context: 512 stays the default, and a run whose forks hit the limit logs `sandbox_pids_limit_hit` and counts in a runner metric, so the value is tuned from data.
 - > Owner (Indy, Nov 27, 2026): "I feel we must split the executor to a separate @crates/<i donot like the word executor - name it differently> so right now the monolith can screw us if someone just flips the executor to run anything", chose "In M258, now (Recommended)" and "Replace the VM", then "i prefer we do the agentsfleets-guest or so" and "the above is fine" — context: the in-VM agent is its own static binary, `agentsfleet-guest`, built only into `guest.cpio`; its crates sit in a new `guest/` layer (`afg_*`) that uses only `foundation/` and `protocol/`, the host's client is `afr_guest_client` over `af_guest_wire`, and `agentsfleet-runner` loses its `guest` subcommand. `agentsfleet-guest` stays PID 1: its death ends the VM and the run resumes from its checkpoint on a fresh one. Each microVM's console reaches the runner's log as `sandbox_console`, through the host's collector, in place of `/dev/null`.
 - **Deferrals and transfers** — none. Each one needs an owner quote below, as `> Owner (<name>, <MMM DD, YYYY HH:MM>): "<quote>" — context: <item, why>`.

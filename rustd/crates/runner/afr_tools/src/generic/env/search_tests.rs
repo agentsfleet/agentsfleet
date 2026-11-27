@@ -1,4 +1,4 @@
-//! `find` and `grep` over the run's sandbox: the real executor, served
+//! `find` and `grep` over the run's sandbox: the real guest agent, served
 //! in-process, behind a stand-in that counts each call it is asked.
 
 #![expect(
@@ -8,9 +8,8 @@
 
 use std::sync::{Mutex, PoisonError};
 
-use afr_executor::{
-    Executor, FileContent, Found, Listing, Process, ProcessId, Search, Sizes, Spawn,
-};
+use af_guest_wire::{FileContent, Found, Listing, Search, Sizes};
+use afr_guest_client::{GuestAgent, Process, ProcessId, Spawn};
 use bytes::Bytes;
 use guffbolt::tools::{Context, ContextTool, LocalEnv, ToolsConfig};
 use guffbolt::{CallRef, ToolOutput, Tools};
@@ -24,18 +23,18 @@ const DIRECTORIES: usize = 10;
 /// The files in each directory: a thousand in all.
 const FILES_EACH: usize = 100;
 
-/// The executor a run's sandbox serves, every call it is asked named in
+/// The guest agent a run's sandbox serves, every call it is asked named in
 /// order.
 #[derive(Debug)]
 struct Counted<'e> {
-    executor: &'e dyn Executor,
+    agent: &'e dyn GuestAgent,
     calls: Mutex<Vec<&'static str>>,
 }
 
 impl<'e> Counted<'e> {
-    fn new(executor: &'e dyn Executor) -> Self {
+    fn new(agent: &'e dyn GuestAgent) -> Self {
         Self {
-            executor,
+            agent,
             calls: Mutex::default(),
         }
     }
@@ -54,39 +53,39 @@ impl<'e> Counted<'e> {
 }
 
 #[async_trait::async_trait]
-impl Executor for Counted<'_> {
+impl GuestAgent for Counted<'_> {
     fn sizes(&self) -> Sizes {
-        self.executor.sizes()
+        self.agent.sizes()
     }
 
-    async fn spawn(&self, spawn: &Spawn) -> afr_executor::Result<Process> {
+    async fn spawn(&self, spawn: &Spawn) -> af_guest_wire::Result<Process> {
         self.asked("process/spawn");
-        self.executor.spawn(spawn).await
+        self.agent.spawn(spawn).await
     }
 
-    async fn write(&self, process: ProcessId, data: Bytes) -> afr_executor::Result<()> {
+    async fn write(&self, process: ProcessId, data: Bytes) -> af_guest_wire::Result<()> {
         self.asked("process/write");
-        self.executor.write(process, data).await
+        self.agent.write(process, data).await
     }
 
-    async fn kill(&self, process: ProcessId) -> afr_executor::Result<()> {
+    async fn kill(&self, process: ProcessId) -> af_guest_wire::Result<()> {
         self.asked("process/kill");
-        self.executor.kill(process).await
+        self.agent.kill(process).await
     }
 
-    async fn read_file(&self, path: &str, max_bytes: u64) -> afr_executor::Result<FileContent> {
+    async fn read_file(&self, path: &str, max_bytes: u64) -> af_guest_wire::Result<FileContent> {
         self.asked("fs/read");
-        self.executor.read_file(path, max_bytes).await
+        self.agent.read_file(path, max_bytes).await
     }
 
-    async fn list_dir(&self, path: &str) -> afr_executor::Result<Listing> {
+    async fn list_dir(&self, path: &str) -> af_guest_wire::Result<Listing> {
         self.asked("fs/list");
-        self.executor.list_dir(path).await
+        self.agent.list_dir(path).await
     }
 
-    async fn search(&self, search: &Search) -> afr_executor::Result<Found> {
+    async fn search(&self, search: &Search) -> af_guest_wire::Result<Found> {
         self.asked("fs/search");
-        self.executor.search(search).await
+        self.agent.search(search).await
     }
 }
 
@@ -147,7 +146,7 @@ fn planted(live: &Live) -> (String, String) {
 }
 
 #[tokio::test]
-async fn a_search_over_a_tree_is_one_executor_call() {
+async fn a_search_over_a_tree_is_one_agent_call() {
     let live = Live::start().await;
     let (lines, paths) = planted(&live);
     let counted = Counted::new(&live.client);

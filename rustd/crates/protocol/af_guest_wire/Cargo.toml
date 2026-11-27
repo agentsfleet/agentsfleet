@@ -1,0 +1,43 @@
+[package]
+name = "af_guest_wire"
+description = "What the runner and the in-VM agent both speak: the link's JSON-RPC messages and framing, the values each end reads, the refusals both name, the tree's tar stream, and the guest kernel's command line."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# The object-only gate every message from the other end decodes through:
+# both ends treat the other as untrusted.
+af_core.workspace = true
+# Output and file bytes ride the JSON-RPC lines as base64.
+base64.workspace = true
+bytes.workspace = true
+# A tree is packed and unpacked through one directory handle that cannot see
+# past the workspace.
+cap-std.workspace = true
+# The agent's flags, written by the engine and parsed by the agent from one
+# type.
+clap.workspace = true
+jsonrpsee-types.workspace = true
+# The signal number an ending names, and the file flags a tree opens with.
+rustix.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# `import` and `export`: files cross the link as a tar stream.
+tar.workspace = true
+thiserror.workspace = true
+# The byte stream either end speaks over, and the task failure both report.
+tokio = { workspace = true, features = ["io-util", "rt"] }
+
+[dev-dependencies]
+# The codec both ends frame lines with, proved against the frame bound.
+tokio-util = { workspace = true, features = ["codec"] }

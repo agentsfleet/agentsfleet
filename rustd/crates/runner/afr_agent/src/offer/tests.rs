@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use af_egress::testing::RecordingTransport;
-use afr_executor::{ExecutorSlot, Unavailable};
+use afr_guest_client::{AgentSlot, Unavailable};
 use afr_tools::catalog::{MEMORY_RECALL, TASK_INPUT, TASK_START, UPDATE_PLAN, WEB_SEARCH};
 use afr_tools::{Backends, Catalog, Run};
 use guffbolt::Hosted;
@@ -21,8 +21,8 @@ use crate::harness::shared::CAPS;
 use crate::harness::tests::{drive, engine};
 
 /// A run with no sandbox, as a supervisor-side run has.
-fn no_sandbox() -> ExecutorSlot<'static> {
-    ExecutorSlot::unavailable(Unavailable::NoSandbox)
+fn no_sandbox() -> AgentSlot<'static> {
+    AgentSlot::unavailable(Unavailable::NoSandbox)
 }
 
 #[test]

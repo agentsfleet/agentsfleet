@@ -1,0 +1,55 @@
+[package]
+name = "afr_guest_client"
+autotests = false
+description = "The host's client for the in-VM agent: the seam the agent loop calls, the redialling link over any byte stream, and the slot a run's agent is reached through."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+af_core.workspace = true
+# The messages, framing and refusals the agent answers with: the only thing
+# this crate shares with it.
+af_guest_wire.workspace = true
+# The seam is `dyn`: the agent loop holds whichever engine's agent the run
+# got, so the trait needs object-safe async methods.
+async-trait.workspace = true
+# The bounded retry a supervisor connects through while the agent starts.
+backon.workspace = true
+# Output chunks are reference-counted slices: a chunk read once is handed on,
+# and the head and tail it lands in are cut, without a copy.
+bytes.workspace = true
+futures-util = { workspace = true, features = ["sink"] }
+jsonrpsee-types.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["io-util", "net", "rt", "sync", "time", "macros"] }
+tokio-util = { workspace = true, features = ["codec", "io", "rt"] }
+tracing.workspace = true
+
+[dev-dependencies]
+# The suite serves the real agent on a scratch socket: a dev-dependency only,
+# which the layer rule allows; the runner as shipped links no guest crate.
+afg_agent.workspace = true
+# The digest a tree that crossed both ways is compared by.
+af_crypto.workspace = true
+# The log capture a test reads a process's end back through.
+af_core = { workspace = true, features = ["test-util"] }
+base64.workspace = true
+rustix.workspace = true
+tar.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["fs", "io-util", "net", "process", "rt", "rt-multi-thread", "sync", "time", "macros", "test-util"] }
+
+[[test]]
+name = "guest_client_suite"
+path = "tests/guest_client_suite.rs"

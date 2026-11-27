@@ -1,6 +1,6 @@
 //! The file tools in a real microVM: each works `/workspace` through the
-//! guest's executor, what it writes is the sandbox user's, and a link out of
-//! the workspace is refused by the executor's handle inside it.
+//! guest's agent, what it writes is the sandbox user's, and a link out of
+//! the workspace is refused by the guest agent's handle inside it.
 
 use afr_engine::Engine as _;
 use afr_tools::catalog::{APPLY_PATCH, FILE_EDIT, FILE_READ, FILE_WRITE, IMAGE, SHELL};
@@ -81,8 +81,8 @@ fn in_fresh_sandbox(lane: &Lane, run_id: &str, steps: &[Step]) -> Result<Vec<Too
             if !NAMES.contains(&name) {
                 return Err(format!("{name} is not one of the trial's tools").into());
             }
-            let executor = sandbox.executor();
-            outputs.push(called(executor, &run, number, name, &arguments).await?);
+            let agent = sandbox.agent();
+            outputs.push(called(agent, &run, number, name, &arguments).await?);
         }
         sandbox.destroy().await?;
         Ok(outputs)
@@ -190,7 +190,7 @@ pub(crate) fn file_tools_run_inside(lane: &Lane) -> Result<(), Failed> {
     )
 }
 
-/// A link to the sandbox's own `/etc` is refused by the executor's handle,
+/// A link to the sandbox's own `/etc` is refused by the guest agent's handle,
 /// and a path that climbs out by name never reaches it.
 pub(crate) fn file_tools_refuse_link_out(lane: &Lane) -> Result<(), Failed> {
     let steps: [Step; 4] = [

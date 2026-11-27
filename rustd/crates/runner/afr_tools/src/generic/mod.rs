@@ -4,8 +4,8 @@
 //!
 //! ```text
 //!  Backends ─► guffbolt's builder ─► each tool, holding its backend:
-//!     executor source ─► LazySandboxEnv   run.egress ─► Egressed
-//!  router ─► ToolContext { executor, run, call_ref } ─► Generic::call
+//!     guest agent source ─► LazySandboxEnv   run.egress ─► Egressed
+//!  router ─► ToolContext { guest agent, run, call_ref } ─► Generic::call
 //!               ─► guffbolt::tools::Context { call_ref, run_id } ─► the tool
 //! ```
 //!

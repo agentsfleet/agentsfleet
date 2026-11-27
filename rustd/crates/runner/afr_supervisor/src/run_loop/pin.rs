@@ -25,7 +25,7 @@ pub(crate) enum Pinning<P> {
     Pinned(Resumed<P>),
 }
 
-/// Proves no call of `sandbox`'s executor in flight, then pauses `volume`,
+/// Proves no call of `sandbox`'s guest agent in flight, then pauses `volume`,
 /// pins it against `parent` and resumes it, the resume running whether or
 /// not the pin was taken. Nothing here calls the daemon.
 ///
@@ -36,11 +36,11 @@ pub(crate) async fn pin_sandbox<V: WorkspaceVolume>(
     volume: &V,
     parent: Option<&Uuid7>,
 ) -> Result<Pinning<V::Pin>> {
-    match sandbox.executor().calls_idle().await {
+    match sandbox.agent().calls_idle().await {
         Ok(true) => {}
-        Ok(false) => return Ok(Pinning::Skipped(RecoverySkip::BusyExecutor)),
+        Ok(false) => return Ok(Pinning::Skipped(RecoverySkip::BusyAgent)),
         Err(failure) => {
-            tracing::debug!(event = "run_checkpoint_executor_unproved", error_code = %failure.code());
+            tracing::debug!(event = "run_checkpoint_agent_unproved", error_code = %failure.code());
             return Ok(Pinning::Skipped(RecoverySkip::Unavailable));
         }
     }
@@ -82,14 +82,14 @@ pub(crate) async fn release<V: WorkspaceVolume>(volume: &V, pin: Resumed<V::Pin>
     }
 }
 
-/// The executor's own file jobs must be idle before a capture reads the
+/// The guest agent's own file jobs must be idle before a capture reads the
 /// workspace.
-pub(super) async fn executor_idle(sandbox: &dyn Sandbox) -> Result<bool> {
+pub(super) async fn agent_idle(sandbox: &dyn Sandbox) -> Result<bool> {
     sandbox
-        .executor()
+        .agent()
         .recovery_idle()
         .await
-        .map_err(|source| error::boundary("cannot prove executor file jobs idle", source))
+        .map_err(|source| error::boundary("cannot prove guest agent file jobs idle", source))
 }
 
 /// A pin read as the changes a publication consumes.

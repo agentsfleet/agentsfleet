@@ -1,8 +1,8 @@
 //! The router: one loop's tools as `guffbolt` dispatches them, and each
 //! catalog handler run where its runtime says.
 //!
-//! A supervisor-side handler runs in-process with no executor in its context;
-//! a sandbox-side one runs with the run's executor, waiting for the run's
+//! A supervisor-side handler runs in-process with no guest agent in its context;
+//! a sandbox-side one runs with the run's guest agent, waiting for the run's
 //! build when the sandbox is not ready yet. A name the loop holds no tool for
 //! is a tool error the model reads, never a failed run, so the next turn
 //! still runs (`docs/architecture/runner_execution.md` §"Tool catalog").
@@ -12,7 +12,7 @@ use std::future::ready;
 use guffbolt::{CallRef, Describe, Tool, ToolFuture, ToolOutput, ToolSpec, Tools};
 use tokio::time::Instant;
 
-use afr_executor::{ExecutorSource, Outcome};
+use afr_guest_client::{AgentSource, Outcome};
 use afr_telemetry::labels::SandboxWait;
 use afr_telemetry::record;
 use afr_tools::{Run, RunTool, Runtime, Selection, ToolContext, ToolErrorCode};
@@ -85,7 +85,7 @@ impl<'s, 'run> Router<'s, 'run> {
 }
 
 /// A catalog handler, or a tool the run built over its backends, as a loop
-/// runs it: lent the run's state, and its executor only when the handler's
+/// runs it: lent the run's state, and its guest agent only when the handler's
 /// published entry runs in the sandbox.
 #[derive(Debug)]
 pub(crate) struct Routed<'s> {
@@ -100,20 +100,20 @@ impl<'s> Routed<'s> {
     }
 
     /// Runs the call at `call_ref` where the handler's runtime says: with
-    /// `run`, and with the sandbox's executor from `executor` for a
+    /// `run`, and with the sandbox's guest agent from `agent` for a
     /// sandbox-side call.
     pub(crate) async fn run(
         &self,
         arguments: &serde_json::Value,
-        executor: &dyn ExecutorSource,
+        agent: &dyn AgentSource,
         run: &Run<'_>,
         call_ref: &CallRef,
     ) -> ToolOutput {
         let name = self.handler.name();
-        let executor = match self.runtime {
+        let agent = match self.runtime {
             Runtime::Supervisor => None,
-            Runtime::Sandbox => match sandbox(executor).await {
-                Ok(executor) => Some(executor),
+            Runtime::Sandbox => match sandbox(agent).await {
+                Ok(agent) => Some(agent),
                 Err(why) => return failed(ToolErrorCode::SandboxUnavailable, name, why.reason()),
             },
             Runtime::Provider => return hosted_elsewhere(name),
@@ -122,7 +122,7 @@ impl<'s> Routed<'s> {
             .call(
                 arguments,
                 ToolContext {
-                    executor,
+                    agent,
                     run,
                     call_ref,
                 },
@@ -147,18 +147,18 @@ impl<'call, 's, 'run> Tool<Lent<'call, 's, 'run>> for Routed<'s> {
         Lent<'call, 's, 'run>: 'a,
     {
         let shared = cx.harness.shared;
-        Box::pin(self.run(arguments, shared.executor, shared.run, cx.call_ref))
+        Box::pin(self.run(arguments, shared.agent, shared.run, cx.call_ref))
     }
 }
 
-/// The sandbox's executor, or why there is none. A call that found the
+/// The sandbox's guest agent, or why there is none. A call that found the
 /// build still running is recorded with how long it waited.
-async fn sandbox(executor: &dyn ExecutorSource) -> Outcome<'_> {
-    if executor.is_filled() {
-        return executor.get().await;
+async fn sandbox(agent: &dyn AgentSource) -> Outcome<'_> {
+    if agent.is_filled() {
+        return agent.get().await;
     }
     let started = Instant::now();
-    let outcome = executor.get().await;
+    let outcome = agent.get().await;
     let waited = match outcome {
         Ok(_) => SandboxWait::Ready,
         Err(_) => SandboxWait::Unavailable,

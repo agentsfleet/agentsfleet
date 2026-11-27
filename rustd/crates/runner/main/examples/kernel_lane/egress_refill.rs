@@ -81,11 +81,11 @@ fn across_a_refill(
         let mut sandbox = engine.prepare(request).await?;
         let mut said = Vec::with_capacity(2 * scripts.len());
         for script in scripts {
-            said.push(run(sandbox.executor(), shell(script)).await);
+            said.push(run(sandbox.agent(), shell(script)).await);
         }
         let refilled = sandbox.egress(plan(2, Network::Allowed(moved))).await;
         for script in scripts {
-            said.push(run(sandbox.executor(), shell(script)).await);
+            said.push(run(sandbox.agent(), shell(script)).await);
         }
         sandbox.destroy().await?;
         refilled?;

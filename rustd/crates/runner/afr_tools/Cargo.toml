@@ -24,12 +24,13 @@ af_validate.workspace = true
 af_wire.workspace = true
 # The run's memory, which the memory tools read and write.
 afr_memory.workspace = true
-# A sandbox-side handler reaches `/workspace` through the run's executor.
-afr_executor.workspace = true
+# A sandbox-side handler reaches `/workspace` through the run's guest agent.
+afr_guest_client.workspace = true
+af_guest_wire.workspace = true
 # The egress tools send through the run's guard and the shared transport.
 af_egress.workspace = true
 # The bytes a sandboxed write or file call carries between the harness and
-# the executor.
+# the guest agent.
 bytes.workspace = true
 # `schedule` reads an RFC 3339 moment and writes its UTC minute as a cron.
 jiff.workspace = true
@@ -48,7 +49,7 @@ serde_json.workspace = true
 garde.workspace = true
 thiserror.workspace = true
 # A session's yield is a deadline on its event channel, and a scripted
-# process's events travel on the same channel type the executor's do.
+# process's events travel on the same channel type the guest agent's do.
 tokio = { workspace = true, features = ["sync", "time"] }
 # A refused call logs `tool_refused` with its code.
 tracing.workspace = true
@@ -60,6 +61,9 @@ tracing.workspace = true
 test-util = ["af_egress/test-util"]
 
 [dev-dependencies]
+# The real agent, served in-process on a scratch socket: a dev-dependency
+# only, which the layer rule allows; the shipped runner links no guest crate.
+afg_agent.workspace = true
 # Real encoded images: the image tool decodes every file it reads.
 image.workspace = true
 # The counting mint and the recording transport the egress suites send through.
@@ -67,7 +71,7 @@ af_egress = { workspace = true, features = ["test-util"] }
 af_core = { workspace = true, features = ["test-util"] }
 # The session suites pause the clock so a yield passes without waiting.
 tokio = { workspace = true, features = ["macros", "rt", "test-util", "io-util", "net"] }
-# The live session suite serves a real executor on a scratch socket.
+# The live session suite serves a real guest agent on a scratch socket.
 tempfile.workspace = true
 # The landing-failure suite skips under root, which writes through mode bits.
 rustix = { workspace = true, features = ["process"] }

@@ -1,11 +1,11 @@
 name: Restore or build the guest set
-description: The monitor, jailer and guest kernel a Firecracker microVM boots from, built once per pinned manifest and builder and cached; given a runner binary, the initramfs around it and the set's record. No release credentials.
+description: The monitor, jailer and guest kernel a Firecracker microVM boots from, built once per pinned manifest and builder and cached; given the guest agent binary, the initramfs around it and the set's record. No release credentials.
 inputs:
   pinned-dir:
     description: Directory that holds the cached monitor, jailer, kernel and their record.
     default: dist/guest-pinned
-  runner-binary:
-    description: The static runner binary the initramfs is built around. Empty stops once the pinned files are cached.
+  guest-binary:
+    description: The static agentsfleet-guest binary the initramfs is built around. Empty stops once the pinned files are cached.
     default: ''
   output-dir:
     description: Directory the whole guest set is written to, beside the toolbox it ships with.
@@ -70,24 +70,24 @@ runs:
 
     # guest.sh checks the pinned files against their record and the manifest
     # on hits and misses alike, then the host's own check reads the set back.
-    - name: Assemble the guest set around the runner
+    - name: Assemble the guest set around the guest agent
       id: set
-      if: inputs.runner-binary != ''
+      if: inputs.guest-binary != ''
       shell: bash
       env:
         PINNED_DIR: ${{ inputs.pinned-dir }}
-        RUNNER_BINARY: ${{ inputs.runner-binary }}
+        GUEST_BINARY: ${{ inputs.guest-binary }}
         OUTPUT_DIR: ${{ inputs.output-dir }}
       run: |
         set -euo pipefail
-        make --no-print-directory guest-set GUEST_PINNED_DIR="$PWD/$PINNED_DIR" GUEST_RUNNER="$RUNNER_BINARY" GUEST_DIR="$PWD/$OUTPUT_DIR"
+        make --no-print-directory guest-set GUEST_PINNED_DIR="$PWD/$PINNED_DIR" GUEST_BINARY="$GUEST_BINARY" GUEST_DIR="$PWD/$OUTPUT_DIR"
         source deploy/baremetal/toolbox.sh
         guest_set_files "$OUTPUT_DIR" >/dev/null
         echo "kernel=$PWD/$OUTPUT_DIR/vmlinux" >> "$GITHUB_OUTPUT"
         echo "initrd=$PWD/$OUTPUT_DIR/guest.cpio" >> "$GITHUB_OUTPUT"
 
     - name: Install the set where the engine boots from
-      if: inputs.runner-binary != '' && inputs.install == 'true'
+      if: inputs.guest-binary != '' && inputs.install == 'true'
       shell: bash
       env:
         OUTPUT_DIR: ${{ inputs.output-dir }}

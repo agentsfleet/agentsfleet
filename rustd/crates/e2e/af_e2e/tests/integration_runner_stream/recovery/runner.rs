@@ -130,7 +130,7 @@ fn script(marker: &Path) -> ScriptedEngine {
         }),
         Step::Run {
             tool: "shell",
-            spawn: afr_executor::Spawn::program("sh")
+            spawn: afr_guest_client::Spawn::program("sh")
                 .arg("-c")
                 .arg(SCRIPT)
                 .arg("native-recovery")

@@ -124,11 +124,11 @@ async fn a_sandbox_without_a_toolbox_skips() -> Result<()> {
 }
 
 #[tokio::test]
-async fn an_executor_that_cannot_prove_idle_skips_before_reading_the_tenant() -> Result<()> {
+async fn an_agent_that_cannot_prove_idle_skips_before_reading_the_tenant() -> Result<()> {
     let mut fixture = Fixture::new(unavailable)?;
     let run = fixture.run()?;
     let root = tempfile::tempdir()?;
-    let (engine, sandbox) = sandbox(root.path(), Parking::ExecutorUnproved).await?;
+    let (engine, sandbox) = sandbox(root.path(), Parking::AgentUnproved).await?;
     let cell = OnceLock::from(sandbox);
     let state = OnceLock::new();
     let (_, mut owner) = BoundaryOwner::new(
@@ -372,7 +372,7 @@ async fn a_conflicting_turn_capture_skips_and_a_refused_one_stops_the_run() -> R
 }
 
 #[tokio::test]
-async fn a_terminal_capture_reserves_storage_only_for_an_idle_executor() -> Result<()> {
+async fn a_terminal_capture_reserves_storage_only_for_an_idle_agent() -> Result<()> {
     let fixture = Fixture::new(unavailable)?;
     let run = fixture.run()?;
     let root = tempfile::tempdir()?;
@@ -387,7 +387,7 @@ async fn a_terminal_capture_reserves_storage_only_for_an_idle_executor() -> Resu
         Ok(Some(_))
     ));
 
-    let (_, busy) = sandbox(root.path(), Parking::BusyExecutor).await?;
+    let (_, busy) = sandbox(root.path(), Parking::BusyAgent).await?;
     let refused = run.reserve_terminal_capture(busy.as_ref(), true).await;
     assert_eq!(
         test_support::detail(&refused),
@@ -399,11 +399,11 @@ async fn a_terminal_capture_reserves_storage_only_for_an_idle_executor() -> Resu
         )
     );
 
-    let (_, unproved) = sandbox(root.path(), Parking::ExecutorUnproved).await?;
+    let (_, unproved) = sandbox(root.path(), Parking::AgentUnproved).await?;
     let refused = run.reserve_terminal_capture(unproved.as_ref(), true).await;
     assert_eq!(
         test_support::detail(&refused),
-        Some("cannot prove executor file jobs idle")
+        Some("cannot prove guest agent file jobs idle")
     );
     Ok(())
 }

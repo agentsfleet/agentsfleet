@@ -9,7 +9,7 @@ use serde_json::json;
 use crate::catalog::APPLY_PATCH;
 use crate::run::Run;
 use crate::runtime::ToolErrorCode;
-use crate::sandbox::ScriptedExecutor;
+use crate::sandbox::ScriptedGuest;
 use crate::testing::{Live, call_in, hosted, offered};
 
 /// The argument name the calls spell.
@@ -36,7 +36,7 @@ const EACH_KIND: &str = concat!(
     "*** End Patch\n",
 );
 
-/// Applies `patch` through `live`'s executor.
+/// Applies `patch` through `live`'s guest agent.
 pub(super) async fn apply(live: &Live, patch: &str) -> ToolOutput {
     let (catalog, _sent) = hosted();
     let selection = catalog.select(&[APPLY_PATCH.name()]).unwrap();
@@ -235,10 +235,10 @@ async fn a_hunk_on_a_file_the_workspace_does_not_have_reads_file_not_found() {
 }
 
 /// A hunk path that leaves the workspace is refused before any call: the
-/// scripted executor refuses every file call, and no refusal of its shows.
+/// scripted guest agent refuses every file call, and no refusal of its shows.
 #[tokio::test]
 async fn a_hunk_path_leaving_the_workspace_is_refused_before_any_call() {
-    let executor = ScriptedExecutor::default();
+    let agent = ScriptedGuest::default();
     let (catalog, _sent) = hosted();
     let selection = catalog.select(&[APPLY_PATCH.name()]).unwrap();
     let tool = offered(&selection, &APPLY_PATCH);
@@ -250,7 +250,7 @@ async fn a_hunk_path_leaving_the_workspace_is_refused_before_any_call() {
         "*** Begin Patch\n*** Delete File: a/../../b\n*** End Patch\n",
         "*** Begin Patch\n*** Add File: ok.txt\n+x\n*** Update File: a.txt\n*** Move to: ../moved.txt\n@@\n-a\n+b\n*** End Patch\n",
     ] {
-        let refused = call_in(tool, &executor, &run, json!({PATCH: patch})).await;
+        let refused = call_in(tool, &agent, &run, json!({PATCH: patch})).await;
 
         assert_eq!(
             refused.error_code,

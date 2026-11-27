@@ -55,6 +55,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "af_cgroup"
+version = "0.90.0"
+dependencies = [
+ "af_core",
+ "backon",
+ "tempfile",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "af_chunk_store"
 version = "0.90.0"
 dependencies = [
@@ -137,6 +147,7 @@ dependencies = [
  "af_core",
  "af_crypto",
  "af_egress",
+ "af_guest_wire",
  "af_observability",
  "af_otlp",
  "af_providers",
@@ -162,10 +173,12 @@ dependencies = [
  "afd_tenant",
  "afd_turns",
  "afd_vault",
+ "afg_confine",
  "afr_agent",
  "afr_engine",
+ "afr_engine_firecracker",
  "afr_engine_unsandboxed",
- "afr_executor",
+ "afr_guest_client",
  "afr_supervisor",
  "afr_telemetry",
  "afr_tools",
@@ -241,6 +254,25 @@ dependencies = [
  "serde_ignored",
  "serde_json",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "af_guest_wire"
+version = "0.90.0"
+dependencies = [
+ "af_core",
+ "base64 0.23.1",
+ "bytes",
+ "cap-std",
+ "clap",
+ "jsonrpsee-types",
+ "rustix 1.1.6",
+ "serde",
+ "serde_json",
+ "tar",
+ "thiserror 2.0.21",
+ "tokio",
+ "tokio-util",
 ]
 
 [[package]]
@@ -1353,6 +1385,73 @@ dependencies = [
 ]
 
 [[package]]
+name = "afg_agent"
+version = "0.90.0"
+dependencies = [
+ "af_core",
+ "af_guest_wire",
+ "base64 0.23.1",
+ "bytes",
+ "cap-std",
+ "cap-tempfile",
+ "futures-util",
+ "globset",
+ "grep-regex",
+ "grep-searcher",
+ "ignore",
+ "jsonrpsee-types",
+ "rustix 1.1.6",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
+name = "afg_confine"
+version = "0.90.0"
+dependencies = [
+ "af_core",
+ "af_guest_wire",
+ "afg_agent",
+ "backon",
+ "landlock",
+ "libc",
+ "procfs-core 0.18.0",
+ "rustix 1.1.6",
+ "seccompiler",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "afg_entry"
+version = "0.90.0"
+dependencies = [
+ "af_cgroup",
+ "af_core",
+ "af_guest_wire",
+ "afg_agent",
+ "afg_confine",
+ "async-trait",
+ "libc",
+ "netlink-packet-core",
+ "netlink-packet-route",
+ "netlink-sys",
+ "rustix 1.1.6",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+ "tokio-vsock",
+ "tracing",
+]
+
+[[package]]
 name = "afr_agent"
 version = "0.90.0"
 dependencies = [
@@ -1360,12 +1459,14 @@ dependencies = [
  "af_core",
  "af_crypto",
  "af_egress",
+ "af_guest_wire",
  "af_observability",
  "af_providers",
  "af_secrets",
  "af_validate",
  "af_wire",
- "afr_executor",
+ "afg_agent",
+ "afr_guest_client",
  "afr_memory",
  "afr_telemetry",
  "afr_tools",
@@ -1399,6 +1500,7 @@ dependencies = [
 name = "afr_cgroup"
 version = "0.90.0"
 dependencies = [
+ "af_cgroup",
  "af_core",
  "afr_engine",
  "backon",
@@ -1416,8 +1518,9 @@ dependencies = [
  "af_chunk_store",
  "af_core",
  "af_crypto",
+ "af_guest_wire",
  "af_wire",
- "afr_executor",
+ "afr_guest_client",
  "async-trait",
  "backon",
  "bytes",
@@ -1435,17 +1538,19 @@ dependencies = [
 name = "afr_engine_firecracker"
 version = "0.90.0"
 dependencies = [
+ "af_cgroup",
  "af_core",
+ "af_guest_wire",
  "af_wire",
+ "afg_agent",
  "afr_cgroup",
  "afr_engine",
- "afr_executor",
  "afr_firewall",
- "afr_guest",
+ "afr_guest_client",
  "afr_image",
  "async-trait",
  "backon",
- "clap",
+ "landlock",
  "libc",
  "procfs-core 0.18.0",
  "rustix 1.1.6",
@@ -1454,7 +1559,6 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
- "tokio-vsock",
  "tracing",
 ]
 
@@ -1463,42 +1567,15 @@ name = "afr_engine_unsandboxed"
 version = "0.90.0"
 dependencies = [
  "af_core",
+ "af_guest_wire",
  "af_wire",
+ "afg_agent",
  "afr_engine",
- "afr_executor",
+ "afr_guest_client",
  "async-trait",
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
-]
-
-[[package]]
-name = "afr_executor"
-version = "0.90.0"
-dependencies = [
- "af_core",
- "af_crypto",
- "async-trait",
- "backon",
- "base64 0.23.1",
- "bytes",
- "cap-std",
- "cap-tempfile",
- "futures-util",
- "globset",
- "grep-regex",
- "grep-searcher",
- "ignore",
- "jsonrpsee-types",
- "rustix 1.1.6",
- "serde",
- "serde_json",
- "tar",
- "tempfile",
- "thiserror 2.0.21",
- "tokio",
- "tokio-util",
- "tracing",
 ]
 
 [[package]]
@@ -1519,23 +1596,27 @@ dependencies = [
 ]
 
 [[package]]
-name = "afr_guest"
+name = "afr_guest_client"
 version = "0.90.0"
 dependencies = [
  "af_core",
- "afr_engine",
- "afr_executor",
+ "af_crypto",
+ "af_guest_wire",
+ "afg_agent",
+ "async-trait",
  "backon",
- "landlock",
- "libc",
- "procfs-core 0.18.0",
+ "base64 0.23.1",
+ "bytes",
+ "futures-util",
+ "jsonrpsee-types",
  "rustix 1.1.6",
- "seccompiler",
+ "serde",
+ "serde_json",
+ "tar",
  "tempfile",
- "thiserror 2.0.21",
  "tokio",
+ "tokio-util",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -1589,15 +1670,17 @@ dependencies = [
  "af_core",
  "af_crypto",
  "af_egress",
+ "af_guest_wire",
  "af_observability",
  "af_providers",
  "af_secrets",
  "af_stream",
  "af_validate",
  "af_wire",
+ "afg_agent",
  "afr_agent",
  "afr_engine",
- "afr_executor",
+ "afr_guest_client",
  "afr_memory",
  "afr_telemetry",
  "afr_tools",
@@ -1664,9 +1747,11 @@ version = "0.90.0"
 dependencies = [
  "af_core",
  "af_egress",
+ "af_guest_wire",
  "af_validate",
  "af_wire",
- "afr_executor",
+ "afg_agent",
+ "afr_guest_client",
  "afr_memory",
  "async-trait",
  "bytes",
@@ -1686,25 +1771,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "agentsfleet_guest"
+version = "0.90.0"
+dependencies = [
+ "af_core",
+ "af_guest_wire",
+ "afg_entry",
+ "clap",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "agentsfleet_runner"
 version = "0.90.0"
 dependencies = [
+ "af_cgroup",
  "af_config",
  "af_core",
  "af_crypto",
  "af_egress",
+ "af_guest_wire",
  "af_observability",
  "af_otlp",
  "af_providers",
  "af_wire",
+ "afg_agent",
+ "afg_confine",
  "afr_agent",
  "afr_cgroup",
  "afr_engine",
  "afr_engine_firecracker",
  "afr_engine_unsandboxed",
- "afr_executor",
  "afr_firewall",
- "afr_guest",
+ "afr_guest_client",
  "afr_image",
  "afr_supervisor",
  "afr_telemetry",

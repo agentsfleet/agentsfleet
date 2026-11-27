@@ -64,7 +64,7 @@ async fn parked(engine: &dyn Engine, mode: ParkMode, process: &str) -> Result<()
     let sandbox = build(engine, Limits::DEFAULT).await?;
     let prepared = async {
         sandbox
-            .executor()
+            .agent()
             .write_file(NOTE_FILE, Bytes::from_static(NOTE))
             .await?;
         start_background(&*sandbox).await
@@ -91,7 +91,7 @@ async fn parked(engine: &dyn Engine, mode: ParkMode, process: &str) -> Result<()
         }
     };
     let (note, after) = within(parked.resume().await?, async |sandbox| {
-        let note = sandbox.executor().read_file(NOTE_FILE, NOTE_BYTES).await?;
+        let note = sandbox.agent().read_file(NOTE_FILE, NOTE_BYTES).await?;
         Ok((note.data, said(sandbox, BACKGROUND_ALIVE).await?))
     })
     .await?;

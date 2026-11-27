@@ -1,6 +1,6 @@
 [package]
 name = "afr_engine_firecracker"
-description = "Our Firecracker engine: one microVM per run behind the stock jailer, the toolbox and the workspace image as its drives, its egress on a tap the host table holds, and the guest entry that serves the executor on vsock."
+description = "Our Firecracker engine: one microVM per run behind the stock jailer, the toolbox and the workspace image as its drives, its egress on a tap the host table holds, its console logged line by line, and the vsock dial to its guest agent."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -20,11 +20,11 @@ af_core.workspace = true
 af_wire.workspace = true
 # The seam it meets.
 afr_engine.workspace = true
-# Every guest serves the same executor; the host dials it over vsock.
-afr_executor.workspace = true
+# Every guest serves the same agent; the host dials it over vsock through
+# the client, and writes the agent's flags on the kernel's command line.
+afr_guest_client.workspace = true
+af_guest_wire.workspace = true
 async-trait.workspace = true
-# The guest entry's flags, parsed once here for the runner binary.
-clap.workspace = true
 # The monitor's `--config-file`: one JSON document per boot.
 serde.workspace = true
 serde_json.workspace = true
@@ -36,17 +36,18 @@ tracing.workspace = true
 # The vsock handshake, retried while a guest boots, without a hand-written
 # loop.
 backon.workspace = true
-# A guest's cgroup leaf under the delegated subtree.
+# A guest's cgroup leaf under the delegated subtree, and the kernel's cgroup
+# file names.
 afr_cgroup.workspace = true
+af_cgroup.workspace = true
 # Its namespace, tap and host table.
 afr_firewall.workspace = true
 # The verified toolbox a guest's read-only drive is, and the workspace image
 # formatted for its data drive.
 afr_image.workspace = true
-# The inner environment the guest's executor builds and confines every
-# tenant process in.
-afr_guest.workspace = true
-# The guest entry's fork, and the power-off that ends its virtual machine.
+# The Landlock ruleset the host probe asks the kernel whether it can build.
+landlock.workspace = true
+# The monitor's process group, signalled when a sandbox ends.
 libc.workspace = true
 # The host's `MemAvailable`, parsed from `/proc/meminfo`, which the memory
 # bound is made from.
@@ -54,11 +55,12 @@ procfs-core.workspace = true
 # The mount, ownership, device-node and identity calls a jail and a guest
 # are made with.
 rustix.workspace = true
-# The guest's executor listens on vsock.
-tokio-vsock.workspace = true
 
 [dev-dependencies]
 af_core = { workspace = true, features = ["test-util"] }
+# A guest agent served over a socket pair, as a booted guest serves vsock: a
+# dev-dependency only, which the layer rule allows.
+afg_agent.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["io-util", "macros", "net", "rt", "rt-multi-thread", "time"] }
 

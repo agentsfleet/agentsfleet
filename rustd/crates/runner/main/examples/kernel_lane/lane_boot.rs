@@ -6,9 +6,9 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Arc;
 
+use af_cgroup::{CGROUP_ROOT, SUBTREE_CONTROL};
 use af_core::env::{EnvSource as _, ProcessEnv};
 use af_wire::runner::SandboxEngine;
-use afr_cgroup::{CGROUP_ROOT, SUBTREE_CONTROL};
 use afr_engine::{Booted, HostPaths, REQUIRED_CONTROLLERS, boot};
 use afr_engine_firecracker::{FirecrackerBackend, FirecrackerEngine};
 use afr_image::ToolboxHome;

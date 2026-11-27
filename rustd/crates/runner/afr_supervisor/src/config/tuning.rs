@@ -21,7 +21,7 @@ use crate::client::CALL_TIMEOUT;
 pub const CALL_TIMEOUT_MIN_SECONDS: u64 =
     af_wire::message_verb::MESSAGE_DELIVERY_DEADLINE.as_secs() + 1;
 
-/// How long a resumed parked sandbox's executor has to answer before the
+/// How long a resumed parked sandbox's guest agent has to answer before the
 /// park is given up for a fresh sandbox, by default.
 ///
 /// Two seconds is Indy's number (Indy, Nov 27, 2026: "park resume wait 2 s"). The runner's
@@ -42,7 +42,7 @@ pub struct Tuning {
     pub decision: DecisionTimeouts,
     /// What every run's sandbox enforces.
     pub limits: Limits,
-    /// How long a resumed parked sandbox's executor has to answer.
+    /// How long a resumed parked sandbox's guest agent has to answer.
     pub park_resume_timeout: Duration,
 }
 

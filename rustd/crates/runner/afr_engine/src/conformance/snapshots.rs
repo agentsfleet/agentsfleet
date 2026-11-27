@@ -53,20 +53,20 @@ pub(super) async fn restores_the_files(
     _context: &Context<'_>,
 ) -> Result<(), Failed> {
     offered(engine, async |sandbox, snapshots| {
-        let executor = sandbox.executor();
-        executor
+        let agent = sandbox.agent();
+        agent
             .write_file(SAVED_FILE, Bytes::from_static(SAVED))
             .await?;
         let snapshot = snapshots.take(fresh_sandbox_id()).await?;
-        executor
+        agent
             .write_file(SAVED_FILE, Bytes::from_static(CHANGED))
             .await?;
-        executor
+        agent
             .write_file(LATER_FILE, Bytes::from_static(CHANGED))
             .await?;
         snapshots.restore(&snapshot).await?;
-        let saved = executor.read_file(SAVED_FILE, FILE_BYTES).await?;
-        let later = executor.read_file(LATER_FILE, FILE_BYTES).await;
+        let saved = agent.read_file(SAVED_FILE, FILE_BYTES).await?;
+        let later = agent.read_file(LATER_FILE, FILE_BYTES).await;
         snapshots.forget(&snapshot).await?;
         expect(
             saved.data == SAVED,

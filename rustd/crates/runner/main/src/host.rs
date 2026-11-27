@@ -102,7 +102,7 @@ impl Host {
     }
 
     /// An engine that builds no sandbox: each run's tools run in a scratch
-    /// directory under the storage home, its executor serving `sizes`. A
+    /// directory under the storage home, its guest agent serving `sizes`. A
     /// debug build alone has it, and the engine itself refuses to exist in a
     /// release build.
     ///
@@ -111,7 +111,7 @@ impl Host {
     #[cfg(all(debug_assertions, feature = "unsandboxed"))]
     pub(crate) fn unsandboxed(
         home: &StorageHome,
-        sizes: afr_executor::Sizes,
+        sizes: af_guest_wire::Sizes,
     ) -> Result<Self, ExitCode> {
         let engine = afr_engine_unsandboxed::UnsandboxedEngine::new(home.sandboxes())
             .or_exit()?
@@ -141,7 +141,8 @@ impl Staged {
         use std::io::BufReader;
         use std::path::Path;
 
-        use afr_cgroup::{CGROUP_ROOT, SELF_CGROUP_PATH, delegated_root};
+        use af_cgroup::CGROUP_ROOT;
+        use afr_cgroup::{SELF_CGROUP_PATH, delegated_root};
         use afr_image::{Release, ToolboxHome};
 
         let own = File::open(SELF_CGROUP_PATH).map_err(|error| io_failed(&error))?;

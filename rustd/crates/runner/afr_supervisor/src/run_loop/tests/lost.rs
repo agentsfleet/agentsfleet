@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use af_core::test_util::trace::Capture;
-use afr_executor::Unavailable;
+use afr_guest_client::Unavailable;
 
 use super::*;
 use crate::test_support::Parking;

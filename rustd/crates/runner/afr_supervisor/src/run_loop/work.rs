@@ -1,8 +1,8 @@
-//! Prepare one fleet turn and run it with its memory window and executor.
+//! Prepare one fleet turn and run it with its memory window and guest agent.
 
 use af_wire::memory::MemoryLoadResponse;
 use af_wire::report::FailureClass;
-use afr_executor::{ExecutorSlot, Unavailable};
+use afr_guest_client::{AgentSlot, Unavailable};
 use afr_memory::Seed;
 
 use super::{
@@ -120,7 +120,7 @@ impl Run<'_> {
         if needs_sandbox {
             self.sandboxed(seed, sink, prepared).await
         } else {
-            let none = ExecutorSlot::unavailable(Unavailable::NoSandbox);
+            let none = AgentSlot::unavailable(Unavailable::NoSandbox);
             let recovered = match self.recover_without_sandbox(prepared).await {
                 Ok(recovered) => recovered,
                 Err(failure) => {

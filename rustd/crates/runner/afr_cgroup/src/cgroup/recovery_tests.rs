@@ -1,4 +1,4 @@
-//! The executor's resident leaf never proves the tenant tree empty.
+//! The guest agent's resident leaf never proves the tenant tree empty.
 
 use std::fs;
 
@@ -16,7 +16,7 @@ const ROOM: Room = Room {
 fn recovery_quiescence_reads_the_entire_tenant_subtree() -> crate::Result<()> {
     let root = tempfile::tempdir()?;
     let group = RunCgroup::create(root.path(), "recovery-boundary", &Limits::default(), ROOM)?;
-    // Its parent may contain the resident executor while tenant custody is empty.
+    // Its parent may contain the resident guest agent while tenant custody is empty.
     fs::write(
         root.path().join("recovery-boundary/cgroup.events"),
         "populated 1\nfrozen 1\n",

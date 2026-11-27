@@ -16,10 +16,10 @@ use af_egress::testing::{CountingMint, RecordingTransport};
 use af_wire::activity::ActivityFrame;
 use af_wire::run::RunPayload;
 use af_wire::tool_trace::ToolCallStatus;
-use afr_executor::ProcessId;
+use afr_guest_client::ProcessId;
 use afr_tools::Catalog;
 use afr_tools::catalog::EXEC_COMMAND;
-use afr_tools::sandbox::{ScriptedExecutor, ScriptedProcess};
+use afr_tools::sandbox::{ScriptedGuest, ScriptedProcess};
 use guffbolt::Chunk;
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
@@ -56,12 +56,12 @@ fn opening(id: &str, cmd: &str, yield_ms: Option<u64>) -> Chunk {
     )
 }
 
-/// Runs `run` on the hosted catalog with `executor` as its sandbox's, until
+/// Runs `run` on the hosted catalog with `agent` as its sandbox's, until
 /// it ends or `stop` is cancelled.
 pub(super) async fn drive_in(
     script: &Script,
     run: &RunPayload<'_>,
-    executor: &ScriptedExecutor,
+    agent: &ScriptedGuest,
     stop: &CancellationToken,
 ) -> (RunOutput, Vec<ActivityFrame<'static>>) {
     let (transport, _sent) = RecordingTransport::replying(200, "");
@@ -75,7 +75,7 @@ pub(super) async fn drive_in(
         prepared_durable_task: None,
         run,
         memory: afr_memory::Seed::default(),
-        executor: &afr_executor::ExecutorSlot::ready(executor),
+        agent: &afr_guest_client::AgentSlot::ready(agent),
         mint: &CountingMint::never(),
         checkpoint: &Discard,
         inbox: &crate::testing::NoInbox,
@@ -111,18 +111,13 @@ async fn test_sessions_close_at_run_end() {
         ],
         vec![say(ANSWER)],
     ]);
-    let executor = ScriptedExecutor::new([
+    let agent = ScriptedGuest::new([
         ScriptedProcess::stays_open("ready\n"),
         ScriptedProcess::stays_open(""),
     ]);
 
-    let (output, frames) = drive_in(
-        &script,
-        &session_run(),
-        &executor,
-        &CancellationToken::new(),
-    )
-    .await;
+    let (output, frames) =
+        drive_in(&script, &session_run(), &agent, &CancellationToken::new()).await;
 
     assert_eq!(output.result.content, ANSWER);
     assert_eq!(
@@ -132,7 +127,7 @@ async fn test_sessions_close_at_run_end() {
             ("2".to_owned(), ToolCallStatus::Succeeded),
         ]
     );
-    assert_eq!(executor.killed(), [ProcessId::new(1), ProcessId::new(2)]);
+    assert_eq!(agent.killed(), [ProcessId::new(1), ProcessId::new(2)]);
     let closed = capture.only(EVENT_SESSIONS_INTERRUPTED);
     assert_eq!(closed.level, tracing::Level::INFO);
     assert_eq!(closed.field(SESSIONS_FIELD), Some("2"));
@@ -143,7 +138,7 @@ async fn test_sessions_close_at_run_end() {
 async fn a_session_whose_call_the_run_stopped_is_still_closed() {
     let capture = Capture::install();
     let script = Script::new([vec![opening(FIRST_CALL, DEV_SERVER, None)]]);
-    let executor = ScriptedExecutor::new([ScriptedProcess::stays_open("")]);
+    let agent = ScriptedGuest::new([ScriptedProcess::stays_open("")]);
     let stop = CancellationToken::new();
     let stopping = stop.clone();
     // Fires inside the call's ten-second yield.
@@ -152,7 +147,7 @@ async fn a_session_whose_call_the_run_stopped_is_still_closed() {
         stopping.cancel();
     });
 
-    let (output, frames) = drive_in(&script, &session_run(), &executor, &stop).await;
+    let (output, frames) = drive_in(&script, &session_run(), &agent, &stop).await;
     stopper.await.unwrap();
 
     let ResultOutcome::Failed(failure) = output.result.outcome else {
@@ -163,11 +158,7 @@ async fn a_session_whose_call_the_run_stopped_is_still_closed() {
         completions(&frames),
         [("1".to_owned(), ToolCallStatus::Interrupted)]
     );
-    assert_eq!(
-        executor.killed(),
-        [ProcessId::new(1)],
-        "registered, so killed"
-    );
+    assert_eq!(agent.killed(), [ProcessId::new(1)], "registered, so killed");
     assert_eq!(
         capture
             .only(EVENT_SESSIONS_INTERRUPTED)
@@ -183,20 +174,15 @@ async fn a_run_whose_sessions_all_ended_kills_nothing() {
         vec![opening(FIRST_CALL, "make", Some(BRIEF_YIELD_MS))],
         vec![say("built")],
     ]);
-    let executor = ScriptedExecutor::new([ScriptedProcess::exits("ok\n", 0)]);
+    let agent = ScriptedGuest::new([ScriptedProcess::exits("ok\n", 0)]);
 
-    let (_output, frames) = drive_in(
-        &script,
-        &session_run(),
-        &executor,
-        &CancellationToken::new(),
-    )
-    .await;
+    let (_output, frames) =
+        drive_in(&script, &session_run(), &agent, &CancellationToken::new()).await;
 
     assert_eq!(
         completions(&frames),
         [("1".to_owned(), ToolCallStatus::Succeeded)]
     );
-    assert_eq!(executor.killed(), [] as [ProcessId; 0]);
+    assert_eq!(agent.killed(), [] as [ProcessId; 0]);
     assert!(!interrupted_any(&capture));
 }

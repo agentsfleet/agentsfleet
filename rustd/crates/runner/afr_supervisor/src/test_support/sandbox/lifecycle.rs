@@ -7,7 +7,7 @@ use af_core::id::Uuid7;
 use afr_engine::{
     Environment, Granted, Killed, Network, ParkMode, Parked, Quiescence, Sandbox, SandboxState,
 };
-use afr_executor::Executor;
+use afr_guest_client::GuestAgent;
 
 use super::{
     FakeSandbox, KILL, Kill, NO_PARK, NO_QUIESCENCE, NO_REFILL, Parking, QUIESCE, STILL_RUNNING,
@@ -27,14 +27,14 @@ impl Sandbox for FakeSandbox {
         &self.granted
     }
 
-    fn executor(&self) -> &dyn Executor {
-        &self.executor
+    fn agent(&self) -> &dyn GuestAgent {
+        &self.agent
     }
 
     fn state(&self) -> SandboxState {
         match self.parking {
             Parking::Lost => SandboxState::Ended,
-            Parking::Dead if self.executor.served.load(Ordering::SeqCst) => SandboxState::Ended,
+            Parking::Dead if self.agent.served.load(Ordering::SeqCst) => SandboxState::Ended,
             _running => SandboxState::Running,
         }
     }
@@ -75,7 +75,7 @@ impl Sandbox for FakeSandbox {
             return Err(std::io::Error::other(NO_REFILL).into());
         }
         if let Some(reallowed) = &self.reallowed {
-            let resumed = self.executor.resumed.load(Ordering::SeqCst);
+            let resumed = self.agent.resumed.load(Ordering::SeqCst);
             // A test that dropped its receiver is not watching reallows.
             drop(reallowed.send((allowlist.clone(), resumed)));
         }
@@ -126,7 +126,7 @@ impl Parked for FakeParked {
             return Err(sandbox.destroyed_on(NO_PARK).await);
         }
         sandbox.resumed.fetch_add(1, Ordering::SeqCst);
-        sandbox.executor.resumed.store(true, Ordering::SeqCst);
+        sandbox.agent.resumed.store(true, Ordering::SeqCst);
         Ok(sandbox)
     }
 

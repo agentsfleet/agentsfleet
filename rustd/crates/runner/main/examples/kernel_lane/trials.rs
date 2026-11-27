@@ -9,7 +9,7 @@ use libtest_mimic::{Arguments, Conclusion, Failed, Trial};
 
 use crate::budgets::{start_budgets, warm_beats_cold};
 use crate::confinement::{
-    no_capabilities, plants_nothing, seccomp_refuses, tenant_holds_no_executor_socket,
+    no_capabilities, plants_nothing, seccomp_refuses, tenant_holds_no_agent_socket,
 };
 use crate::delegation::{boots_disabled, refuses_populated, refuses_unavailable};
 use crate::exhaustion::{
@@ -65,8 +65,8 @@ const ENGINE_TRIALS: &[(&str, Body)] = &[
     ),
     ("test_seccomp_refuses_listed_syscalls", seccomp_refuses),
     (
-        "test_tenant_process_holds_no_executor_socket",
-        tenant_holds_no_executor_socket,
+        "test_tenant_process_holds_no_agent_socket",
+        tenant_holds_no_agent_socket,
     ),
     ("test_memory_hog_is_contained", runaway),
     ("test_oom_kills_only_the_tenant", oom_kills_only_the_tenant),

@@ -12,7 +12,7 @@ from unittest.mock import patch
 from release_candidate.archive import package
 from release_candidate.github import select, verify_rollout, verify_source
 from release_candidate.model import (
-    BINARIES, Candidate, Development, GATES, GUEST_ARTIFACTS, GUEST_PROGRAMS, GUEST_RUNNER,
+    BINARIES, Candidate, Development, GATES, GUEST_ARTIFACTS, GUEST_INIT, GUEST_PROGRAMS,
     IMAGE_REPOSITORY, Source, create,
     inventory, load, safe_path, save, verify_candidate, verify_development,
 )
@@ -56,6 +56,7 @@ def candidate_fixture(root: Path) -> str:
         path = root / "bin" / name
         path.parent.mkdir(exist_ok=True)
         path.write_bytes(f"compiled {name} at {SOURCE_SHA}".encode())
+    (root / GUEST_INIT).write_bytes(f"compiled agentsfleet-guest at {SOURCE_SHA}".encode())
     (root / "images").mkdir()
     for arch in ("amd64", "arm64"):
         (root / "images" / f"daemon-linux-{arch}.tar").write_bytes(f"saved {arch} image".encode())
@@ -71,7 +72,8 @@ def candidate_fixture(root: Path) -> str:
     for name in GUEST_ARTIFACTS:
         (root / "toolbox" / name).write_bytes(f"pinned {name}".encode())
     save(root / "toolbox" / "guest.json", {
-        "arch": "amd64", "runner_version": SOURCE.version, "init": measured(root / GUEST_RUNNER),
+        "arch": "amd64", "runner_version": SOURCE.version, "guest_version": SOURCE.version,
+        "init": measured(root / GUEST_INIT),
         "artifacts": {name: measured(root / "toolbox" / name) for name in GUEST_ARTIFACTS},
     })
     save(root / "toolbox" / "guest.scan.json", {"report": "guest"})
@@ -167,12 +169,12 @@ class PayloadTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "toolbox manifest identity"):
             create(self.root, SOURCE)
 
-    def test_guest_record_must_name_the_candidate_files_and_runner(self) -> None:
+    def test_guest_record_must_name_the_candidate_files_and_guest_agent(self) -> None:
         record = self.root / "toolbox" / "guest.json"
         original = load(record)
         mutations = (
-            {"runner_version": "0.70.0"}, {"arch": "arm64"},
-            {"init": measured(self.root / "bin" / BINARIES[0])},
+            {"runner_version": "0.70.0"}, {"guest_version": "0.70.0"}, {"arch": "arm64"},
+            {"init": measured(self.root / "bin" / "agentsfleet-runner-linux-amd64")},
             {"artifacts": original["artifacts"] | {"guest.cpio": original["artifacts"]["vmlinux"]}},
             {"artifacts": {name: original["artifacts"][name] for name in GUEST_PROGRAMS}},
         )
@@ -182,7 +184,7 @@ class PayloadTests(unittest.TestCase):
             with self.subTest(mutation=mutation), self.assertRaises(ValueError):
                 create(self.root, SOURCE)
         save(record, original)
-        (self.root / "toolbox" / "guest.cpio").write_bytes(b"an initramfs around another runner")
+        (self.root / "toolbox" / "guest.cpio").write_bytes(b"an initramfs around another agent")
         with self.assertRaisesRegex(ValueError, "guest record"):
             create(self.root, SOURCE)
 
@@ -193,6 +195,15 @@ class PayloadTests(unittest.TestCase):
         self.assertLessEqual(set(GUEST_ARTIFACTS) | {"guest.json", "guest.json.sig"}, members.keys())
         for name in GUEST_PROGRAMS:
             self.assertEqual(members[name].mode, 0o755)
+
+    def test_the_guest_agent_ships_only_inside_the_initramfs(self) -> None:
+        promote_fixture(self.root, self.digest)
+        guest = Path(GUEST_INIT).name
+        archives = {path.name for path in (self.root / "archives").iterdir()}
+        self.assertNotIn(guest, BINARIES)
+        self.assertFalse(any(guest in name for name in archives), archives)
+        with tarfile.open(self.root / "archives" / "agentsfleet-runner-bundle-linux-amd64.tar.gz") as handle:
+            self.assertNotIn(guest, handle.getnames())
 
     def test_qualified_payload_and_archive_preserve_original_bytes(self) -> None:
         promote_fixture(self.root, self.digest)

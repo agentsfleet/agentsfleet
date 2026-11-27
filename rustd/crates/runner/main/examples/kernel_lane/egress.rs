@@ -163,7 +163,7 @@ pub(crate) async fn said_then_destroyed(
 ) -> Result<Vec<String>, Failed> {
     let mut said = Vec::with_capacity(scripts.len());
     for script in scripts {
-        let outcome = run(sandbox.executor(), shell(script)).await;
+        let outcome = run(sandbox.agent(), shell(script)).await;
         said.push(outcome.map(|outcome| outcome.output.trim().to_owned()));
     }
     sandbox.destroy().await?;

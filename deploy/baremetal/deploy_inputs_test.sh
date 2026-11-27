@@ -67,7 +67,8 @@ toolbox_set() {
       '.[$name]={sha256:$sha256}' <<<"$artifacts")"
     [[ "$part" != "$skip" ]] || rm "$dir/$part"
   done
-  [[ "$skip" == guest.json ]] || jq -n --argjson artifacts "$artifacts" '{artifacts:$artifacts}' >"$dir/guest.json"
+  [[ "$skip" == guest.json ]] \
+    || jq -n --argjson artifacts "$artifacts" '{artifacts:$artifacts,guest_version:"9.9.9"}' >"$dir/guest.json"
 }
 
 # Runs deploy.sh's main in local mode with the lock taken as given, and leaves
@@ -130,11 +131,16 @@ test_deploy_refused_guest_set_leaves_the_host_untouched() {
     bad "$name" "positive control: a complete guest set was refused"
     return
   fi
-  for part in "${GUEST_PARTS[@]}" guest.json swapped; do
+  for part in "${GUEST_PARTS[@]}" guest.json swapped unversioned; do
     toolbox="$WORK_DIR/guest-$part"
     if [[ "$part" == swapped ]]; then
       toolbox_set "$toolbox"
       printf 'another release\n' >"$toolbox/guest.cpio"
+    elif [[ "$part" == unversioned ]]; then
+      # A set built around the runner binary, before agentsfleet-guest.
+      toolbox_set "$toolbox"
+      jq 'del(.guest_version)' "$toolbox/guest.json" >"$toolbox/guest.json.next"
+      mv "$toolbox/guest.json.next" "$toolbox/guest.json"
     else
       toolbox_set "$toolbox" "$part"
     fi

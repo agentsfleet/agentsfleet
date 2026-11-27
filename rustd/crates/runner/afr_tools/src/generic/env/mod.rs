@@ -1,15 +1,15 @@
 //! The run's sandbox as `guffbolt`'s environment: every process and file
-//! call a generic tool makes goes to the executor inside the run's
+//! call a generic tool makes goes to the guest agent inside the run's
 //! sandbox, and none starts a process on the host.
 //!
-//! The executor's own types and refusals are translated one to one, so a
-//! tool reads what it read when it called the executor itself: the same
+//! The guest agent's own types and refusals are translated one to one, so a
+//! tool reads what it read when it called the guest agent itself: the same
 //! spawn, plus the git identity a commit made in the sandbox names, the same
 //! `/workspace` root, the same wire message for a failure and the same log
 //! code and reason for a refused kill.
 //!
 //! A run's tools are built when the run starts, before its sandbox is ready,
-//! so they hold a [`LazySandboxEnv`]: each call gets the executor from the
+//! so they hold a [`LazySandboxEnv`]: each call gets the guest agent from the
 //! run's source first, waiting for the build when it has not finished, and a
 //! run with no sandbox reads why as the environment's own refusal.
 
@@ -20,8 +20,9 @@ use std::pin::Pin;
 use std::time::Duration;
 
 use af_core::error_code::{Coded as _, Logged};
-use afr_executor::timing::{DRAIN_GRACE, KILL_GRACE};
-use afr_executor::{Executor, WORKSPACE_ROOT};
+use af_guest_wire::WORKSPACE_ROOT;
+use af_guest_wire::timing::{DRAIN_GRACE, KILL_GRACE};
+use afr_guest_client::GuestAgent;
 use bytes::Bytes;
 use guffbolt::tools::env::{
     Browser, DirEntry, Ending, EntryKind, Env, EnvError, EnvErrorKind, EnvFuture, Events,
@@ -34,16 +35,16 @@ pub use self::lazy::LazySandboxEnv;
 
 /// Local reply delivery allowed beyond the native cleanup and drain bounds.
 const REPLY_SLACK: Duration = Duration::from_secs(1);
-/// How long past a command's timeout the executor takes to report its
+/// How long past a command's timeout the guest agent takes to report its
 /// ending: the group's kill grace, the pipes' drain grace and the reply.
 const ENDING_GRACE: Duration = KILL_GRACE
     .saturating_add(DRAIN_GRACE)
     .saturating_add(REPLY_SLACK);
 const _: () = assert!(ENDING_GRACE.as_nanos() <= crate::ENGINE_STOP_GRACE.as_nanos());
-// Unconfigured, the harness and the executor hold one read size and one edge;
-// configured, the tools read the executor's through `Env`.
-const _: () = assert!(guffbolt::tools::env::MAX_READ_BYTES == afr_executor::MAX_READ_BYTES);
-const _: () = assert!(guffbolt::tools::env::EDGE_BYTES == afr_executor::EDGE_BYTES);
+// Unconfigured, the harness and the guest agent hold one read size and one edge;
+// configured, the tools read the guest agent's through `Env`.
+const _: () = assert!(guffbolt::tools::env::MAX_READ_BYTES == af_guest_wire::MAX_READ_BYTES);
+const _: () = assert!(guffbolt::tools::env::EDGE_BYTES == af_guest_wire::EDGE_BYTES);
 /// What each browser tool reads back after its name.
 const WAITS_FOR_FIRECRACKER: &str =
     "waits for the Firecracker engine: Chromium cannot start inside this sandbox";
@@ -56,27 +57,27 @@ const GIT_IDENTITY: [(&str, &str); 4] = [
     ("GIT_COMMITTER_EMAIL", GIT_IDENTITY_EMAIL),
 ];
 
-/// The run's executor, as a generic tool's environment.
+/// The run's guest agent, as a generic tool's environment.
 #[derive(Debug, Clone, Copy)]
 pub struct SandboxEnv<'a> {
-    executor: &'a dyn Executor,
+    agent: &'a dyn GuestAgent,
 }
 
 impl<'a> SandboxEnv<'a> {
-    /// The environment of the sandbox `executor` serves.
+    /// The environment of the sandbox `agent` serves.
     #[must_use]
-    pub const fn new(executor: &'a dyn Executor) -> Self {
-        Self { executor }
+    pub const fn new(agent: &'a dyn GuestAgent) -> Self {
+        Self { agent }
     }
 }
 
-/// `spawn` as the executor reads it, the git identity added.
-fn spawn_of(spawn: &Spawn) -> afr_executor::Spawn {
+/// `spawn` as the guest agent reads it, the git identity added.
+fn spawn_of(spawn: &Spawn) -> afr_guest_client::Spawn {
     let (program, args) = spawn
         .argv()
         .split_first()
         .map_or(("", &[][..]), |(program, args)| (program.as_str(), args));
-    let mut native = afr_executor::Spawn::program(program).args(args);
+    let mut native = afr_guest_client::Spawn::program(program).args(args);
     if let Some(cwd) = spawn.working_directory() {
         native = native.cwd(cwd);
     }
@@ -95,9 +96,9 @@ fn spawn_of(spawn: &Spawn) -> afr_executor::Spawn {
     }
 }
 
-/// An executor failure as a tool reads it: sorted, in the executor's own
+/// A guest agent failure as a tool reads it: sorted, in the guest agent's own
 /// words, and logged under the registry's code.
-fn failed(failure: &afr_executor::Error) -> EnvError {
+fn failed(failure: &af_guest_wire::Error) -> EnvError {
     let kind = if failure.is_path_refused() {
         EnvErrorKind::PathRefused
     } else if failure.is_not_found() {
@@ -113,32 +114,32 @@ fn failed(failure: &afr_executor::Error) -> EnvError {
     EnvError::new(kind, failure.wire_message()).logged_as(error_code, reason)
 }
 
-const fn stream_of(stream: afr_executor::Stream) -> Stream {
+const fn stream_of(stream: af_guest_wire::Stream) -> Stream {
     match stream {
-        afr_executor::Stream::Stdout => Stream::Stdout,
-        afr_executor::Stream::Stderr => Stream::Stderr,
-        afr_executor::Stream::Terminal => Stream::Terminal,
+        af_guest_wire::Stream::Stdout => Stream::Stdout,
+        af_guest_wire::Stream::Stderr => Stream::Stderr,
+        af_guest_wire::Stream::Terminal => Stream::Terminal,
     }
 }
 
-const fn ending_of(ending: afr_executor::Ending) -> Ending {
+const fn ending_of(ending: af_guest_wire::Ending) -> Ending {
     match ending {
-        afr_executor::Ending::Exited(code) => Ending::Exited(code),
-        afr_executor::Ending::Signaled(signal) => Ending::Signaled(signal),
-        afr_executor::Ending::TimedOut => Ending::TimedOut,
-        afr_executor::Ending::OutOfMemory => Ending::OutOfMemory,
-        afr_executor::Ending::Interrupted => Ending::Interrupted,
+        af_guest_wire::Ending::Exited(code) => Ending::Exited(code),
+        af_guest_wire::Ending::Signaled(signal) => Ending::Signaled(signal),
+        af_guest_wire::Ending::TimedOut => Ending::TimedOut,
+        af_guest_wire::Ending::OutOfMemory => Ending::OutOfMemory,
+        af_guest_wire::Ending::Interrupted => Ending::Interrupted,
     }
 }
 
-fn event_of(event: afr_executor::ProcessEvent) -> ProcessEvent {
+fn event_of(event: afr_guest_client::ProcessEvent) -> ProcessEvent {
     match event {
-        afr_executor::ProcessEvent::Output { stream, data } => ProcessEvent::Output {
+        afr_guest_client::ProcessEvent::Output { stream, data } => ProcessEvent::Output {
             stream: stream_of(stream),
             data,
         },
-        afr_executor::ProcessEvent::Omitted { bytes } => ProcessEvent::Omitted { bytes },
-        afr_executor::ProcessEvent::Ended {
+        afr_guest_client::ProcessEvent::Omitted { bytes } => ProcessEvent::Omitted { bytes },
+        afr_guest_client::ProcessEvent::Ended {
             ending,
             output_abandoned,
         } => ProcessEvent::Ended {
@@ -148,19 +149,19 @@ fn event_of(event: afr_executor::ProcessEvent) -> ProcessEvent {
     }
 }
 
-const fn entry_kind_of(kind: afr_executor::EntryKind) -> EntryKind {
+const fn entry_kind_of(kind: af_guest_wire::EntryKind) -> EntryKind {
     match kind {
-        afr_executor::EntryKind::File => EntryKind::File,
-        afr_executor::EntryKind::Directory => EntryKind::Directory,
-        afr_executor::EntryKind::Symlink => EntryKind::Symlink,
-        afr_executor::EntryKind::Other => EntryKind::Other,
+        af_guest_wire::EntryKind::File => EntryKind::File,
+        af_guest_wire::EntryKind::Directory => EntryKind::Directory,
+        af_guest_wire::EntryKind::Symlink => EntryKind::Symlink,
+        af_guest_wire::EntryKind::Other => EntryKind::Other,
     }
 }
 
-/// A sandboxed process's events, read through the executor's own bounded
+/// A sandboxed process's events, read through the guest agent's own bounded
 /// store.
 #[derive(Debug)]
-struct Sandboxed(afr_executor::Events);
+struct Sandboxed(afr_guest_client::Events);
 
 impl Events for Sandboxed {
     fn recv(&mut self) -> Pin<Box<dyn Future<Output = Option<ProcessEvent>> + Send + '_>> {
@@ -193,7 +194,7 @@ impl Env for SandboxEnv<'_> {
     fn spawn<'a>(&'a self, spawn: &'a Spawn) -> EnvFuture<'a, Process> {
         Box::pin(async move {
             let process = self
-                .executor
+                .agent
                 .spawn(&spawn_of(spawn))
                 .await
                 .map_err(|failure| failed(&failure))?;
@@ -206,8 +207,8 @@ impl Env for SandboxEnv<'_> {
 
     fn write(&self, process: ProcessId, data: Bytes) -> EnvFuture<'_, ()> {
         Box::pin(async move {
-            let id = afr_executor::ProcessId::new(process.get());
-            self.executor
+            let id = afr_guest_client::ProcessId::new(process.get());
+            self.agent
                 .write(id, data)
                 .await
                 .map_err(|failure| failed(&failure))
@@ -216,8 +217,8 @@ impl Env for SandboxEnv<'_> {
 
     fn kill(&self, process: ProcessId) -> EnvFuture<'_, ()> {
         Box::pin(async move {
-            let id = afr_executor::ProcessId::new(process.get());
-            self.executor
+            let id = afr_guest_client::ProcessId::new(process.get());
+            self.agent
                 .kill(id)
                 .await
                 .map_err(|failure| failed(&failure))
@@ -227,7 +228,7 @@ impl Env for SandboxEnv<'_> {
     fn read_file<'a>(&'a self, path: &'a str, max_bytes: u64) -> EnvFuture<'a, FileContent> {
         Box::pin(async move {
             let read = self
-                .executor
+                .agent
                 .read_file(path, max_bytes)
                 .await
                 .map_err(|failure| failed(&failure))?;
@@ -240,7 +241,7 @@ impl Env for SandboxEnv<'_> {
 
     fn write_file<'a>(&'a self, path: &'a str, data: Bytes) -> EnvFuture<'a, ()> {
         Box::pin(async move {
-            self.executor
+            self.agent
                 .write_file(path, data)
                 .await
                 .map_err(|failure| failed(&failure))
@@ -249,7 +250,7 @@ impl Env for SandboxEnv<'_> {
 
     fn delete_file<'a>(&'a self, path: &'a str) -> EnvFuture<'a, ()> {
         Box::pin(async move {
-            self.executor
+            self.agent
                 .delete_file(path)
                 .await
                 .map_err(|failure| failed(&failure))
@@ -259,7 +260,7 @@ impl Env for SandboxEnv<'_> {
     fn list_dir<'a>(&'a self, path: &'a str) -> EnvFuture<'a, Listing> {
         Box::pin(async move {
             let listing = self
-                .executor
+                .agent
                 .list_dir(path)
                 .await
                 .map_err(|failure| failed(&failure))?;
@@ -280,7 +281,7 @@ impl Env for SandboxEnv<'_> {
 
     fn search<'a>(&'a self, search: &'a Search) -> EnvFuture<'a, Found> {
         Box::pin(async move {
-            self.executor
+            self.agent
                 .search(&search::search_of(search))
                 .await
                 .map(search::found_of)
@@ -293,11 +294,11 @@ impl Env for SandboxEnv<'_> {
     }
 
     fn max_read_bytes(&self) -> u64 {
-        self.executor.sizes().max_read_bytes
+        self.agent.sizes().max_read_bytes
     }
 
     fn edge_bytes(&self) -> usize {
-        self.executor.sizes().edge_bytes
+        self.agent.sizes().edge_bytes
     }
 
     fn browser(&self) -> Result<&dyn Browser, &str> {

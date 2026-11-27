@@ -9,7 +9,7 @@
 use af_core::error_code::{Coded, Logged};
 use af_core::id::Uuid7;
 use afr_engine::Sandbox;
-use afr_executor::Unavailable;
+use afr_guest_client::Unavailable;
 use afr_tools::sandbox::{CREDENTIAL_GITHUB, Checkout, checkouts};
 use tokio_util::sync::CancellationToken;
 
@@ -123,9 +123,7 @@ impl Run<'_> {
         let landed = match self.lessee.staging.stage(sandbox.id()) {
             Ok(staged) => {
                 let mirrors = &self.lessee.mirrors;
-                mirrors
-                    .land(request, &staged, sandbox.executor(), stop)
-                    .await
+                mirrors.land(request, &staged, sandbox.agent(), stop).await
             }
             Err(failure) => Err(failure),
         };

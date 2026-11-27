@@ -79,7 +79,7 @@ fn run_one_run(
     }
 }
 
-/// A storage home under /tmp, short: each run's executor socket is made
+/// A storage home under /tmp, short: each run's guest agent socket is made
 /// beneath it, and a Unix socket's path is capped near a hundred bytes.
 fn storage_home() -> tempfile::TempDir {
     tempfile::Builder::new()

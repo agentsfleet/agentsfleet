@@ -2,7 +2,7 @@
 //! its whole tree.
 //!
 //! The run's cgroup holds the limits and no process. The engine's own
-//! processes run in its `sandbox` leaf; every process the executor starts runs
+//! processes run in its `sandbox` leaf; every process the guest agent starts runs
 //! in its `tenant` leaf, whose memory limit sits [`Room::reserve_bytes`]
 //! below the run's throttle, so the kernel's out-of-memory killer chooses among
 //! tenant processes and never the sandbox's own — systemd's `Delegate=` shape,
@@ -16,26 +16,19 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use af_cgroup::{CGROUP_PROCS, Freezer, MEMORY_EVENTS, SUBTREE_CONTROL, TENANT_LEAF};
 use afr_engine::{Limits, REQUIRED_CONTROLLERS};
 use backon::{BlockingRetryable as _, ConstantBuilder};
 
 use crate::error::{Result, cgroup, cgroup_left, cgroup_unreadable};
 
 mod delegated;
-mod freezer;
 
 pub use self::delegated::{
     MECHANISM_DELEGATED_CGROUP, SELF_CGROUP_PATH, delegated_controllers, delegated_root,
     enable_controllers,
 };
-pub use self::freezer::Freezer;
 
-/// Where cgroup v2 is mounted.
-pub const CGROUP_ROOT: &str = "/sys/fs/cgroup";
-/// The file that enables controllers for a cgroup's children.
-pub const SUBTREE_CONTROL: &str = "cgroup.subtree_control";
-/// Writing a process identifier moves that process in.
-pub const CGROUP_PROCS: &str = "cgroup.procs";
 /// Memory a cgroup may hold before the kernel reclaims or kills.
 const MEMORY_MAX: &str = "memory.max";
 /// Memory past which the kernel slows a cgroup's allocations and reclaims,
@@ -49,8 +42,6 @@ const TENANT_HIGH_SHARE: u64 = 8;
 const MEMORY_SWAP_MAX: &str = "memory.swap.max";
 /// Processor bandwidth: a quota per period, both in microseconds.
 const CPU_MAX: &str = "cpu.max";
-/// Processes and threads a cgroup may hold: the guest's tenant leaf's cap.
-pub const PIDS_MAX: &str = "pids.max";
 /// Per-device byte rates.
 const IO_MAX: &str = "io.max";
 /// Writing `1` kills every process in the cgroup and its descendants.
@@ -61,15 +52,8 @@ const CGROUP_EVENTS: &str = "cgroup.events";
 const UNPOPULATED: &str = "populated 0";
 /// What a tree still holding a process past the drain bound is told.
 const STILL_POPULATED: &str = "a process outlived the kill past the drain bound";
-/// What a cgroup's memory limit did, its `oom_kill` count among it.
-pub const MEMORY_EVENTS: &str = "memory.events";
-/// What a cgroup's process cap did: its `max` count is the forks refused at
-/// `pids.max`.
-pub const PIDS_EVENTS: &str = "pids.events";
 /// The leaf the engine's own processes run in.
 pub const SANDBOX_LEAF: &str = "sandbox";
-/// The leaf every process the executor starts runs in.
-pub const TENANT_LEAF: &str = "tenant";
 /// Both leaves, in the order they are made.
 const LEAVES: [&str; 2] = [SANDBOX_LEAF, TENANT_LEAF];
 /// What `cgroup.kill` and a zeroed `memory.swap.max` are written.

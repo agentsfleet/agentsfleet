@@ -7,10 +7,9 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
+use af_guest_wire::{FileContent, Listing};
 use af_wire::tool_trace::ToolCallStatus;
-use afr_executor::{
-    Executor, ExecutorSlot, FileContent, Listing, Process, ProcessId, Spawn, Unavailable,
-};
+use afr_guest_client::{AgentSlot, GuestAgent, Process, ProcessId, Spawn, Unavailable};
 use afr_tools::catalog::{FILE_READ, UPDATE_PLAN, WEB_SEARCH};
 use afr_tools::stub::{STUB_PATH, Stub};
 use afr_tools::{Catalog, CatalogTool, Entry, Run, Runtime, Selection, ToolContext, ToolErrorCode};
@@ -24,7 +23,7 @@ use super::Routed;
 use crate::fixture::{Script, call, payload, say, unbounded};
 use crate::harness::tests::{completions, drive, engine};
 
-/// An executor that counts the calls that crossed into it.
+/// A guest agent that counts the calls that crossed into it.
 #[derive(Debug, Default)]
 pub(super) struct Counting {
     pub(super) calls: AtomicUsize,
@@ -37,20 +36,20 @@ impl Counting {
 }
 
 #[async_trait::async_trait]
-impl Executor for Counting {
-    async fn spawn(&self, _spawn: &Spawn) -> afr_executor::Result<Process> {
+impl GuestAgent for Counting {
+    async fn spawn(&self, _spawn: &Spawn) -> af_guest_wire::Result<Process> {
         self.crossed();
         Err(std::io::Error::other("no processes here").into())
     }
-    async fn write(&self, _process: ProcessId, _data: Bytes) -> afr_executor::Result<()> {
+    async fn write(&self, _process: ProcessId, _data: Bytes) -> af_guest_wire::Result<()> {
         self.crossed();
         Ok(())
     }
-    async fn kill(&self, _process: ProcessId) -> afr_executor::Result<()> {
+    async fn kill(&self, _process: ProcessId) -> af_guest_wire::Result<()> {
         self.crossed();
         Ok(())
     }
-    async fn read_file(&self, path: &str, _max: u64) -> afr_executor::Result<FileContent> {
+    async fn read_file(&self, path: &str, _max: u64) -> af_guest_wire::Result<FileContent> {
         assert_eq!(path, STUB_PATH);
         self.crossed();
         Ok(FileContent {
@@ -58,15 +57,15 @@ impl Executor for Counting {
             truncated: false,
         })
     }
-    async fn write_file(&self, _path: &str, _data: Bytes) -> afr_executor::Result<()> {
+    async fn write_file(&self, _path: &str, _data: Bytes) -> af_guest_wire::Result<()> {
         self.crossed();
         Ok(())
     }
-    async fn delete_file(&self, _path: &str) -> afr_executor::Result<()> {
+    async fn delete_file(&self, _path: &str) -> af_guest_wire::Result<()> {
         self.crossed();
         Ok(())
     }
-    async fn list_dir(&self, _path: &str) -> afr_executor::Result<Listing> {
+    async fn list_dir(&self, _path: &str) -> af_guest_wire::Result<Listing> {
         self.crossed();
         Ok(Listing::default())
     }
@@ -94,8 +93,8 @@ pub(super) fn routed<'c>(selection: &Selection<'c>, entry: &Entry) -> Routed<'c>
 async fn test_router_sends_each_tool_to_its_runtime() {
     let catalog = catalog();
     let selection = catalog.select(&["update_plan", "file_read"]).unwrap();
-    let executor = Counting::default();
-    let slot = ExecutorSlot::ready(&executor);
+    let agent = Counting::default();
+    let slot = AgentSlot::ready(&agent);
     let (arguments, run) = (json!({}), Run::default());
 
     let supervised = routed(&selection, &UPDATE_PLAN)
@@ -103,7 +102,7 @@ async fn test_router_sends_each_tool_to_its_runtime() {
         .await;
     assert_eq!(supervised.error_code, None);
     assert_eq!(
-        executor.calls.load(Ordering::SeqCst),
+        agent.calls.load(Ordering::SeqCst),
         0,
         "the supervisor ran it"
     );
@@ -113,14 +112,14 @@ async fn test_router_sends_each_tool_to_its_runtime() {
         .await;
     assert_eq!(sandboxed.error_code, None);
     assert_eq!(sandboxed.text, "file_read");
-    assert_eq!(executor.calls.load(Ordering::SeqCst), 1, "one call crossed");
+    assert_eq!(agent.calls.load(Ordering::SeqCst), 1, "one call crossed");
 }
 
 #[tokio::test]
 async fn a_sandbox_side_call_without_a_sandbox_is_a_tool_error() {
     let catalog = catalog();
     let selection = catalog.select(&["file_read"]).unwrap();
-    let slot = ExecutorSlot::unavailable(Unavailable::NoSandbox);
+    let slot = AgentSlot::unavailable(Unavailable::NoSandbox);
 
     let output = routed(&selection, &FILE_READ)
         .run(&json!({}), &slot, &Run::default(), &first_call())
@@ -217,7 +216,7 @@ async fn a_handler_routed_as_the_providers_is_never_run() {
         served: Stub::boxed(&UPDATE_PLAN),
         calls: Arc::clone(&calls),
     };
-    let slot = ExecutorSlot::unavailable(Unavailable::NoSandbox);
+    let slot = AgentSlot::unavailable(Unavailable::NoSandbox);
 
     let output = Routed::new(&counted, Runtime::Provider)
         .run(&json!({}), &slot, &Run::default(), &first_call())
@@ -271,7 +270,7 @@ async fn a_routed_call_lends_its_handler_where_the_call_sits() {
         served: Stub::boxed(&UPDATE_PLAN),
         seen: Arc::clone(&seen),
     };
-    let slot = ExecutorSlot::unavailable(Unavailable::NoSandbox);
+    let slot = AgentSlot::unavailable(Unavailable::NoSandbox);
     let at = CallRef {
         step: 3,
         index: 1,

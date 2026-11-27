@@ -1,9 +1,9 @@
 //! A sandbox's workspace as a save reads it today: pinned by a whole export
-//! through its executor into one staging file, read back after resume.
+//! through its guest agent into one staging file, read back after resume.
 //!
-//! The pause freezes the guest's tenant leaf through the executor, which
+//! The pause freezes the guest's tenant leaf through the guest agent, which
 //! sits outside it and serves the export while every tenant process, a
-//! detached one too, is held; the VM never stops. An executor with no leaf
+//! detached one too, is held; the VM never stops. A guest agent with no leaf
 //! holds nothing, so its sandbox must prove no tenant process runs.
 //!
 //! The export is the only work under the pause. The pin's file is unpacked
@@ -87,11 +87,11 @@ impl WorkspaceVolume for ExportVolume<'_> {
     type Pin = ExportPin;
 
     /// Freezes the tenant leaf; the run's loop, which starts every call,
-    /// waits on the save until it resumes. An executor with no leaf holds
+    /// waits on the save until it resumes. A guest agent with no leaf holds
     /// nothing, so a tenant process its sandbox reports running refuses it.
     async fn pause(&self) -> afr_engine::Result<()> {
-        let executor = self.sandbox.executor();
-        match executor.freeze_tenant().await {
+        let agent = self.sandbox.agent();
+        match agent.freeze_tenant().await {
             Ok(()) => {
                 self.frozen.store(true, Ordering::SeqCst);
                 Ok(())
@@ -103,10 +103,10 @@ impl WorkspaceVolume for ExportVolume<'_> {
                     FREEZE_TENANT,
                 )),
             },
-            // The executor thaws a freeze it failed; one whose answer was
+            // The guest agent thaws a freeze it failed; one whose answer was
             // lost may hold the leaf still.
             Err(failure) => {
-                if let Err(stuck) = executor.thaw_tenant().await {
+                if let Err(stuck) = agent.thaw_tenant().await {
                     unthawed(&stuck.into());
                 }
                 Err(failure.into())
@@ -124,7 +124,7 @@ impl WorkspaceVolume for ExportVolume<'_> {
         let disk_bytes = self.sandbox.granted().limits().disk_bytes;
         let pinned = async {
             let file = self.staging.pin_file(self.sandbox.id())?;
-            spool_export(self.sandbox.executor(), disk_bytes, file.reopen()?).await?;
+            spool_export(self.sandbox.agent(), disk_bytes, file.reopen()?).await?;
             Ok::<_, crate::Error>(file)
         };
         let file = pinned.await.map_err(afr_engine::Error::engine)?;
@@ -141,7 +141,7 @@ impl WorkspaceVolume for ExportVolume<'_> {
     /// Thaws the leaf the pause froze, if it froze one.
     async fn resume(&self) -> afr_engine::Result<()> {
         if self.frozen.swap(false, Ordering::SeqCst) {
-            self.sandbox.executor().thaw_tenant().await?;
+            self.sandbox.agent().thaw_tenant().await?;
         }
         Ok(())
     }

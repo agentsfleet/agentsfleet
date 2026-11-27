@@ -11,7 +11,7 @@ use af_core::test_util::trace::Capture;
 use af_wire::credentials::MintCredentialResponse;
 use af_wire::policy::{RepositoryAccess, RepositoryBinding};
 use af_wire::run::RunPayload;
-use afr_executor::Unavailable;
+use afr_guest_client::Unavailable;
 use afr_tools::catalog::GIT;
 use tokio::sync::mpsc;
 
@@ -110,7 +110,7 @@ async fn test_first_model_call_starts_before_the_sandbox_is_ready() {
     let began = started.try_recv().unwrap();
     let ready = readied.try_recv().unwrap();
     assert_eq!(ready.duration_since(began), PREPARE_TAKES);
-    assert_eq!(rig.lent(), [None], "the call got an executor");
+    assert_eq!(rig.lent(), [None], "the call got a guest agent");
     assert!(writes.try_recv().is_ok(), "the call wrote into the sandbox");
     let line = capture.only(EVENT_COMPLETED);
     assert_eq!(

@@ -18,9 +18,11 @@
 #
 # The guest set travels in the same directory as the toolbox set: the monitor
 # and its jailer, the guest kernel, the initramfs whose /init is this
-# release's runner, and the record naming each one's SHA-256
-# (scripts/toolbox/guest.sh). A host whose files differ from the record, or
-# that lacks one, cannot boot a microVM, so that set is refused the same way.
+# release's in-VM agent, agentsfleet-guest, and the record naming each one's
+# SHA-256 and the agent's version (scripts/toolbox/guest.sh). The agent is
+# never installed on the host: it reaches a microVM only inside guest.cpio. A
+# host whose files differ from the record, or that lacks one, cannot boot a
+# microVM, so that set is refused the same way.
 
 # Where the runner keeps its state unless RUNNER_STORAGE_HOME in the env file
 # says otherwise (`afr_supervisor::config::DEFAULT_STORAGE_HOME`), and the
@@ -38,8 +40,9 @@ readonly GUEST_PROGRAM_DIR_DEFAULT="/usr/local/bin"
 readonly GUEST_IMAGE_DIR_DEFAULT="/usr/local/lib/agentsfleet"
 readonly GUEST_PROGRAMS=(firecracker jailer)
 readonly GUEST_IMAGES=(vmlinux guest.cpio)
-# The record of the four files above. The release pipeline signs it and checks
-# that signature against the runner's key; a host checks each file against it.
+# The record of the four files above and of the agent inside guest.cpio. The
+# release pipeline signs it and checks that signature against the runner's
+# key; a host checks each file against it.
 readonly GUEST_RECORD="guest.json"
 
 # The runner's storage home as `env_file` sets it, else the runner's default.
@@ -97,15 +100,20 @@ install_toolbox() {
 }
 
 # Prints the paths of the guest set under `dir`, programs first, one per line.
-# Refuses, printing no path, unless `dir` holds the record and every file it
-# names, each with the SHA-256 recorded for it: a kernel, initramfs or monitor
-# from another release boots a guest this runner cannot talk to, or none at
-# all.
+# Refuses, printing no path, unless `dir` holds the record, the record names
+# the version of the agent its initramfs was built around, and every file it
+# names is there with the SHA-256 recorded for it: a kernel, initramfs or
+# monitor from another release boots a guest this runner cannot talk to, or
+# none at all.
 guest_set_files() {
   local dir="$1"
   local record="$dir/$GUEST_RECORD" name file recorded files=()
   if [[ ! -f "$record" ]]; then
     printf 'guest file missing: %s\n' "$record" >&2
+    return 1
+  fi
+  if ! jq -e '.guest_version | type == "string"' "$record" >/dev/null 2>&1; then
+    printf '%s names no agentsfleet-guest version: its initramfs predates the guest agent\n' "$record" >&2
     return 1
   fi
   for name in "${GUEST_PROGRAMS[@]}" "${GUEST_IMAGES[@]}"; do

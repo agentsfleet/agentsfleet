@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
 # The shipping build formerly repeated by test, deploy-dev and release.
+#
+# Every binary builds with --no-default-features: a release links only what
+# its manifest names unconditionally, so the runner carries neither the debug
+# engine nor the guest agent it serves in-process (af_e2e's tests/layers.rs).
+# The guest agent, agentsfleet-guest, is a candidate binary of its own, built
+# here and then only packed into the guest's initramfs (scripts/toolbox/guest.sh).
 set -euo pipefail
 
 linux() {
@@ -11,7 +17,7 @@ linux() {
     -v "$PWD/.cargo-cache/git:/usr/local/cargo/git" \
     -e GIT_COMMIT -e CANDIDATE_PACKAGE -e CANDIDATE_BINARY \
     "$CANDIDATE_BUILDER" sh -c \
-    'cargo build --profile dist -p "$CANDIDATE_PACKAGE" --bin "$CANDIDATE_BINARY"'
+    'cargo build --profile dist --no-default-features -p "$CANDIDATE_PACKAGE" --bin "$CANDIDATE_BINARY"'
   sudo chown -R "$(id -u):$(id -g)" .cargo-cache rustd/target
   # The builder names its own musl target, so the output path carries it.
   local triple
@@ -33,7 +39,7 @@ linux() {
 
 macos() {
   : "${GIT_COMMIT:?}"
-  (cd rustd && cargo build --profile dist -p agentsfleetd --bin agentsfleetd)
+  (cd rustd && cargo build --profile dist --no-default-features -p agentsfleetd --bin agentsfleetd)
   mkdir -p dist/candidate/bin
   install -m 755 rustd/target/dist/agentsfleetd dist/candidate/bin/agentsfleetd-darwin-arm64
 }

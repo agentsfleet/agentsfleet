@@ -322,7 +322,7 @@ guest_fixture() {
     artifacts="$(jq -c --arg name "$name" --arg sha256 "$(sha256sum "$toolbox_fixture/$name" | cut -d' ' -f1)" \
       '.[$name]={sha256:$sha256}' <<<"$artifacts")"
   done
-  jq -n --argjson artifacts "$artifacts" '{artifacts:$artifacts}' >"$toolbox_fixture/guest.json"
+  jq -n --argjson artifacts "$artifacts" '{artifacts:$artifacts,guest_version:"9.9.9"}' >"$toolbox_fixture/guest.json"
 }
 guest_fixture_remove() {
   local name

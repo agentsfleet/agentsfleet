@@ -79,7 +79,7 @@ No runner crate links a datastore crate ([runner crates](./runner_execution.md#c
 | Workers (N) | `worker_pool::serve`, one `JoinSet` | Each owns its run and sandbox (C5); one coordinator task tracks busy fleets | New runs stop; accepted work gets 30 s, cleanup 5 s, then abort and join |
 | Park keeper | `Parks::start` | Parked sandboxes kept for a fleet's next run, owned by the task | `parks.shutdown()` after the join destroys every park |
 | Warm-slot keeper | `afr_engine`'s `WarmSlots::start`, on a Firecracker runner | The microVMs booted ahead of their runs, owned by the task; a run claims one over a channel | `WarmSlots::shutdown` stops refilling, waits for starts in flight and destroys every unclaimed slot |
-| Executor link, one per sandbox | `afr_executor`'s client, over a socket pair or vsock | One sandbox's executor connection; it dials again when a call finds the link closed | Ends with its sandbox |
+| Guest agent link, one per sandbox | `afr_guest_client`'s client, over a socket pair or vsock | One sandbox's guest agent connection; it dials again when a call finds the link closed | Ends with its sandbox |
 
 Workers keep unacknowledged reports in memory; no report is written to disk.
 
@@ -114,7 +114,7 @@ Each lock is documented where it is declared (C4).
 | JSON Web Key Set (JWKS) cache | `afd_identity`'s `KeyCache` | The key set (`RwLock`) and a single-flight gate (mutex) | The gate is held across a fetch with the key-set lock released |
 | Run ledger | `afr_agent`'s `Ledger` | One run's open calls | Taken to open and to end a call, never across its handler |
 | Child registry | `guffbolt`'s `agents::registry` `Shared::book` | One run's child agents and their counts | Leaf |
-| Process events | `afr_executor`'s events `Shared` | One process's output state | Leaf |
+| Process events | `afr_guest_client`'s events `Shared` | One process's output state | Leaf |
 | Verified toolboxes | `afr_image`'s `Toolboxes` | Images one host has verified | Leaf |
 | Run memory | `afr_tools`'s `RunMemory`, tokio `RwLock` | The fleet's memory for one run | Held for one read or write |
 | Run egress | `afr_tools`'s `Run::egress`, tokio mutex | The run's network policy and minted credentials | Held to admit or mask, never across a send |

@@ -272,7 +272,7 @@ stage_toolbox() {
 
 # Installs the guest set under `src` where the Firecracker engine boots each
 # microVM from: the monitor and jailer, the guest kernel, and the initramfs
-# built around this release's runner.
+# built around this release's guest agent, agentsfleet-guest.
 stage_guest() {
   local src="$1"
   install_guest "$src" \

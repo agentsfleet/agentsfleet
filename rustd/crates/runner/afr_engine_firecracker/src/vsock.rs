@@ -1,11 +1,11 @@
-//! How the host reaches a guest's executor: the monitor's vsock Unix socket,
+//! How the host reaches a guest's agent: the monitor's vsock Unix socket,
 //! then a `CONNECT <port>` line, which the monitor answers `OK <port>` once a
 //! guest process listens on that port, and closes otherwise.
 //!
 //! A guest that is still booting has no listener yet, so a dial retries until
 //! the guest answers or the boot's time is up. Each boot is a fresh guest,
-//! and the executor client dials again after every one (`afr_executor`'s
-//! [`ExecutorRoute`]).
+//! and the guest agent client dials again after every one (`afr_guest_client`'s
+//! [`AgentRoute`]).
 //!
 //! The socket sits in the jail, which its monitor's user owns, and the root
 //! runner dials it. So every dial opens the name beneath the jail with no
@@ -18,7 +18,8 @@ use std::os::fd::{AsRawFd as _, OwnedFd};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use afr_executor::route::{ExecutorRoute, ExecutorStream};
+use af_guest_wire::AgentStream;
+use afr_guest_client::route::AgentRoute;
 use backon::{ConstantBuilder, Retryable as _};
 use rustix::fs::{FileType, Mode, OFlags, ResolveFlags};
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
@@ -43,7 +44,7 @@ const BENEATH: ResolveFlags = ResolveFlags::BENEATH
     .union(ResolveFlags::NO_SYMLINKS)
     .union(ResolveFlags::NO_MAGICLINKS);
 
-/// One guest's executor, through its monitor's vsock socket.
+/// One guest's agent, through its monitor's vsock socket.
 #[derive(Debug, Clone)]
 pub struct VsockRoute {
     jail: PathBuf,
@@ -54,7 +55,7 @@ pub struct VsockRoute {
 }
 
 impl VsockRoute {
-    /// The executor on guest `port`, through the monitor socket named
+    /// The guest agent on guest `port`, through the monitor socket named
     /// `socket` in the jail at `jail`, whose monitor runs as user `owner`;
     /// each dial retried until the guest answers or `within` has passed.
     #[must_use]
@@ -104,8 +105,8 @@ impl VsockRoute {
 }
 
 #[async_trait::async_trait]
-impl ExecutorRoute for VsockRoute {
-    async fn dial(&self) -> io::Result<Box<dyn ExecutorStream>> {
+impl AgentRoute for VsockRoute {
+    async fn dial(&self) -> io::Result<Box<dyn AgentStream>> {
         let attempts = self
             .within
             .as_millis()
@@ -130,7 +131,7 @@ async fn connect(socket: &OwnedFd, port: u32) -> io::Result<UnixStream> {
     stream
         .write_all(format!("CONNECT {port}\n").as_bytes())
         .await?;
-    // One byte at a time: what follows the newline is the executor's.
+    // One byte at a time: what follows the newline is the guest agent's.
     let mut reply = Vec::with_capacity(REPLY_BYTES_MAX);
     while reply.len() < REPLY_BYTES_MAX {
         match stream.read_u8().await {
@@ -172,7 +173,7 @@ mod tests {
     use std::os::unix::fs::{MetadataExt as _, symlink};
     use std::time::Duration;
 
-    use afr_executor::ExecutorRoute as _;
+    use afr_guest_client::AgentRoute as _;
     use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _, BufReader};
     use tokio::net::UnixListener;
 

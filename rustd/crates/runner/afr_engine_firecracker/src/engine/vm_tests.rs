@@ -8,8 +8,10 @@ use std::net::Ipv4Addr;
 use std::path::Path;
 use std::sync::{Arc, Mutex, PoisonError};
 
+use af_guest_wire::Sizes;
+use afg_agent::{Entry, InnerEnvironment};
 use afr_engine::Allowlist;
-use afr_executor::{Client, Entry, InnerEnvironment, Sizes};
+use afr_guest_client::Client;
 
 use super::resolve;
 
@@ -46,7 +48,7 @@ async fn an_allowed_plan_changed_to_another_sends_the_new_hosts_file() {
     let guest = Arc::new(Guest::default());
     let (ours, theirs) = std::os::unix::net::UnixStream::pair().unwrap();
     theirs.set_nonblocking(true).unwrap();
-    let server = afr_executor::streamed(tokio::net::UnixStream::from_std(theirs).unwrap())
+    let server = afg_agent::streamed(tokio::net::UnixStream::from_std(theirs).unwrap())
         .with_inner(Arc::clone(&guest) as Arc<dyn InnerEnvironment>);
     let workspace = root.path().to_owned();
     tokio::spawn(async move { server.serve(&workspace).await });

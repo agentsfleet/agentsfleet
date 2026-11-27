@@ -20,7 +20,7 @@ use std::time::Duration;
 use af_core::error_code::{Coded as _, Logged};
 use af_wire::report::FailureClass;
 use afr_engine::Limits;
-use afr_executor::{ExecutorSlot, ExecutorSource as _};
+use afr_guest_client::{AgentSlot, AgentSource as _};
 use afr_memory::Seed;
 use tokio_util::sync::CancellationToken;
 
@@ -69,7 +69,7 @@ impl Run<'_> {
     /// Admits the run's sandbox, then runs its build and its turn together
     /// and hands the sandbox back with the turn's ending. A parked sandbox keeps
     /// the repositories as its last run left them.
-    /// The sandbox cell outlives the build and turn; the executor slot bounds its borrow.
+    /// The sandbox cell outlives the build and turn; the guest agent slot bounds its borrow.
     /// Sandbox setup timing covers admission through the build's completion.
     pub(super) async fn sandboxed(
         &self,
@@ -96,7 +96,7 @@ impl Run<'_> {
         };
         let cell = OnceLock::new();
         let (ending, held) = {
-            let slot = ExecutorSlot::pending();
+            let slot = AgentSlot::pending();
             let watched = Watched::new(&slot, &cell, &self.interrupt, self.ids.run.as_str());
             let (capture, owner) = super::recovery_boundary::BoundaryOwner::new(
                 self,
@@ -145,7 +145,7 @@ impl Run<'_> {
 
     async fn workspace_ready(
         &self,
-        slot: &ExecutorSlot<'_>,
+        slot: &AgentSlot<'_>,
         prepared: Option<&afr_agent::PreparedDurableTask>,
     ) -> bool {
         if prepared.is_none() && self.payload.turn_resume.is_none() {

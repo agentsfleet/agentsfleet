@@ -3,7 +3,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
-use crate::workspace::{Dep, Kind, Layer, Workspace};
+use crate::workspace::{Dep, Kind, Layer, Member, Workspace};
 
 /// The runner binary's package, whose graph must name no datastore client.
 pub(crate) const RUNNER_BINARY: &str = "agentsfleet_runner";
@@ -19,9 +19,15 @@ pub(crate) const ENGINE_PREFIX: &str = "afr_engine_";
 /// one its operator chose, and the e2e crate, which drives each.
 const ENGINE_NAMERS: [&str; 2] = [RUNNER_BINARY, "af_e2e"];
 
+/// The one runner crate that may link a guest crate outside a dev table: the
+/// debug engine, which serves the guest agent in-process on a host with no
+/// microVM, and which the shipped runner does not carry (Indy, Nov 27, 2026).
+pub(crate) const DEBUG_ENGINE: &str = "afr_engine_unsandboxed";
+
 /// Every workspace edge that points to a higher layer, crosses between
-/// `runner/` and `daemon/`, leads into `e2e/`, or touches the standalone
-/// harness the wrong way, in any table.
+/// `runner/` and `daemon/`, leads into `e2e/`, touches the standalone harness
+/// the wrong way, or crosses into or out of `guest/` where it may not, in any
+/// table.
 pub(crate) fn layer_edges(workspace: &Workspace) -> Vec<String> {
     let mut violations = Vec::new();
     for member in workspace.members.values() {
@@ -35,7 +41,12 @@ pub(crate) fn layer_edges(workspace: &Workspace) -> Vec<String> {
             let Some(to) = Layer::of(&target.dir) else {
                 continue;
             };
-            if let Some(why) = refusal(from, to) {
+            let why = if from == Layer::Guest || to == Layer::Guest {
+                guest_refusal(&member.name, dep, from, to)
+            } else {
+                refusal(from, to)
+            };
+            if let Some(why) = why {
                 violations.push(format!(
                     "{} ({}) {:?} → {} ({}): {why}",
                     member.name, member.dir, dep.kind, target.name, target.dir
@@ -44,6 +55,23 @@ pub(crate) fn layer_edges(workspace: &Workspace) -> Vec<String> {
         }
     }
     violations
+}
+
+/// Why an edge into or out of `guest/` is refused, if it is: `guest/` links
+/// only `foundation/`, `protocol/` and its own layer (Indy, Nov 27, 2026),
+/// `daemon/` never links it, `runner/` links it only in a dev table or
+/// through [`DEBUG_ENGINE`], and every other layer as the general rule says.
+fn guest_refusal(from_name: &str, dep: &Dep, from: Layer, to: Layer) -> Option<&'static str> {
+    match (from, to) {
+        (Layer::Guest, Layer::Foundation | Layer::Protocol | Layer::Guest) => None,
+        (Layer::Guest, _) => Some("guest/ depends only on foundation/ and protocol/"),
+        (Layer::Daemon, _) => Some("daemon/ never depends on guest/"),
+        (Layer::Runner, _) if dep.kind == Kind::Dev || from_name == DEBUG_ENGINE => None,
+        (Layer::Runner, _) => {
+            Some("runner/ reaches guest/ only in a dev table or through afr_engine_unsandboxed")
+        }
+        _ => refusal(from, to),
+    }
 }
 
 /// Why an edge from layer `from` to layer `to` is refused, if it is.
@@ -67,7 +95,7 @@ const fn rank(layer: Layer) -> u8 {
         Layer::Foundation => 0,
         Layer::Protocol => 1,
         Layer::Harness => 2,
-        Layer::Runner | Layer::Daemon => 3,
+        Layer::Runner | Layer::Guest | Layer::Daemon => 3,
         Layer::E2e | Layer::Standalone => 4,
     }
 }
@@ -180,8 +208,8 @@ fn misplaced(name: &str, dir: &str) -> Option<&'static str> {
         return Some("a crate is one folder below its layer");
     }
     if folder == "main" {
-        return (!matches!(layer, Layer::Runner | Layer::Daemon))
-            .then_some("main/ holds the runner's or the daemon's binary");
+        return (!matches!(layer, Layer::Runner | Layer::Guest | Layer::Daemon))
+            .then_some("main/ holds the runner's, the guest's or the daemon's binary");
     }
     if folder != name {
         return Some("the folder is not the crate's name");
@@ -189,9 +217,10 @@ fn misplaced(name: &str, dir: &str) -> Option<&'static str> {
     let prefix = match layer {
         Layer::Daemon => "afd_",
         Layer::Runner => "afr_",
+        Layer::Guest => "afg_",
         _ => "af_",
     };
-    let other = ["afd_", "afr_"]
+    let other = ["afd_", "afr_", "afg_"]
         .iter()
         .any(|own| *own != prefix && name.starts_with(own));
     (!name.starts_with(prefix) || other).then_some("the prefix is not the layer's")
@@ -261,4 +290,130 @@ fn reach(workspace: &Workspace, root: &str) -> BTreeSet<String> {
         }
     }
     seen
+}
+
+/// Every guest crate, and the debug engine, that `agentsfleet_runner` links
+/// when built with no feature of its own, as the release candidate builds it
+/// (`--no-default-features`), each named with the first path that reaches it.
+pub(crate) fn release_runner_guests(workspace: &Workspace) -> Vec<String> {
+    release_reach(workspace, RUNNER_BINARY)
+        .into_iter()
+        .filter(|(name, _path)| {
+            name == DEBUG_ENGINE
+                || workspace
+                    .members
+                    .get(name)
+                    .and_then(|member| Layer::of(&member.dir))
+                    == Some(Layer::Guest)
+        })
+        .map(|(name, path)| {
+            format!(
+                "{RUNNER_BINARY}'s release build reaches {name}: {}",
+                path.join(" → ")
+            )
+        })
+        .collect()
+}
+
+/// Every member `root` links over normal and build edges when built with no
+/// feature of its own, with the first path that reaches it. Features resolve
+/// as cargo resolves them: an optional dependency counts once a feature that
+/// is on enables it, and an edge turns on the features it names and, unless
+/// it says otherwise, its target's `default`.
+fn release_reach(workspace: &Workspace, root: &str) -> BTreeMap<String, Vec<String>> {
+    let mut enabled: BTreeMap<String, BTreeSet<String>> =
+        BTreeMap::from([(root.to_owned(), BTreeSet::new())]);
+    let mut paths = BTreeMap::from([(root.to_owned(), vec![root.to_owned()])]);
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for (name, features) in enabled.clone() {
+            let Some(member) = workspace.members.get(&name) else {
+                continue;
+            };
+            let (optional_on, forwarded) = expand(member, &features);
+            let linked = member.deps.iter().filter(|dep| {
+                dep.kind != Kind::Dev
+                    && workspace.members.contains_key(&dep.name)
+                    && (!dep.optional || optional_on.contains(&dep.name))
+            });
+            for dep in linked {
+                let mut wanted: BTreeSet<String> = dep.features.iter().cloned().collect();
+                let has_default = workspace
+                    .members
+                    .get(&dep.name)
+                    .is_some_and(|target| target.features.contains_key("default"));
+                if dep.default_features && has_default {
+                    wanted.insert("default".to_owned());
+                }
+                wanted.extend(
+                    forwarded
+                        .iter()
+                        .filter(|(target, _feature)| *target == dep.name)
+                        .map(|(_target, feature)| feature.clone()),
+                );
+                let on = enabled.entry(dep.name.clone()).or_default();
+                let before = on.len();
+                on.extend(wanted);
+                if !paths.contains_key(&dep.name) {
+                    let mut path = paths.get(&name).cloned().unwrap_or_default();
+                    path.push(dep.name.clone());
+                    paths.insert(dep.name.clone(), path);
+                    changed = true;
+                }
+                changed |= on.len() != before;
+            }
+        }
+    }
+    paths
+}
+
+/// The optional dependencies `features` turn on in `member`, and the
+/// features they forward to its dependencies, following a feature that names
+/// another. A name no feature declares is an optional dependency's implicit
+/// feature.
+fn expand(
+    member: &Member,
+    features: &BTreeSet<String>,
+) -> (BTreeSet<String>, Vec<(String, String)>) {
+    let mut seen = BTreeSet::new();
+    let mut queue: Vec<String> = features.iter().cloned().collect();
+    let mut optional_on = BTreeSet::new();
+    let mut forwarded = Vec::new();
+    while let Some(feature) = queue.pop() {
+        if !seen.insert(feature.clone()) {
+            continue;
+        }
+        let Some(items) = member.features.get(&feature) else {
+            optional_on.insert(feature);
+            continue;
+        };
+        for item in items {
+            if let Some(dep) = item.strip_prefix("dep:") {
+                optional_on.insert(dep.to_owned());
+            } else if let Some((dep, on)) = item.split_once('/') {
+                // `dep?/feature` forwards only to a dependency already on.
+                if let Some(weak) = dep.strip_suffix('?') {
+                    forwarded.push((weak.to_owned(), on.to_owned()));
+                } else {
+                    optional_on.insert(dep.to_owned());
+                    forwarded.push((dep.to_owned(), on.to_owned()));
+                }
+            } else {
+                queue.push(item.clone());
+            }
+        }
+    }
+    (optional_on, forwarded)
+}
+
+/// Each `cargo build` line of a release candidate recipe that builds with the
+/// package's default features: a release binary links only what its
+/// manifest names unconditionally.
+pub(crate) fn defaulted_builds(recipe: &str) -> Vec<String> {
+    recipe
+        .lines()
+        .filter(|line| line.contains("cargo build") && !line.contains("--no-default-features"))
+        .map(|line| line.trim().to_owned())
+        .collect()
 }

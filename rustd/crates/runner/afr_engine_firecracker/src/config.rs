@@ -4,8 +4,8 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use af_guest_wire::Sizes;
 use afr_engine::Limits;
-use afr_executor::Sizes;
 
 /// Where a runner host installs the monitor, by default.
 pub const FIRECRACKER_PATH: &str = "/usr/local/bin/firecracker";
@@ -84,7 +84,7 @@ pub struct FirecrackerTuning {
     pub ready_timeout: Duration,
     /// Workspace-drive bytes a guest may read and write, together, per second.
     pub io_bytes_per_second: u64,
-    /// What every guest's executor serves with and its client keeps the
+    /// What every guest's agent serves with and its client keeps the
     /// link to.
     pub sizes: Sizes,
     /// What every run's microVM is granted, from which one microVM's memory

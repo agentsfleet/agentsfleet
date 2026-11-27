@@ -66,7 +66,7 @@ af_observability::closed_set! {
 af_observability::closed_set! {
     /// How a sandbox start ended.
     SandboxStart {
-        /// The sandbox's executor answered.
+        /// The sandbox's guest agent answered.
         Ready => "ready",
         /// The host could not build it.
         Failed => FAILED,
@@ -78,7 +78,7 @@ af_observability::closed_set! {
     /// build that fails no longer ends its run, so this is where a host or
     /// repository fault shows.
     SandboxBuild {
-        /// Every repository was in place, and the executor answered.
+        /// Every repository was in place, and the guest agent answered.
         Ready => "ready",
         /// The engine could not prepare the sandbox.
         Prepare => "prepare",
@@ -132,7 +132,7 @@ af_observability::closed_set! {
         /// The runner takes no new run, so no run could take it: running
         /// stopped, or the runner is shutting down or stopped.
         Shutdown => "shutdown",
-        /// It would not thaw, or its executor did not answer once thawed.
+        /// It would not thaw, or its guest agent did not answer once thawed.
         ThawFailed => "thaw_failed",
         /// It no longer carries the fleet's latest run: the daemon refused
         /// the report of the run that left it, as settled without it or for

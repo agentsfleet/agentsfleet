@@ -19,7 +19,7 @@ use super::{ANSWER, CALL_ID};
 /// The screenshot the image suite's workspace holds, forty kibibytes of PNG.
 const SHOT: &str = "shot.png";
 const SHOT_BYTES: usize = 40 * 1024;
-/// How long the suite waits on the executor before failing.
+/// How long the suite waits on the guest agent before failing.
 const PATIENCE: Duration = Duration::from_secs(20);
 
 /// A real `format` image, 64 by 64, padded with zeros past its end marker to
@@ -37,10 +37,10 @@ pub(crate) fn real_image(format: image::ImageFormat, length: usize) -> Vec<u8> {
     bytes
 }
 
-/// A real executor served over a scratch workspace holding [`SHOT`].
-async fn workspace_with_shot() -> (tempfile::TempDir, afr_executor::Client) {
+/// A real guest agent served over a scratch workspace holding [`SHOT`].
+async fn workspace_with_shot() -> (tempfile::TempDir, afr_guest_client::Client) {
     let scratch = tempfile::tempdir().unwrap();
-    let socket = scratch.path().join("executor.sock");
+    let socket = scratch.path().join("agent.sock");
     let root = scratch.path().join("workspace");
     std::fs::create_dir(&root).unwrap();
     std::fs::write(
@@ -48,11 +48,11 @@ async fn workspace_with_shot() -> (tempfile::TempDir, afr_executor::Client) {
         real_image(image::ImageFormat::Png, SHOT_BYTES),
     )
     .unwrap();
-    tokio::spawn(async move { afr_executor::serve(&socket, &root).await });
-    let client = afr_executor::Client::connect_within(
-        &scratch.path().join("executor.sock"),
+    tokio::spawn(async move { afg_agent::serve(&socket, &root).await });
+    let client = afr_guest_client::Client::connect_within(
+        &scratch.path().join("agent.sock"),
         PATIENCE,
-        afr_executor::Sizes::DEFAULT,
+        af_guest_wire::Sizes::DEFAULT,
     )
     .await
     .unwrap();

@@ -10,25 +10,25 @@ async fn shell_on_an_env_that_refuses_the_spawn_reads_the_refusal() {
     let cases = [
         (
             EnvErrorKind::Unavailable,
-            "[sandbox_unavailable] the executor is gone",
+            "[sandbox_unavailable] the guest agent is gone",
         ),
         (
             EnvErrorKind::PathRefused,
-            "[path_not_allowed] the executor is gone",
+            "[path_not_allowed] the guest agent is gone",
         ),
         (
             EnvErrorKind::NotFound,
-            "[file_not_found] the executor is gone",
+            "[file_not_found] the guest agent is gone",
         ),
         (
             EnvErrorKind::UnknownProcess,
-            "[sandbox_unavailable] the executor is gone",
+            "[sandbox_unavailable] the guest agent is gone",
         ),
     ];
     let mut read = Vec::new();
     for (kind, _) in &cases {
         let fake = Fake {
-            refuse_spawn: Some(EnvError::new(*kind, "the executor is gone")),
+            refuse_spawn: Some(EnvError::new(*kind, "the guest agent is gone")),
             ..Fake::default()
         };
         let sessions = Sessions::default();

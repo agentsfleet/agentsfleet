@@ -12,11 +12,12 @@ use std::time::Instant;
 
 use af_core::clock::SystemClock;
 use af_egress::Egress;
+use af_guest_wire::Sizes;
 use af_providers::Provider;
 use af_providers::observe::labels::Provider as ProviderLabel;
 use af_secrets::Scrub;
 use af_wire::policy::ContextBudget;
-use afr_executor::{ExecutorSource, Sizes};
+use afr_guest_client::AgentSource;
 use afr_memory::Loaded;
 use afr_tools::sandbox::checkouts;
 use afr_tools::{Run, RunTools, Selection};
@@ -46,7 +47,7 @@ pub struct RunLimits {
     /// How deep a run's children go, and how many are open at once; the
     /// depth no deeper than [`CAPS`]'s, which a restore checks against.
     pub caps: Caps,
-    /// What every run's executor holds to: the sandbox's executor is started
+    /// What every run's guest agent holds to: the sandbox's guest agent is started
     /// with the same, so the tools word their limits by its figures.
     pub sizes: Sizes,
 }
@@ -100,7 +101,7 @@ pub(crate) struct Shared<'run> {
     /// what it borrowed as it drops, so it cannot sit in a local the run also
     /// borrows for as long as it lasts.
     pub(crate) backed: RunTools<'run>,
-    pub(crate) executor: &'run dyn ExecutorSource,
+    pub(crate) agent: &'run dyn AgentSource,
     pub(crate) scrub: &'run Scrub,
     pub(crate) events: &'run dyn EventSink,
     /// What every call of the run shares.
@@ -182,7 +183,7 @@ impl<'run> Shared<'run> {
             context: &policy.context,
             selection,
             backed,
-            executor: run.executor,
+            agent: run.agent,
             scrub,
             events: run.events,
             run: state,

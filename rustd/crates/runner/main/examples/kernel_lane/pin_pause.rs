@@ -1,13 +1,13 @@
-//! The pin pause on a real microVM: the executor freezes the guest's tenant
+//! The pin pause on a real microVM: the guest agent freezes the guest's tenant
 //! leaf from outside it, so a detached tenant loop stops where it stands
-//! while the executor answers file calls, runs on after the thaw, and the
+//! while the guest agent answers file calls, runs on after the thaw, and the
 //! monitor that ran before runs after: the VM never stopped.
 
 use std::fs;
 use std::time::{Duration, Instant};
 
 use afr_engine::Engine as _;
-use afr_executor::Executor;
+use afr_guest_client::GuestAgent;
 use libtest_mimic::Failed;
 
 use crate::lane::{Lane, id_of, isolated};
@@ -32,12 +32,12 @@ const COUNT_BYTES: u64 = 64;
 
 /// The pin pause's trial, by the name the lane reports it under.
 pub(crate) const TRIALS: &[(&str, Body)] = &[(
-    "test_the_pin_pause_freezes_tenant_code_and_keeps_the_executor_answering",
+    "test_the_pin_pause_freezes_tenant_code_and_keeps_the_agent_answering",
     freezes_tenant_code,
 )];
 
 /// A detached tenant loop's counter holds still through the freeze while
-/// the executor lists the workspace, and advances after the thaw; the
+/// the guest agent lists the workspace, and advances after the thaw; the
 /// monitor's process identifier is the one from before the pause.
 fn freezes_tenant_code(lane: &Lane) -> Result<(), Failed> {
     let id = id_of("pin-pause");
@@ -49,25 +49,25 @@ fn freezes_tenant_code(lane: &Lane) -> Result<(), Failed> {
             .cgroup_root
             .join(id.as_str())
             .join(afr_cgroup::SANDBOX_LEAF)
-            .join(afr_cgroup::CGROUP_PROCS);
+            .join(af_cgroup::CGROUP_PROCS);
         let monitor = fs::read_to_string(&procs)?;
-        let executor = sandbox.executor();
-        run(executor, shell(START_COUNTER)).await?;
-        let started = first_count(executor).await?;
-        executor.freeze_tenant().await?;
-        let frozen = count(executor).await?;
+        let agent = sandbox.agent();
+        run(agent, shell(START_COUNTER)).await?;
+        let started = first_count(agent).await?;
+        agent.freeze_tenant().await?;
+        let frozen = count(agent).await?;
         tokio::time::sleep(WATCH).await;
-        let listed = executor.list_dir(".").await;
-        let held = count(executor).await?;
-        executor.thaw_tenant().await?;
+        let listed = agent.list_dir(".").await;
+        let held = count(agent).await?;
+        agent.thaw_tenant().await?;
         tokio::time::sleep(WATCH).await;
-        let thawed = count(executor).await?;
+        let thawed = count(agent).await?;
         let after = fs::read_to_string(&procs)?;
         sandbox.destroy().await?;
         let listed = listed?;
         expect(
             listed.entries.iter().any(|entry| entry.name == COUNTER),
-            "the executor lists the workspace while the tenant is frozen",
+            "the guest agent lists the workspace while the tenant is frozen",
         )?;
         expect(
             held == frozen && frozen >= started,
@@ -85,10 +85,10 @@ fn freezes_tenant_code(lane: &Lane) -> Result<(), Failed> {
 }
 
 /// The loop's first count, once it has written one.
-async fn first_count(executor: &dyn Executor) -> Result<u64, Failed> {
+async fn first_count(agent: &dyn GuestAgent) -> Result<u64, Failed> {
     let deadline = Instant::now() + FIRST_COUNT_WITHIN;
     loop {
-        match count(executor).await {
+        match count(agent).await {
             Ok(counted) => return Ok(counted),
             Err(failure) if Instant::now() > deadline => return Err(failure),
             Err(_not_yet) => tokio::time::sleep(Duration::from_millis(20)).await,
@@ -96,9 +96,9 @@ async fn first_count(executor: &dyn Executor) -> Result<u64, Failed> {
     }
 }
 
-/// The count the loop last wrote, read by the executor itself.
-async fn count(executor: &dyn Executor) -> Result<u64, Failed> {
-    let read = executor.read_file(COUNTER, COUNT_BYTES).await?;
+/// The count the loop last wrote, read by the guest agent itself.
+async fn count(agent: &dyn GuestAgent) -> Result<u64, Failed> {
+    let read = agent.read_file(COUNTER, COUNT_BYTES).await?;
     let text = std::str::from_utf8(&read.data)?;
     Ok(text.trim().parse()?)
 }

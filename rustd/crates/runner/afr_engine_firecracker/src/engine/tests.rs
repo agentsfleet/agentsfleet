@@ -7,9 +7,9 @@ use std::fs;
 use std::sync::Arc;
 use std::time::Duration;
 
+use af_guest_wire::Sizes;
 use afr_cgroup::RunCgroup;
 use afr_engine::Limits;
-use afr_executor::Sizes;
 use afr_image::{HostTools, Toolbox};
 
 use super::{FirecrackerConfig, FirecrackerEngine};

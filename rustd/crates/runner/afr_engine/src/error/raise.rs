@@ -8,7 +8,7 @@ use super::{EgressRefusal, Error, ErrorKind};
 // on a path that adds nothing (`docs/RUST_ERROR_STANDARD.md` rule 2).
 af_core::error_lifts!(Error, ErrorKind:
     std::io::Error => Io,
-    afr_executor::Error => Executor,
+    af_guest_wire::Error => GuestAgent,
     tokio::task::JoinError => Task,
     af_crypto::error::Error => Entropy,
 );

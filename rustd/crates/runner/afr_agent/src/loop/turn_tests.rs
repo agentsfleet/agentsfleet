@@ -244,8 +244,8 @@ async fn a_credential_minted_during_a_run_is_logged_under_the_runs_run() {
             prepared_durable_task: None,
             run: &held,
             memory: afr_memory::Seed::default(),
-            executor: &afr_executor::ExecutorSlot::unavailable(
-                afr_executor::Unavailable::NoSandbox,
+            agent: &afr_guest_client::AgentSlot::unavailable(
+                afr_guest_client::Unavailable::NoSandbox,
             ),
             mint: &mint,
             verbs: &afr_tools::CLOSED,

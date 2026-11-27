@@ -69,8 +69,8 @@ pub enum RecoverySkip {
     BusyChildren,
     /// A process session is open or reserved.
     BusySessions,
-    /// An executor file job outlived its caller or has not finished.
-    BusyExecutor,
+    /// A guest agent file job outlived its caller or has not finished.
+    BusyAgent,
     /// A frozen tenant process remains.
     BusyProcesses,
     /// Other checkpoint or restore work is using the runner's file capacity.

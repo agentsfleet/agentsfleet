@@ -5,8 +5,8 @@
 use std::fs;
 use std::os::unix::fs::MetadataExt as _;
 
+use afg_confine::{REFUSED_SYSCALLS, X32_SYSCALL_BIT};
 use afr_engine::{Engine as _, Limits};
-use afr_guest::{REFUSED_SYSCALLS, X32_SYSCALL_BIT};
 use libtest_mimic::Failed;
 
 use crate::lane::{Lane, WORKSPACE_IMAGE, id_of, isolated};
@@ -42,7 +42,7 @@ const PROBE_SYSCALLS: &str = "import ctypes, sys\nlibc = ctypes.CDLL(None, use_e
 /// A tenant process holds no capability.
 pub(crate) fn no_capabilities(lane: &Lane) -> Result<(), Failed> {
     let status = in_sandbox(lane, "caps", Limits::default(), "cat /proc/self/status")?;
-    Ok(afr_guest::capabilities_dropped(&status.output)?)
+    Ok(afg_confine::capabilities_dropped(&status.output)?)
 }
 
 /// Every system call the filter lists answers `EPERM` to a tenant process.
@@ -59,9 +59,9 @@ pub(crate) fn seccomp_refuses(lane: &Lane) -> Result<(), Failed> {
     )
 }
 
-/// A process the executor starts holds no socket: the executor's vsock link
-/// stays the executor's.
-pub(crate) fn tenant_holds_no_executor_socket(lane: &Lane) -> Result<(), Failed> {
+/// A process the guest agent starts holds no socket: the guest agent's vsock link
+/// stays the guest agent's.
+pub(crate) fn tenant_holds_no_agent_socket(lane: &Lane) -> Result<(), Failed> {
     let listed = in_sandbox(lane, "link-tenant", Limits::default(), LIST_DESCRIPTORS)?.output;
     expect(
         !listed.contains(SOCKET),
@@ -77,7 +77,7 @@ pub(crate) fn plants_nothing(lane: &Lane) -> Result<(), Failed> {
         let engine = lane.microvms()?;
         let id = id_of(PLANT);
         let sandbox = engine.prepare(isolated(&engine, &id)?).await?;
-        let said = run(sandbox.executor(), shell(PLANT_SCRIPT)).await;
+        let said = run(sandbox.agent(), shell(PLANT_SCRIPT)).await;
         let image = lane.run_dir(PLANT).join(WORKSPACE_IMAGE);
         let owner = fs::metadata(image).map(|meta| meta.uid());
         sandbox.destroy().await?;

@@ -20,8 +20,13 @@ af_core.workspace = true
 af_wire.workspace = true
 # The seam it meets.
 afr_engine.workspace = true
-# The executor each scratch directory is served by, in-process.
-afr_executor.workspace = true
+# The guest agent each scratch directory is served by, in-process, and the
+# client the run reaches it through. The one runner crate that links a guest
+# crate outside a dev table: the debug engine, which the shipped runner,
+# built without default features, does not carry.
+afg_agent.workspace = true
+afr_guest_client.workspace = true
+af_guest_wire.workspace = true
 async-trait.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["rt", "time"] }

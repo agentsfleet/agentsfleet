@@ -1,0 +1,32 @@
+[package]
+name = "agentsfleet_guest"
+description = "The in-VM agent binary, `agentsfleet-guest`: a Firecracker microVM's first process, built only into the guest's initramfs and never installed on a host."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "agentsfleet-guest"
+path = "src/main.rs"
+
+[dependencies]
+# The log level the guest reads, declared once.
+af_core.workspace = true
+# The flags the guest kernel's command line hands `init`.
+af_guest_wire.workspace = true
+# What the binary runs: the admission check, the mounts and the agent.
+afg_entry.workspace = true
+clap.workspace = true
+tracing.workspace = true
+# The agent's lines go to its error stream, which is the guest's console the
+# runner reads.
+tracing-subscriber.workspace = true

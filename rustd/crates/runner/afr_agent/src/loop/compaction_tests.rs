@@ -144,8 +144,8 @@ async fn run(failure: SummaryFailure) -> (crate::RunOutput, Arc<Seen>, Meter) {
             prepared_durable_task: None,
             run: &run,
             memory: afr_memory::Seed::default(),
-            executor: &afr_executor::ExecutorSlot::unavailable(
-                afr_executor::Unavailable::NoSandbox,
+            agent: &afr_guest_client::AgentSlot::unavailable(
+                afr_guest_client::Unavailable::NoSandbox,
             ),
             mint: &af_egress::testing::CountingMint::never(),
             verbs: &afr_tools::CLOSED,

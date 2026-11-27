@@ -4,17 +4,17 @@
 )]
 
 //! How a patch lands: hunk after hunk on one path, moves, and a write the
-//! executor refuses partway.
+//! guest agent refuses partway.
 
 use super::tests::{KEEP, apply, planted};
 use crate::runtime::ToolErrorCode;
 use crate::testing::Live;
 
-/// A write the executor refuses while hunks land is reported in the
-/// executor's words, and what landed before it stays: the patch is not
+/// A write the guest agent refuses while hunks land is reported in the
+/// guest agent's words, and what landed before it stays: the patch is not
 /// transactional past its first write, and the answer says which it was.
 #[tokio::test]
-async fn a_write_refused_while_landing_reports_the_executor_and_keeps_what_landed() {
+async fn a_write_refused_while_landing_reports_the_agent_and_keeps_what_landed() {
     if rustix::process::geteuid().is_root() {
         // Root writes through mode bits, so there is no refusal to inject.
         return;
@@ -56,7 +56,7 @@ async fn a_write_refused_while_landing_reports_the_executor_and_keeps_what_lande
     live.stop().await;
 }
 
-/// A move writes the new path, then removes the old; a delete the executor
+/// A move writes the new path, then removes the old; a delete the guest agent
 /// refuses leaves both files, says so, and a retry heals it.
 #[tokio::test]
 async fn a_move_whose_delete_is_refused_keeps_both_files_and_a_retry_heals_it() {

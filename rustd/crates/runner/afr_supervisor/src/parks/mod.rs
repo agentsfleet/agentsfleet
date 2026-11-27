@@ -68,7 +68,7 @@ pub(crate) enum Release {
     /// stopped, or the runner is shutting down or stopped.
     Shutdown,
     /// It would not take its next run's addresses, would not thaw, or its
-    /// executor did not answer once thawed.
+    /// guest agent did not answer once thawed.
     ThawFailed,
     /// It no longer carries the fleet's latest run: the daemon refused the
     /// report of the run that left it, as settled without it or for good,

@@ -125,7 +125,7 @@ pub(super) fn out_of_memory(run_id: &str) {
     tracing::warn!(run_id, error_code, event);
 }
 
-/// Logs a command the executor killed at its timeout: the model reads the
+/// Logs a command the guest agent killed at its timeout: the model reads the
 /// code, the operator reads the run and how long the command was given.
 fn timed_out(run_id: &str, timeout: Duration) {
     let error_code = code::TIMED_OUT.as_str();

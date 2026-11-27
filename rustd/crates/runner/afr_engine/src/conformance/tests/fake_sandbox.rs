@@ -1,9 +1,9 @@
 //! The fake engine's sandbox, its snapshots, and the sandbox parked.
 
 use af_core::id::Uuid7;
-use afr_executor::Executor;
+use afr_guest_client::GuestAgent;
 
-use super::{ENGINE, FakeExecutor, Flaw};
+use super::{ENGINE, FakeGuest, Flaw};
 use crate::engine::{
     EgressPlan, Environment, Granted, Killed, ParkMode, Parked, Quiescence, Sandbox, SandboxState,
     SnapshotRef, Snapshots,
@@ -17,7 +17,7 @@ pub(super) struct FakeSandbox {
     pub(super) granted: Granted,
     pub(super) environment: Environment,
     pub(super) snapshots: bool,
-    pub(super) executor: FakeExecutor,
+    pub(super) agent: FakeGuest,
 }
 
 #[async_trait::async_trait]
@@ -34,8 +34,8 @@ impl Sandbox for FakeSandbox {
         &self.granted
     }
 
-    fn executor(&self) -> &dyn Executor {
-        &self.executor
+    fn agent(&self) -> &dyn GuestAgent {
+        &self.agent
     }
 
     fn state(&self) -> SandboxState {
@@ -43,7 +43,7 @@ impl Sandbox for FakeSandbox {
     }
 
     async fn quiesce(&self) -> Result<Quiescence> {
-        Ok(if self.executor.state().running {
+        Ok(if self.agent.state().running {
             Quiescence::Busy
         } else {
             Quiescence::Quiet
@@ -51,7 +51,7 @@ impl Sandbox for FakeSandbox {
     }
 
     async fn park(self: Box<Self>, mode: ParkMode) -> Result<Box<dyn Parked>> {
-        if mode == ParkMode::Pause && self.executor.flaw == Flaw::PauseUnsupported {
+        if mode == ParkMode::Pause && self.agent.flaw == Flaw::PauseUnsupported {
             return Err(unsupported(ENGINE, "park"));
         }
         Ok(Box::new(FakeParked {
@@ -69,7 +69,7 @@ impl Sandbox for FakeSandbox {
     }
 
     async fn kill(&self) -> Killed {
-        self.executor.state().running = false;
+        self.agent.state().running = false;
         Killed::Settled
     }
 
@@ -82,14 +82,14 @@ impl Sandbox for FakeSandbox {
 impl Snapshots for FakeSandbox {
     async fn take(&self, id: Uuid7) -> Result<SnapshotRef> {
         let snapshot = SnapshotRef::new(id);
-        let state = &mut *self.executor.state();
+        let state = &mut *self.agent.state();
         state.saved.push((snapshot.clone(), state.disk.clone()));
         Ok(snapshot)
     }
 
     async fn restore(&self, snapshot: &SnapshotRef) -> Result<()> {
-        let flaw = self.executor.flaw;
-        let state = &mut *self.executor.state();
+        let flaw = self.agent.flaw;
+        let state = &mut *self.agent.state();
         let mut disk = state
             .saved
             .iter()
@@ -107,7 +107,7 @@ impl Snapshots for FakeSandbox {
     }
 
     async fn forget(&self, snapshot: &SnapshotRef) -> Result<()> {
-        self.executor
+        self.agent
             .state()
             .saved
             .retain(|(taken, _disk)| taken != snapshot);
@@ -134,7 +134,7 @@ impl Parked for FakeParked {
 
     async fn resume(self: Box<Self>) -> Result<Box<dyn Sandbox>> {
         if self.mode == ParkMode::Stop {
-            self.sandbox.executor.state().running = false;
+            self.sandbox.agent.state().running = false;
         }
         Ok(self.sandbox)
     }

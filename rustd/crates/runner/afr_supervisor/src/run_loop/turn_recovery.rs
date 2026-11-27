@@ -38,7 +38,7 @@ impl Run<'_> {
             .restore(
                 self.payload,
                 actual,
-                Some((&staged, sandbox.executor())),
+                Some((&staged, sandbox.agent())),
                 &self.interrupt,
                 Some(&permit),
             )

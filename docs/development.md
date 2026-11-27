@@ -395,6 +395,14 @@ follows is the repo-workflow half that page does not carry.
   which only dev-dependencies enable (`afr_supervisor`, `af_providers`,
   `agentsfleetd`), so no shipped binary carries it.
 
+- **The debug engine, `run --engine unsandboxed`**, serves the guest agent
+  (`afg_agent`) in-process on a host with no microVM. A developer gets it
+  from a debug build with default features: `cargo build -p agentsfleet_runner`
+  from `rustd/`. The release candidate builds every binary with
+  `--no-default-features` (`scripts/build-candidate.sh`), so the shipped
+  runner carries neither the debug engine nor the guest agent, and a release
+  build refuses the engine besides. `af_e2e`'s layer test holds both.
+
 ## Runner kernel lane on Debian 13
 
 Run `make test-runner-kernel` on a Debian 13 host that exposes the KVM device, matching the runner hosts, such as the dev runner host.
@@ -406,7 +414,19 @@ It fails before any trial, naming each prerequisite the host lacks.
 The host also needs:
 
 - The `firecracker` and `jailer` binaries at `/usr/local/bin/`.
-- `AFR_GUEST_KERNEL` and `AFR_GUEST_INITRD`, naming the guest kernel and the guest's initial file system. No repository script builds either yet.
+- `AFR_GUEST_KERNEL` and `AFR_GUEST_INITRD`, naming the guest kernel and the guest's initial file system, the guest set's `vmlinux` and `guest.cpio`.
+
+The guest set is built in two steps on a Linux host. `make guest-pinned` fetches Firecracker and its jailer and builds the guest kernel; it takes minutes, so keep its directory. `make guest-set` then packs the initramfs around the static guest agent, `agentsfleet-guest`, which it reads from `GUEST_BINARY` (default `dist/candidate/bin/agentsfleet-guest-linux-amd64`) and which must report this checkout's `VERSION`. Build that binary as the release candidate does:
+
+```bash
+make candidate-native-linux CANDIDATE_PACKAGE=agentsfleet_guest \
+  CANDIDATE_BINARY=agentsfleet-guest CANDIDATE_FILENAME=agentsfleet-guest-linux-amd64 \
+  CANDIDATE_ARCH=amd64
+make guest-pinned
+make guest-set GUEST_DIR="$PWD/dist/guest"
+```
+
+The agent is never installed on a host: it reaches a microVM only as `guest.cpio`'s `/init`.
 - Kernel same-page merging off, so `/sys/kernel/mm/ksm/run` reads `0`.
 
 `ENGINE` names the engine the lane builds. It defaults to `firecracker`, and any other name fails the lane.

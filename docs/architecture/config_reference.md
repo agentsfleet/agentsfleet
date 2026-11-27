@@ -432,13 +432,13 @@ Every build parses it, and only the Firecracker engine uses it (`main/src/config
 | `max_file_read_mib` | 8 | File tools refuse or cut files the model needs whole, or one read holds too much memory |
 | `output_edge_kib` | 512 | Command output loses the middle the model needs, or each running command holds too much memory |
 
-#### `[executor]`
+#### `[guest]`
 
-The runner starts each sandbox's executor with these sizes and holds its own end of the link to the same.
+The runner starts each sandbox's guest agent with these sizes and holds its own end of the link to the same.
 
 | Key | Default | Change it when… |
 |---|---|---|
-| `max_frame_mib` | 64 | File writes are refused as longer than the executor reads, or a hostile sandbox could make the runner buffer too much |
+| `max_frame_mib` | 64 | File writes are refused as longer than the guest agent reads, or a hostile sandbox could make the runner buffer too much |
 
 #### `[egress]` and `[telemetry]`
 
@@ -478,7 +478,7 @@ The runner starts each sandbox's executor with these sizes and holds its own end
 | runner | `max_shell_processes_per_run` of 8 or fewer | the 8 newest shells are never closed to make room |
 | runner | `max_subagent_depth` over 2; `[daemon] call_timeout_seconds` of 12 or less | nesting depth; a daemon answer needs time |
 | runner | `max_activity_batches_held` under 2 | one batch in flight and one queued |
-| runner | `[executor] max_frame_mib` under 7, or at most four thirds of `[tools] max_file_read_mib` | a full directory listing, and one file read sent as base64, must fit |
+| runner | `[guest] max_frame_mib` under 7, or at most four thirds of `[tools] max_file_read_mib` | a full directory listing, and one file read sent as base64, must fit |
 
 ### Precedence
 

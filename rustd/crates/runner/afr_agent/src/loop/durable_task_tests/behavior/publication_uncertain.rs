@@ -1,7 +1,7 @@
 //! An uncertain daemon publication reply is exposed as failed until reconciled.
 use super::publication_fixture::{Publisher, candidate, publisher};
 use super::*;
-use afr_tools::sandbox::{ScriptedExecutor, ScriptedProcess};
+use afr_tools::sandbox::{ScriptedGuest, ScriptedProcess};
 
 #[derive(Debug)]
 struct Uncertain {
@@ -77,15 +77,11 @@ async fn prior_unreconciled_effect_prevents_capture_and_new_publication() -> cra
         failure: Failure::Unknown,
     };
     let script = Script::new([vec![publication_guards::publication_call(), ended(false)]]);
-    let executor = ScriptedExecutor::new([]);
-    let output = publication_guards::execute(
-        &script,
-        &native,
-        native.native.goals.inputs.clone(),
-        &executor,
-    )
-    .await?;
-    assert_eq!(executor.spawned().len(), 0);
+    let agent = ScriptedGuest::new([]);
+    let output =
+        publication_guards::execute(&script, &native, native.native.goals.inputs.clone(), &agent)
+            .await?;
+    assert_eq!(agent.spawned().len(), 0);
     publication_guards::refusal(
         &native.native,
         output,
@@ -102,19 +98,15 @@ async fn uncertain_publication_reply_does_not_claim_confirmed_tool_success() -> 
         failure: Failure::Unknown,
     };
     let script = Script::new([vec![publication_guards::publication_call(), ended(false)]]);
-    let executor = ScriptedExecutor::new([
+    let agent = ScriptedGuest::new([
         ScriptedProcess::exits(&candidate(), 0),
         ScriptedProcess::exits("checks passed", 0),
         ScriptedProcess::exits(&candidate(), 0),
     ]);
-    let output = publication_guards::execute(
-        &script,
-        &native,
-        native.native.goals.inputs.clone(),
-        &executor,
-    )
-    .await?;
-    assert_uncertain_outcome(&native, &executor, output, "unknown")
+    let output =
+        publication_guards::execute(&script, &native, native.native.goals.inputs.clone(), &agent)
+            .await?;
+    assert_uncertain_outcome(&native, &agent, output, "unknown")
 }
 
 #[tokio::test]
@@ -125,15 +117,11 @@ async fn refused_receipt_read_never_starts_validation_or_publication() -> crate:
         failure: Failure::RefusedRead,
     };
     let script = Script::new([vec![publication_guards::publication_call(), ended(false)]]);
-    let executor = ScriptedExecutor::new([]);
-    let output = publication_guards::execute(
-        &script,
-        &native,
-        native.native.goals.inputs.clone(),
-        &executor,
-    )
-    .await?;
-    assert_eq!(executor.spawned().len(), 0);
+    let agent = ScriptedGuest::new([]);
+    let output =
+        publication_guards::execute(&script, &native, native.native.goals.inputs.clone(), &agent)
+            .await?;
+    assert_eq!(agent.spawned().len(), 0);
     publication_guards::refusal(
         &native.native,
         output,
@@ -150,24 +138,20 @@ async fn lost_publication_reply_is_reconciled_without_another_physical_write() -
         failure: Failure::LostReply,
     };
     let script = Script::new([vec![publication_guards::publication_call(), ended(false)]]);
-    let executor = ScriptedExecutor::new([
+    let agent = ScriptedGuest::new([
         ScriptedProcess::exits(&candidate(), 0),
         ScriptedProcess::exits("checks passed", 0),
         ScriptedProcess::exits(&candidate(), 0),
     ]);
-    let output = publication_guards::execute(
-        &script,
-        &native,
-        native.native.goals.inputs.clone(),
-        &executor,
-    )
-    .await?;
-    assert_uncertain_outcome(&native, &executor, output, "confirmed")
+    let output =
+        publication_guards::execute(&script, &native, native.native.goals.inputs.clone(), &agent)
+            .await?;
+    assert_uncertain_outcome(&native, &agent, output, "confirmed")
 }
 
 fn assert_uncertain_outcome(
     native: &Uncertain,
-    executor: &ScriptedExecutor,
+    agent: &ScriptedGuest,
     output: crate::RunOutput,
     recorded_state: &str,
 ) -> crate::Result<()> {
@@ -190,7 +174,7 @@ fn assert_uncertain_outcome(
         record.output.split_once(' ').map(|(code, _)| code),
         Some("[agentsfleetd_refused]")
     );
-    assert_eq!(executor.spawned().len(), 3);
+    assert_eq!(agent.spawned().len(), 3);
     assert_eq!(
         native
             .native
