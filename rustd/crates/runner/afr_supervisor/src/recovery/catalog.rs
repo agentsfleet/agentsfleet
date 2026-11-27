@@ -106,30 +106,7 @@ impl Catalog {
                 .logical_bytes
                 .checked_add(files::size(entry))
                 .ok_or_else(|| error::capture_limit("checkpoint size overflow"))?;
-            let wire = match entry {
-                Entry::Directory => CheckpointEntry::Directory { path: path.clone() },
-                Entry::Symlink { target } => CheckpointEntry::Symlink {
-                    path: path.clone(),
-                    target: target.clone(),
-                },
-                Entry::File {
-                    identity,
-                    executable,
-                } => {
-                    let root =
-                        root.ok_or_else(|| error::config("checkpoint file has no workspace"))?;
-                    let Naming::OwnFile = names.naming(path, identity);
-                    let keys = catalog.file(root, path, identity, files::size(entry), stop)?;
-                    let file = CheckpointEntry::File(CheckpointFile {
-                        path: path.clone(),
-                        executable: *executable,
-                        size: files::size(entry),
-                        objects: vec![PLACEHOLDER.to_owned(); keys.len()],
-                    });
-                    catalog.file_chunks.insert(path.clone(), keys);
-                    file
-                }
-            };
+            let wire = catalog.entry(root, path, entry, stop, names)?;
             catalog.entries.insert(path.clone(), wire);
         }
         for path in base_paths {
@@ -143,6 +120,46 @@ impl Catalog {
         // Validate the complete page layout before allocating any native plan.
         catalog.pages(None, af_wire::durable_task::CHECKPOINT_PAGE_BYTES)?;
         Ok(catalog)
+    }
+
+    /// The page entry for one inventory entry; a file is hashed into chunks.
+    fn entry(
+        &mut self,
+        root: Option<&Arc<Workspace>>,
+        path: &str,
+        entry: &Entry,
+        stop: &tokio_util::sync::CancellationToken,
+        names: &mut dyn SecondNames,
+    ) -> Result<CheckpointEntry> {
+        let (identity, executable) = match entry {
+            Entry::Directory => {
+                return Ok(CheckpointEntry::Directory {
+                    path: path.to_owned(),
+                });
+            }
+            Entry::Symlink { target } => {
+                return Ok(CheckpointEntry::Symlink {
+                    path: path.to_owned(),
+                    target: target.clone(),
+                });
+            }
+            Entry::File {
+                identity,
+                executable,
+            } => (identity, *executable),
+        };
+        let root = root.ok_or_else(|| error::config("checkpoint file has no workspace"))?;
+        let Naming::OwnFile = names.naming(path, identity);
+        let size = files::size(entry);
+        let keys = self.file(root, path, identity, size, stop)?;
+        let file = CheckpointEntry::File(CheckpointFile {
+            path: path.to_owned(),
+            executable,
+            size,
+            objects: vec![PLACEHOLDER.to_owned(); keys.len()],
+        });
+        self.file_chunks.insert(path.to_owned(), keys);
+        Ok(file)
     }
 
     fn add_history(&mut self, history: Zeroizing<Vec<u8>>) -> Result<()> {
