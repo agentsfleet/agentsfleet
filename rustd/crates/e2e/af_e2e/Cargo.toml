@@ -46,9 +46,9 @@ guffbolt-ai = { workspace = true, features = ["test-util"] }
 af_context.workspace = true
 af_core = { workspace = true, features = ["test-util"] }
 af_crypto.workspace = true
-# The recovery bench measures RustCrypto's AES-256-GCM, which the daemon
-# ships, beside these two. No shipped crate seals with either.
-aws-lc-rs.workspace = true
+# The recovery bench measures RustCrypto's and BoringSSL's AES-256-GCM beside
+# the AWS-LC one `af_crypto` ships. No shipped crate seals with either.
+aes-gcm.workspace = true
 boring.workspace = true
 af_observability.workspace = true
 af_otlp.workspace = true

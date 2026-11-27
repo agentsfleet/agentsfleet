@@ -107,7 +107,7 @@ impl Error {
         matches!(*self.kind(), ErrorKind::MacMismatch)
     }
 
-    /// Whether the operating system's entropy source refused to produce bytes.
+    /// Whether the entropy source refused to produce bytes.
     #[must_use]
     pub const fn is_entropy(&self) -> bool {
         matches!(*self.kind(), ErrorKind::Entropy)

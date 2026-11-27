@@ -3,11 +3,12 @@
 //! implementations whose bytes are interchangeable.
 
 use super::Checked;
+use aes_gcm::aead::{AeadInOut, Nonce, Tag, inout::InOutBuf};
+use aes_gcm::{Aes256Gcm as RustCryptoAes, KeyInit};
 use af_core::id::Uuid7;
 use af_crypto::aad::Aad as Binding;
 use af_crypto::checkpoint::{Aes256Gcm, CheckpointScope, ChunkCipher, Plain};
 use af_crypto::secret::SecretBytes;
-use aws_lc_rs::aead::{AES_256_GCM, Aad, LessSafeKey, Nonce, UnboundKey};
 use boring::aead::{AeadCtx, Algorithm};
 use std::io::Write as _;
 use std::time::{Duration, Instant};
@@ -45,7 +46,8 @@ impl Opened {
     }
 }
 
-/// The daemon's own ciphers, through the trait a save and a restore call.
+/// The daemon's own ciphers, through the trait a save and a restore call:
+/// its AES-256-GCM is AWS-LC's.
 struct Shipped(&'static str, &'static dyn ChunkCipher);
 
 impl Sealing for Shipped {
@@ -66,19 +68,13 @@ impl Sealing for Shipped {
     }
 }
 
-/// AES-256-GCM from `aws-lc-rs`, writing the same ciphertext and tag.
-struct AwsLc;
+/// AES-256-GCM from `RustCrypto`'s pure-Rust `aes-gcm`, writing the same
+/// ciphertext and tag.
+struct RustCrypto;
 
-impl AwsLc {
-    fn key() -> Checked<LessSafeKey> {
-        let key = UnboundKey::new(&AES_256_GCM, &KEY).map_err(|_key| "aws-lc-rs key")?;
-        Ok(LessSafeKey::new(key))
-    }
-}
-
-impl Sealing for AwsLc {
+impl Sealing for RustCrypto {
     fn name(&self) -> &'static str {
-        "aes_256_gcm_aws_lc_rs"
+        "aes_256_gcm_rustcrypto"
     }
 
     fn seal(
@@ -87,26 +83,34 @@ impl Sealing for AwsLc {
         binding: &Binding,
         mut plaintext: Vec<u8>,
     ) -> Checked<Vec<u8>> {
-        Self::key()?
-            .seal_in_place_append_tag(
-                Nonce::assume_unique_for_key(*nonce),
-                Aad::from(binding.as_bytes()),
-                &mut plaintext,
+        let tag = RustCryptoAes::new(&KEY.into())
+            .encrypt_inout_detached(
+                &Nonce::<RustCryptoAes>::from(*nonce),
+                binding.as_bytes(),
+                InOutBuf::from(plaintext.as_mut_slice()),
             )
-            .map_err(|_seal| "aws-lc-rs seal")?;
+            .map_err(|_seal| "rustcrypto seal")?;
+        plaintext.extend_from_slice(&tag);
         Ok(plaintext)
     }
 
     fn open(&self, nonce: &[u8; 12], binding: &Binding, mut sealed: Vec<u8>) -> Checked<Opened> {
-        let length = Self::key()?
-            .open_in_place(
-                Nonce::assume_unique_for_key(*nonce),
-                Aad::from(binding.as_bytes()),
-                &mut sealed,
+        let at = sealed
+            .len()
+            .checked_sub(af_crypto::TAG_LEN)
+            .ok_or("rustcrypto open: shorter than a tag")?;
+        let tag: [u8; af_crypto::TAG_LEN] = sealed
+            .split_off(at)
+            .try_into()
+            .map_err(|_tag| "rustcrypto open: tag width")?;
+        RustCryptoAes::new(&KEY.into())
+            .decrypt_inout_detached(
+                &Nonce::<RustCryptoAes>::from(*nonce),
+                binding.as_bytes(),
+                InOutBuf::from(sealed.as_mut_slice()),
+                &Tag::<RustCryptoAes>::from(tag),
             )
-            .map_err(|_open| "aws-lc-rs open")?
-            .len();
-        sealed.truncate(length);
+            .map_err(|_open| "rustcrypto open")?;
         Ok(Opened::Bytes(sealed))
     }
 }
@@ -169,8 +173,8 @@ pub(super) fn report() -> Checked {
     interchangeable(binding)?;
     let ciphers: [&dyn Sealing; 4] = [
         &Shipped("plain", &Plain),
-        &Shipped("aes_256_gcm_rustcrypto", &Aes256Gcm),
-        &AwsLc,
+        &Shipped("aes_256_gcm_aws_lc_rs", &Aes256Gcm),
+        &RustCrypto,
         &BoringSsl,
     ];
     for cipher in ciphers {
@@ -191,11 +195,11 @@ pub(super) fn report() -> Checked {
 fn interchangeable(binding: &Binding) -> Checked {
     let plaintext = content(0, 4096);
     let nonce = [9; 12];
-    let rust = Shipped("aes_256_gcm_rustcrypto", &Aes256Gcm);
-    let all: [&dyn Sealing; 3] = [&rust, &AwsLc, &BoringSsl];
+    let shipped = Shipped("aes_256_gcm_aws_lc_rs", &Aes256Gcm);
+    let all: [&dyn Sealing; 3] = [&shipped, &RustCrypto, &BoringSsl];
     for sealer in all {
         let sealed = sealer.seal(&nonce, binding, plaintext.clone())?;
-        if sealed != rust.seal(&nonce, binding, plaintext.clone())? {
+        if sealed != shipped.seal(&nonce, binding, plaintext.clone())? {
             return Err(format!("{} writes other bytes", sealer.name()).into());
         }
         for opener in all {

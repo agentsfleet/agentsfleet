@@ -6,24 +6,14 @@
 //! the time it takes leaks how much of a guess was correct. CTM in
 //! `.orly/standards/domains/auth.md` exists because of exactly that.
 
-use hmac::{Hmac, KeyInit, Mac};
-use sha2::Sha256;
-use subtle::ConstantTimeEq;
+use aws_lc_rs::constant_time::verify_slices_are_equal;
+use aws_lc_rs::hmac::{self, HMAC_SHA256};
 
 use crate::error::{Error, ErrorKind, Result};
 use crate::secret::{Kek, SecretBytes};
 
 /// Bytes in an HMAC-SHA256 output.
 pub const HMAC_SHA256_TAG_LEN: usize = 32;
-
-type HmacSha256 = Hmac<Sha256>;
-
-/// Why the two keying constructors below cannot fail.
-///
-/// Named once rather than spelled at each `expect`: RULE UFS reads a repeated
-/// literal as two facts that can drift, and this is one fact about HMAC stated
-/// in two places.
-const KEY_LENGTH_IS_UNCONSTRAINED: &str = "HMAC accepts a key of any length";
 
 /// A message authentication code, comparable only in constant time.
 ///
@@ -36,34 +26,16 @@ pub struct HmacSha256Tag([u8; HMAC_SHA256_TAG_LEN]);
 impl HmacSha256Tag {
     /// Computes the code over `message` under `key`.
     ///
-    /// Infallible, and deliberately so. `new_from_slice` is typed as fallible
-    /// because `KeyInit` is shared with fixed-key ciphers; HMAC is defined for a
-    /// key of ANY length, and this one is a `[u8; KEY_LEN]` besides, so the
-    /// error arm is unreachable by construction rather than merely unlikely.
-    ///
-    /// An earlier revision returned `Result` to avoid the override below. That
-    /// bought a branch no test could ever enter — dead code wearing a safety
-    /// jacket — and pushed an impossible error onto every caller. The workspace
-    /// denies `expect` because these crates link into a daemon that must not
-    /// abort on a malformed WIRE PAYLOAD; a compile-time-fixed key length is not
-    /// one, so `M-LINT-OVERRIDE-EXPECT` applies and the override is scoped to
-    /// this single expression with its reason attached.
+    /// Infallible: HMAC is defined for a key of any length, so no key can be
+    /// refused. AWS-LC keeps the keyed state in a context it cleanses on drop
+    /// (`HMAC_CTX_cleanup`).
     ///
     /// # Panics
-    /// Cannot. `new_from_slice` rejects only a key length its algorithm forbids,
-    /// and HMAC forbids none — the reason the arm is `expect` rather than a
-    /// propagated error is the whole subject of the paragraphs above.
+    /// Only if AWS-LC cannot initialise a SHA-256 HMAC context, which aws-lc-rs
+    /// reports by panicking and no key length causes.
     #[must_use]
     pub fn compute(key: &Kek, message: &[u8]) -> Self {
-        #[expect(
-            clippy::expect_used,
-            reason = "HMAC accepts a key of any length and this one is a fixed-width array, \
-                      so the error arm cannot be constructed; see the doc comment above"
-        )]
-        let mut mac = <HmacSha256 as KeyInit>::new_from_slice(key.expose().as_slice())
-            .expect(KEY_LENGTH_IS_UNCONSTRAINED);
-        mac.update(message);
-        Self(mac.finalize().into_bytes().into())
+        Self::sign(key.expose(), &[message])
     }
 
     /// Computes the code over `parts` under a key of any length.
@@ -80,21 +52,23 @@ impl HmacSha256Tag {
     /// added here would invalidate every session already stored.
     ///
     /// # Panics
-    /// Cannot, for the reason [`HmacSha256Tag::compute`] cannot: HMAC forbids no key
-    /// length, so `new_from_slice`'s error arm is unconstructible.
+    /// Only as [`HmacSha256Tag::compute`] can: HMAC forbids no key length.
     #[must_use]
     pub fn compute_peppered(pepper: &SecretBytes, parts: &[&[u8]]) -> Self {
-        #[expect(
-            clippy::expect_used,
-            reason = "HMAC accepts a key of any length, so the error arm cannot be constructed; \
-                      see the doc comment above"
-        )]
-        let mut mac = <HmacSha256 as KeyInit>::new_from_slice(pepper.expose())
-            .expect(KEY_LENGTH_IS_UNCONSTRAINED);
+        Self::sign(pepper.expose(), parts)
+    }
+
+    /// The one HMAC-SHA256 computation both constructors share.
+    fn sign(key: &[u8], parts: &[&[u8]]) -> Self {
+        let key = hmac::Key::new(HMAC_SHA256, key);
+        let mut context = hmac::Context::with_key(&key);
         for part in parts {
-            mac.update(part);
+            context.update(part);
         }
-        Self(mac.finalize().into_bytes().into())
+        let mut code = [0_u8; HMAC_SHA256_TAG_LEN];
+        // SHA-256 always yields `HMAC_SHA256_TAG_LEN` bytes, so the copy is exact.
+        code.copy_from_slice(context.sign().as_ref());
+        Self(code)
     }
 
     /// Rebuilds a code from stored bytes, rejecting a wrong length.
@@ -117,11 +91,9 @@ impl HmacSha256Tag {
     /// # Errors
     /// Returns a MAC-mismatch error when the codes are not equal.
     pub fn verify(&self, other: &Self) -> Result<()> {
-        if self.0.ct_eq(&other.0).into() {
-            Ok(())
-        } else {
-            Err(Error::from(ErrorKind::MacMismatch))
-        }
+        // `CRYPTO_memcmp`: time independent of where the codes differ.
+        verify_slices_are_equal(&self.0, &other.0)
+            .map_err(|_mismatch| Error::from(ErrorKind::MacMismatch))
     }
 
     /// The code as bytes, for storage.
@@ -148,7 +120,7 @@ impl HmacSha256Tag {
     /// any other length, or one that is not hex at all, is simply unequal.
     #[must_use]
     pub fn verify_hex(&self, presented: &str) -> bool {
-        self.to_hex().as_bytes().ct_eq(presented.as_bytes()).into()
+        verify_slices_are_equal(self.to_hex().as_bytes(), presented.as_bytes()).is_ok()
     }
 }
 

@@ -5,9 +5,8 @@
 //! of a workspace therefore shares one key, so each carries its own random
 //! 96-bit nonce, registered before its first upload link.
 
-use aes_gcm::aead::{AeadInOut, Nonce, Tag, inout::InOutBuf};
-use aes_gcm::{Aes256Gcm as Aes256GcmPrimitive, KeyInit};
 use af_core::id::Uuid7;
+use aws_lc_rs::aead::{Aad as AeadAad, LessSafeKey, Nonce};
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::aad::Aad;
@@ -109,17 +108,20 @@ impl ChunkCipher for Aes256Gcm {
         binding: &Aad,
         mut plaintext: Zeroizing<Vec<u8>>,
     ) -> Result<Vec<u8>> {
-        let tag = primitive(key)?
-            .encrypt_inout_detached(
-                &Nonce::<Aes256GcmPrimitive>::from(*nonce),
-                binding.as_bytes(),
-                InOutBuf::from(plaintext.as_mut_slice()),
+        // Detached, then appended once the buffer holds only ciphertext: a
+        // growth for the tag may move the allocation, and what it leaves behind
+        // is then ciphertext rather than plaintext.
+        let tag = cipher(key)?
+            .seal_in_place_separate_tag(
+                Nonce::assume_unique_for_key(*nonce),
+                AeadAad::from(binding.as_bytes()),
+                plaintext.as_mut_slice(),
             )
             .map_err(|_err| Error::from(ErrorKind::OpenFailed))?;
         // A reused capture buffer can retain older plaintext beyond its length.
         plaintext.spare_capacity_mut().zeroize();
         let mut sealed = std::mem::take(&mut *plaintext);
-        sealed.extend_from_slice(&tag);
+        sealed.extend_from_slice(tag.as_ref());
         Ok(sealed)
     }
 
@@ -130,26 +132,18 @@ impl ChunkCipher for Aes256Gcm {
         binding: &Aad,
         sealed: Vec<u8>,
     ) -> Result<SecretBytes> {
-        let cipher = primitive(key)?;
         // A failed open wipes whatever the buffer holds on its way out.
         let mut buffer = Zeroizing::new(sealed);
-        let tag_at = buffer
-            .len()
-            .checked_sub(TAG_LEN)
-            .ok_or_else(|| Error::from(ErrorKind::OpenFailed))?;
-        let tag: [u8; TAG_LEN] = buffer
-            .get(tag_at..)
-            .and_then(|tag| tag.try_into().ok())
-            .ok_or_else(|| Error::from(ErrorKind::OpenFailed))?;
-        buffer.truncate(tag_at);
-        cipher
-            .decrypt_inout_detached(
-                &Nonce::<Aes256GcmPrimitive>::from(*nonce),
-                binding.as_bytes(),
-                InOutBuf::from(buffer.as_mut_slice()),
-                &Tag::<Aes256GcmPrimitive>::from(tag),
+        // The trailing `TAG_LEN` bytes are the tag; a shorter object is refused.
+        let length = cipher(key)?
+            .open_in_place(
+                Nonce::assume_unique_for_key(*nonce),
+                AeadAad::from(binding.as_bytes()),
+                buffer.as_mut_slice(),
             )
-            .map_err(|_err| Error::from(ErrorKind::OpenFailed))?;
+            .map_err(|_err| Error::from(ErrorKind::OpenFailed))?
+            .len();
+        buffer.truncate(length);
         Ok(SecretBytes::new(std::mem::take(&mut *buffer)))
     }
 }
@@ -203,7 +197,7 @@ pub fn content_identity(key: &SecretBytes, format_version: i32, sha256: &str, si
     .to_hex()
 }
 
-fn primitive(key: &SecretBytes) -> Result<Aes256GcmPrimitive> {
+fn cipher(key: &SecretBytes) -> Result<LessSafeKey> {
     let checked = Dek::from_slice(key.expose())?;
-    Ok(Aes256GcmPrimitive::new(checked.expose().into()))
+    crate::envelope::cipher(checked.expose())
 }

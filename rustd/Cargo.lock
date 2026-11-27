@@ -118,16 +118,12 @@ dependencies = [
 name = "af_crypto"
 version = "0.90.0"
 dependencies = [
- "aes-gcm",
  "af_core",
- "getrandom 0.4.3",
+ "aws-lc-rs",
  "hex",
- "hmac",
  "jiff 1.0.3",
  "serde",
  "serde_json",
- "sha2 0.11.2",
- "subtle",
  "thiserror 2.0.21",
  "zeroize",
 ]
@@ -136,6 +132,7 @@ dependencies = [
 name = "af_e2e"
 version = "0.90.0"
 dependencies = [
+ "aes-gcm",
  "af_context",
  "af_core",
  "af_crypto",
@@ -174,7 +171,6 @@ dependencies = [
  "afr_tools",
  "agentsfleetd",
  "async-trait",
- "aws-lc-rs",
  "axum",
  "boring",
  "clap",

@@ -24,9 +24,7 @@
 //! it hangs off a value that owns an entropy source rather than being a free
 //! function — which is what makes the nonce mockable at all.
 
-use aes_gcm::aead::inout::InOutBuf;
-use aes_gcm::aead::{AeadInOut, Nonce, Tag};
-use aes_gcm::{Aes256Gcm, KeyInit};
+use aws_lc_rs::aead::{AES_256_GCM, Aad as AeadAad, LessSafeKey, Nonce, UnboundKey};
 use zeroize::Zeroizing;
 
 use crate::aad::Aad;
@@ -64,7 +62,7 @@ pub struct Sealer {
 }
 
 impl Sealer {
-    /// Builds a sealer drawing nonces from the operating system.
+    /// Builds a sealer drawing keys and nonces from AWS-LC's generator.
     #[must_use]
     pub const fn new() -> Self {
         Self {
@@ -122,20 +120,25 @@ impl Sealer {
         let mut nonce_bytes = [0_u8; NONCE_LEN];
         self.entropy.fill(&mut nonce_bytes)?;
 
-        let cipher = Aes256Gcm::new(key.into());
-        let mut buffer = plaintext.to_vec();
-        let nonce = Nonce::<Aes256Gcm>::from(nonce_bytes);
-        // `aead::Error` is a unit struct by design — an AEAD deliberately says
+        // Wiped if the seal is refused: when it wraps a DEK, this copy is the key.
+        let mut buffer = Zeroizing::new(plaintext.to_vec());
+        // `Unspecified` is a unit struct by design — an AEAD deliberately says
         // only that it refused, never which check failed — so there is no cause
         // to preserve here, and `_err` records that rather than hiding one.
-        let tag = cipher
-            .encrypt_inout_detached(&nonce, aad.as_bytes(), InOutBuf::from(&mut *buffer))
+        let tag = cipher(key)?
+            .seal_in_place_separate_tag(
+                Nonce::assume_unique_for_key(nonce_bytes),
+                AeadAad::from(aad.as_bytes()),
+                buffer.as_mut_slice(),
+            )
             .map_err(|_err| Error::from(ErrorKind::OpenFailed))?;
 
         Ok(Encrypted {
-            ciphertext: buffer,
+            ciphertext: std::mem::take(&mut *buffer),
             nonce: nonce_bytes,
-            tag: tag.into(),
+            // `AES_256_GCM` always writes `TAG_LEN` bytes; aws-lc-rs hands the
+            // tag over as a slice, so the width is checked rather than assumed.
+            tag: fixed(tag.as_ref(), "tag")?,
         })
     }
 }
@@ -269,16 +272,34 @@ fn decrypt(
     ciphertext: &[u8],
     tag: &[u8; TAG_LEN],
 ) -> Result<SecretBytes> {
-    let cipher = Aes256Gcm::new(key.into());
-    let mut buffer = ciphertext.to_vec();
-    let nonce = Nonce::<Aes256Gcm>::from(*nonce);
-    let tag = Tag::<Aes256Gcm>::from(*tag);
-    // Same reasoning as the seal side: `aead::Error` carries nothing, and
+    // Owned by its wiper before the open runs: a refused open leaves the
+    // buffer overwritten in an unspecified way, and that is wiped on drop too.
+    let mut buffer = Zeroizing::new(ciphertext.to_vec());
+    // Same reasoning as the seal side: `Unspecified` carries nothing, and
     // collapsing a tag failure and a wrong key into one outcome is the point.
-    cipher
-        .decrypt_inout_detached(&nonce, aad.as_bytes(), InOutBuf::from(&mut *buffer), &tag)
+    cipher(key)?
+        .open_in_place_separate_tag(
+            Nonce::assume_unique_for_key(*nonce),
+            AeadAad::from(aad.as_bytes()),
+            tag,
+            buffer.as_mut_slice(),
+        )
         .map_err(|_err| Error::from(ErrorKind::OpenFailed))?;
-    Ok(SecretBytes::new(buffer))
+    Ok(SecretBytes::new(std::mem::take(&mut *buffer)))
+}
+
+/// The AES-256-GCM key for one operation.
+///
+/// AWS-LC holds the expanded key in its own allocation and cleanses it when
+/// the key drops (`EVP_AEAD_CTX_free` frees through `OPENSSL_free`, which
+/// zeroes), so no copy outlives the operation; the raw bytes stay in their
+/// `Zeroizing` owner.
+pub(crate) fn cipher(key: &[u8; KEY_LEN]) -> Result<LessSafeKey> {
+    // A 32-byte key is the one length AES-256 accepts; the refusal is AWS-LC's
+    // only other failure, an allocation it could not make.
+    let unbound =
+        UnboundKey::new(&AES_256_GCM, key).map_err(|_err| Error::from(ErrorKind::OpenFailed))?;
+    Ok(LessSafeKey::new(unbound))
 }
 
 /// Narrows a stored slice to a fixed-width component, naming it on failure.

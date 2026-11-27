@@ -32,6 +32,8 @@ mod known_answer;
 mod mac;
 #[path = "secret.rs"]
 mod secret;
+#[path = "stored_format.rs"]
+mod stored_format;
 mod turn_checkpoint;
 
 #[path = "secret_object.rs"]

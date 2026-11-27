@@ -415,10 +415,10 @@ const_format = { version = "0.2.37", default-features = false }
 # container log, where escape sequences and terminal-width reflow are noise.
 clap = { version = "4.6.9", default-features = false, features = ["std", "derive", "env", "help", "usage", "error-context"] }
 
-# RustCrypto. Pure Rust with no C linkage, the workspace's posture, and the
-# AES-256-GCM construction every stored vault row was sealed with.
+# RustCrypto's AES-256-GCM, for the recovery bench alone: it measures the
+# pure-Rust implementation beside the AWS-LC one `af_crypto` seals with.
 aes-gcm = { version = "0.11.1", default-features = false, features = ["aes", "alloc", "zeroize"] }
-hmac = { version = "0.13.0", default-features = false }
+# RustCrypto's SHA-256, for the content digests outside `af_crypto`.
 sha2 = { version = "0.11.1", default-features = false }
 # Lower-case hex, for the credential digests and minted token bodies every
 # stored class is built from. Already in the lock via sqlx; taken directly
@@ -433,8 +433,6 @@ subtle = { version = "2.6.1", default-features = false }
 # and a duplicate syn fails `clippy::multiple_crate_versions`. Three hand-written
 # `Drop` impls are cheaper than a second proc-macro inside a crypto crate anyway.
 zeroize = { version = "1.9.2", default-features = false, features = ["alloc"] }
-# The only system call this workspace's crypto makes.
-getrandom = { version = "0.4.3", default-features = false }
 
 # Version-7 identifier construction. ALREADY in the lock at this version via
 # moka, so this is a feature flag on a compiled crate rather than a new
@@ -531,7 +529,8 @@ object_store = { version = "0.14.2", default-features = false, features = ["aws"
 aws-sigv4 = "=1.6.6"
 aws-credential-types = "=1.3.1"
 
-# The ONE cryptographic backend this workspace links.
+# The ONE cryptographic backend this workspace links. `af_crypto` seals,
+# authenticates, digests and draws random bytes through it.
 #
 # Was `ring`, chosen because a JWKS publishes raw big-endian `n` and `e` and
 # `ring::signature::RsaPublicKeyComponents` accepts exactly that, where rustls's

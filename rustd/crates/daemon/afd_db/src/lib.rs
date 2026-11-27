@@ -23,9 +23,9 @@
 // Every duplicate in this crate's graph is inside sqlx's, not ours:
 // `cargo tree -d` puts sha2 0.10.9, digest 0.10.7, block-buffer 0.10.4 and
 // crypto-common 0.1.7 under sqlx-core, and getrandom 0.2.17 under
-// ring → rustls → sqlx-core. This workspace's own pins are the current line
-// (aes-gcm 0.11.1, sha2 0.11.0, hmac 0.13.0, getrandom 0.4.3), so there is
-// nothing here to unify — the fix is upstream in sqlx or nowhere. Re-check
+// ring → rustls → sqlx-core. This workspace's own pin is the current line
+// (sha2 0.11), and its own cryptography is aws-lc-rs inside af_crypto, so
+// there is nothing here to unify — the fix is upstream in sqlx or nowhere. Re-check
 // when sqlx bumps: this is `expect`, so it fails the build once it stops
 // being true rather than sitting here forever.
 #![expect(

@@ -1,9 +1,9 @@
-//! The one system call this crate makes, behind a core that tests can drive.
+//! The one entropy source this crate draws from, behind a core that tests can drive.
 //!
 //! Nonce generation is the crate's only non-deterministic input, which
 //! `M-MOCKABLE-SYSCALLS` names explicitly ("clocks, entropy sources and
 //! seeds"). It is modelled the way that guideline prescribes: a private enum
-//! that dispatches either to the operating system or to a mock controller, and
+//! that dispatches either to AWS-LC's generator or to a mock controller, and
 //! a `new_mocked()` constructor returning the pair so two instances can never
 //! share one controller by accident.
 //!
@@ -28,7 +28,7 @@ use crate::error::{Error, ErrorKind, Result};
 /// them would let a caller construct the mocked arm in a production build.
 #[derive(Debug, Clone)]
 pub(crate) enum Source {
-    /// The operating system's entropy pool, via `getrandom`.
+    /// AWS-LC's `RAND_bytes`, a generator the operating system's entropy seeds.
     Native,
 
     #[cfg(feature = "test-util")]
@@ -40,14 +40,16 @@ impl Source {
     /// Fills `buf` with entropy.
     ///
     /// # Errors
-    /// Returns an entropy error when the operating system refuses, which is
+    /// Returns an entropy error when the generator refuses, which is
     /// fatal rather than retryable — a host with no entropy cannot seal.
     pub(crate) fn fill(&self, buf: &mut [u8]) -> Result<()> {
         match self {
-            // The operating system's reason is not actionable by a caller and
+            // The generator's reason is not actionable by a caller and
             // not something to surface — a host that cannot produce entropy
             // cannot seal, and that is the whole of what the caller can act on.
-            Self::Native => getrandom::fill(buf).map_err(|_err| Error::from(ErrorKind::Entropy)),
+            Self::Native => {
+                aws_lc_rs::rand::fill(buf).map_err(|_err| Error::from(ErrorKind::Entropy))
+            }
             #[cfg(feature = "test-util")]
             Self::Mocked(ctrl) => ctrl.fill(buf),
         }
@@ -58,9 +60,9 @@ impl Source {
 ///
 /// The sealing path reaches [`Source`] directly; this is the same source
 /// wearing a public face, so a second consumer does not become a second
-/// `getrandom` call site. That matters beyond tidiness: "this crate makes one
-/// system call" is a claim the dependency graph can be audited for, and it
-/// stops being auditable the moment another crate can draw its own bytes.
+/// call site. That matters beyond tidiness: "this crate draws randomness in
+/// one place" is a claim the dependency graph can be audited for, and it stops
+/// being auditable the moment another crate can draw its own bytes.
 ///
 /// Envelope keys stay inside [`crate::envelope::Sealer`]. Checkpoint registration
 /// uses this source for its scoped object key and nonce before trusted transfer.
@@ -72,7 +74,7 @@ pub struct Entropy {
 }
 
 impl Entropy {
-    /// Bytes from the operating system.
+    /// Bytes from AWS-LC's generator, seeded by the operating system.
     #[must_use]
     pub const fn new() -> Self {
         Self {
@@ -126,7 +128,7 @@ impl Entropy {
     /// Fills `buf` with random bytes.
     ///
     /// # Errors
-    /// Returns an entropy error when the operating system refuses. A host that
+    /// Returns an entropy error when the generator refuses. A host that
     /// cannot produce entropy cannot seal either, so this is fatal rather than
     /// retryable, and the reason is deliberately not surfaced — it is not
     /// something a caller can act on.

@@ -27,14 +27,11 @@ hex.workspace = true
 af_core.workspace = true
 # `Entropy::uuid7` mints at a `jiff::Timestamp`, the instant type `af_core` uses.
 jiff.workspace = true
-# RustCrypto throughout: pure Rust, audited, no C linkage, the workspace's no-C
-# posture. `aes-gcm` is the AES-256-GCM construction every stored row was
-# sealed with, and must open with.
-aes-gcm.workspace = true
-getrandom.workspace = true
-hmac.workspace = true
-sha2.workspace = true
-subtle.workspace = true
+# Every primitive here — AES-256-GCM, HMAC-SHA256, SHA-256, the constant-time
+# compare and the random bytes — is AWS-LC, the one cryptographic backend the
+# workspace links. Standard AES-256-GCM, so rows and checkpoint objects sealed
+# under the earlier RustCrypto build open unchanged (`tests/stored_format.rs`).
+aws-lc-rs.workspace = true
 thiserror.workspace = true
 zeroize.workspace = true
 serde.workspace = true
