@@ -137,11 +137,12 @@ impl Server {
     }
 
     /// Starts every process in `tenant`'s leaf instead, refusing a spawn
-    /// whose process cannot move there.
+    /// whose process cannot move there. Shared, so every connection a guest
+    /// serves in turn places into one leaf and judges by one count.
     #[must_use]
-    pub fn with_tenant(self, tenant: Tenant) -> Self {
+    pub fn with_tenant(self, tenant: Arc<Tenant>) -> Self {
         Self {
-            placement: Arc::new(tenant),
+            placement: tenant,
             ..self
         }
     }

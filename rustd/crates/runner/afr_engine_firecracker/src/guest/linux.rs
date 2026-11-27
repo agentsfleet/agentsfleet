@@ -1,14 +1,17 @@
 //! The guest entry as the guest kernel's `init`: mount, then serve.
 //!
 //! ```text
-//!   init (root) ─► /proc /sys /dev /dev/pts /dev/shm
+//!   init (root) ─► /proc /sys /sys/fs/cgroup /dev /dev/pts /dev/shm
 //!               ─► vda erofs at /toolbox; its /usr and /etc bound in place
 //!               ─► vdb ext4 at /disk; its workspace/ and tmp/ at /workspace, /tmp
 //!               ─► vdc, when attached: /etc/hosts and /etc/resolv.conf
 //!               ─► every mount shared, so a hosts file swapped in later
 //!                  reaches the inner environment, downstream of this namespace
-//!               ─► fork ─► executor: root, its files as the sandbox user, on vsock
-//!                          └─► the inner environment every tenant process runs in
+//!               ─► fork ─► executor: root, never the out-of-memory killer's
+//!                          pick, its files as the sandbox user, on vsock
+//!                          ├─► the tenant leaf, its memory counted, opened as root
+//!                          └─► the inner environment every tenant process runs in,
+//!                              each placed in the tenant leaf
 //!               ─► reaps until the executor ends, then powers the guest off
 //! ```
 //!
@@ -18,16 +21,22 @@
 //! and puts today's confinement on itself — `no_new_privs`, Landlock and
 //! seccomp — before it execs. The executor can end that environment and
 //! build it again while the guest runs on, so a restore needs no reboot.
+//!
+//! The leaf has no memory limit of its own: the guest's memory is the run's,
+//! and the host bounds the whole microVM. Its `memory.events` counts each
+//! tenant process any out-of-memory killer ends, which is how the executor
+//! tells a run out of memory from any other kill.
 
 use std::ffi::CString;
 use std::fs::{self, DirBuilder, Permissions};
 use std::io;
 use std::os::unix::fs::{DirBuilderExt as _, PermissionsExt as _, symlink};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use afr_cgroup::{CGROUP_PROCS, CGROUP_ROOT, MEMORY_EVENTS, SUBTREE_CONTROL, TENANT_LEAF};
 use afr_engine::Result;
-use afr_executor::InnerEnvironment;
+use afr_executor::{InnerEnvironment, Tenant};
 use afr_guest::Namespaced;
 use rustix::fs::{Gid, Uid};
 use rustix::mount::{MountFlags, MountPropagationFlags, mount, mount_bind, mount_change};
@@ -66,6 +75,10 @@ const NAMED: [(&str, &str); 2] = [
     ("/run/hosts", HOSTS),
     ("/run/resolv.conf", "/etc/resolv.conf"),
 ];
+/// The one controller the tenant leaf needs: memory, for its `oom_kill`
+/// count. The guest's root cgroup may hold the executor beside it, as the
+/// root is exempt from cgroup v2's rule that an inner node holds no process.
+const MEMORY_CONTROLLER: &str = "+memory";
 
 /// Mounts the guest's file systems, starts the executor in a process of its
 /// own and reaps every orphan until it ends, then powers the guest off.
@@ -109,6 +122,13 @@ fn mount_all(entry: GuestEntry) -> Result<()> {
     for (source, target, kind, flags, data) in [
         ("proc", "/proc", "proc", quiet | MountFlags::NOEXEC, None),
         ("sysfs", "/sys", "sysfs", quiet | MountFlags::NOEXEC, None),
+        (
+            "cgroup2",
+            CGROUP_ROOT,
+            "cgroup2",
+            quiet | MountFlags::NOEXEC,
+            None,
+        ),
         ("devtmpfs", "/dev", "devtmpfs", MountFlags::NOSUID, None),
         (
             "devpts",
@@ -197,10 +217,32 @@ fn reap_until(executor: libc::pid_t) {
     }
 }
 
+/// Makes the tenant leaf under the cgroup v2 mount `root`, its memory
+/// counted, and answers it.
+fn leaf(root: &Path) -> Result<PathBuf> {
+    fs::write(root.join(SUBTREE_CONTROL), MEMORY_CONTROLLER)?;
+    let leaf = root.join(TENANT_LEAF);
+    fs::create_dir(&leaf)?;
+    Ok(leaf)
+}
+
+/// The tenant leaf `leaf`, its two files opened while the executor still acts
+/// on files as user 0: the kernel checks each move into it against these
+/// open-time credentials.
+fn tenant(leaf: &Path) -> Result<Tenant> {
+    let procs = fs::OpenOptions::new()
+        .write(true)
+        .open(leaf.join(CGROUP_PROCS))?;
+    let events = fs::File::open(leaf.join(MEMORY_EVENTS))?;
+    Ok(Tenant::new(procs.into(), events.into())?)
+}
+
 /// The executor: outside the inner environment it builds before any thread
-/// exists, serving each host connection on vsock in turn.
+/// exists, serving each host connection on vsock in turn, every process it
+/// starts placed in the tenant leaf.
 fn executor(entry: GuestEntry) -> Result<()> {
     let workspace = Path::new(afr_executor::WORKSPACE_ROOT);
+    let tenant = Arc::new(tenant(&leaf(Path::new(CGROUP_ROOT))?)?);
     let inner: Arc<dyn InnerEnvironment> = Arc::new(Namespaced::build(
         GUEST_USER,
         workspace,
@@ -219,6 +261,7 @@ fn executor(entry: GuestEntry) -> Result<()> {
             afr_executor::streamed(stream)
                 .with_sizes(entry.sizes())
                 .with_inner(Arc::clone(&inner))
+                .with_tenant(Arc::clone(&tenant))
                 .serve(workspace)
                 .await?;
         }
@@ -238,3 +281,7 @@ impl Accept for Listener {
         Ok((stream, peer.cid()))
     }
 }
+
+#[cfg(test)]
+#[path = "linux_tests.rs"]
+mod tests;

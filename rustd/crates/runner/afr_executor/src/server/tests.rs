@@ -4,6 +4,7 @@
 )]
 
 use std::fs::{self, File, OpenOptions};
+use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::Bytes;
@@ -97,7 +98,7 @@ fn a_listener_with_a_tenant_places_its_processes_in_the_leaf() {
     let bare = bind(&dir.path().join("bare.sock")).unwrap();
     let tenanted = bind(&dir.path().join("tenant.sock"))
         .unwrap()
-        .with_tenant(tenant);
+        .with_tenant(Arc::new(tenant));
     fs::write(&events, ONE_KILL).unwrap();
     let killed = Ending::Signaled(Signal::KILL.as_raw());
 

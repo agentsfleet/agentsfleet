@@ -2,8 +2,9 @@
 //! environment, with everything it needs made before the fork.
 //!
 //! The child of a process with other threads may only make system calls
-//! until it execs, so each step below is one call on what the parent already
-//! opened, built or compiled, and a refusal is a raw error, never a message.
+//! until it execs, so each step below is a system call on a fixed path or on
+//! what the parent already opened, built or compiled, and a refusal is a raw
+//! error, never a message.
 
 use std::ffi::CString;
 use std::io;
@@ -17,6 +18,8 @@ use rustix::fs::{Gid, Uid};
 use rustix::thread::ThreadNameSpaceType;
 use seccompiler::BpfProgram;
 
+use super::files::FilesAs;
+use super::oom;
 use crate::harden::HIGH_NUMBERS;
 
 /// One tenant process's way in.
@@ -54,8 +57,9 @@ impl Entering {
         })
     }
 
-    /// Joins the environment's mount namespace, works in its directory,
-    /// becomes the guest user with no capability left, and confines itself:
+    /// Joins the environment's mount namespace, works in its directory, is
+    /// the out-of-memory killer's to pick again, becomes the guest user with
+    /// no capability left, and confines itself:
     /// `no_new_privs`, Landlock, then seccomp. Runs in the child between
     /// fork and exec.
     ///
@@ -69,6 +73,9 @@ impl Entering {
             ThreadNameSpaceType::MOUNT,
         )?;
         rustix::process::chdir(self.cwd.as_c_str())?;
+        // As user 0 with every capability: the file is user 0's, and the
+        // write raises the floor the tenant could lower it to.
+        FilesAs::root(self.user, oom::killable)?;
         let (uid, gid) = self.user;
         rustix::thread::set_thread_groups(&[])?;
         rustix::thread::set_thread_res_gid(gid, gid, gid)?;

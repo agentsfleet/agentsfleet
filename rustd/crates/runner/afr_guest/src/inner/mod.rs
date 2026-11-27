@@ -3,12 +3,13 @@
 //! and stands outside as the guest's root service.
 //!
 //! ```text
-//!   build  ─► the executor acts on files as the guest user from now on
+//!   build  ─► the executor is never the out-of-memory killer's pick, and
+//!             acts on files as the guest user from now on
 //!          ─► init: PID 1 of a new process namespace, in a new mount
 //!             namespace whose /proc shows that namespace alone; reaps orphans
 //!   entry  ─► the forking thread's next child joins init's process namespace
-//!          ─► child: init's mount namespace, cd, the guest user,
-//!             no_new_privs, Landlock, seccomp (`unshare` refused) ─► exec
+//!          ─► child: init's mount namespace, cd, pickable again, the guest
+//!             user, no_new_privs, Landlock, seccomp (`unshare` refused) ─► exec
 //!   renew  ─► SIGKILL init: the kernel ends every process inside, and init
 //!             is reaped only once they all are ─► /workspace emptied ─► build
 //!   hosts  ─► as user 0: a new hosts file staged, its bind swapped in beneath
@@ -39,6 +40,7 @@ mod enter;
 mod files;
 mod init;
 mod names;
+mod oom;
 
 use self::enter::Entering;
 use self::files::{FilesAs, clear};
@@ -68,14 +70,17 @@ impl Namespaced {
     /// Builds the first inner environment for tenant processes running as
     /// `user`, a user and group identifier, over `workspace`, and has this
     /// process act on files as `user` from now on: every thread made after
-    /// inherits that. Its hosts file is the mount on `hosts`, and each new
+    /// inherits that. This process is never the out-of-memory killer's pick
+    /// from now on, and each tenant process is pickable again as it enters. Its hosts file is the mount on `hosts`, and each new
     /// one is staged in `staging`, which no tenant process writes.
     ///
     /// # Errors
     /// A second thread already exists, so the file identity would miss it;
-    /// the identity would not change; or the environment would not build.
+    /// the standing or the identity would not change; or the environment
+    /// would not build.
     pub fn build(user: (u32, u32), workspace: &Path, hosts: &Path, staging: &Path) -> Result<Self> {
         single_threaded(&fs::read_to_string(PROC_SELF_STATUS)?)?;
+        oom::spare(oom::OOM_SCORE_ADJ)?;
         let user = (Uid::from_raw(user.0), Gid::from_raw(user.1));
         rustix::thread::set_thread_groups(&[])?;
         FilesAs::user(user)?;

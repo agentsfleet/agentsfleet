@@ -1,16 +1,17 @@
 //! Where a started process runs, and what its ending means there.
 //!
-//! In a sandbox with a tenant leaf, the engine opens the leaf's `cgroup.procs`
-//! and `memory.events` before the sandbox starts and hands both in as a
-//! [`Tenant`]. Each process writes itself into the leaf between fork and exec,
-//! through that descriptor, so the kernel checks the move against the engine's
-//! open-time credentials and no cgroup file system is mounted inside. The
-//! leaf's memory limit sits below the sandbox's, so the kernel's out-of-memory
-//! killer picks a tenant process and never the executor; the leaf's `oom_kill`
-//! count rising is how such a kill is told from any other `SIGKILL`. A tool's
-//! command runs under `/bin/sh -c`, so the process killed is often a child the
-//! shell forked, and the shell, still alive, exits with the status it reports
-//! that kill under; that exit is judged the same way.
+//! In a microVM the guest entry makes a tenant leaf in the guest's own cgroup
+//! tree, opens its `cgroup.procs` and `memory.events` while it is still user
+//! 0, and hands both in as a [`Tenant`]. Each process writes itself into the
+//! leaf between fork and exec, through that descriptor, so the kernel checks
+//! the move against the open-time credentials, not the tenant's. The executor
+//! is never the out-of-memory killer's pick (`afr_guest`), so a guest out of
+//! memory loses a tenant process; the leaf's `oom_kill` count, which rises for
+//! a kill by any out-of-memory killer, is how such a kill is told from any
+//! other `SIGKILL`. A tool's command runs under `/bin/sh -c`, so the process
+//! killed is often a child the shell forked, and the shell, still alive,
+//! exits with the status it reports that kill under; that exit is judged the
+//! same way.
 
 use std::fmt;
 use std::fs::File;
