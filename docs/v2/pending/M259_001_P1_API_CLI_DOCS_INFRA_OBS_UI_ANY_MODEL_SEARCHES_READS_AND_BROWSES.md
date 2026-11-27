@@ -67,9 +67,9 @@ A **public** fleet has `http_egress` `public` ("Allow all" on); a **private** on
 web_search {query} ─► runner SearchBackend ─► POST L/searches ─► daemon: fence · fleet public? · query valid
                          for vendor in [parallel, exa]: cooling or no vault key ─► next
                          commit reservation for run, vendor and operation ─► send one request
-                         2xx ─► 200 {vendor, results} · named wait ─► cool it, next · any other failure ─► next
+                         valid results ─► return · vendor failure ─► next · denied policy, fence, ledger or deadline ─► stop
 web_fetch {url} ─► host in the fleet's policy? ─yes─► af_egress local GET, ≤20 redirects, each hop re-admitted
-                   │no ─► public: POST L/extracts ─► the same loop    private: [network_restricted] names request_access
+                   │no ─► public: POST L/extracts ─► Parallel full content    private: [network_restricted] names request_access
 request_access {host} ─► card ─► Approve ─► NetworkPolicy.allow gains the host
 browser_open · browser · screenshot ─► afr_tools RunBrowser ─► CDP over M258's stream into the run's VM
    Chromium in the VM ─► admit each paused request with its actual method, URL and body
@@ -121,12 +121,14 @@ browser_open · browser · screenshot ─► afr_tools RunBrowser ─► CDP ove
 | `rustd/crates/daemon/afd_db/schema/<UTC>_thread_run_web_calls.sql`, `rustd/crates/daemon/afd_db/src/migration.rs` | CREATE/EDIT | §1: one row per run, vendor and operation |
 | `rustd/crates/daemon/afd_db/schema/20261108122100_connector_integration_grants.sql`, `afd_api_wire/src/grant.rs`, `afd_approval/src/**`, `afd_gate/src/policy/{shape,build}/**` | EDIT | §4: `grant_type` `host` in the comment and the constants; an approved host joins `NetworkPolicy.allow` |
 | `afd_gate/src/policy/approved/**`, `afd_fleet/src/{run/access,durable_task/github}/**`, `afd_approval/src/{grant_sql,sql}/**` | EDIT | carry grant kind through request, approval, revoke and credential checks |
+| `afd_fleet/src/run/{deliver,message}/mod.rs`, `afd_fleet_lifecycle/src/sql/select_secret_access.sql`, `afd_turns/src/view/sql/insert_access_activity.sql`, `ui/packages/app/components/domain/approvals/AccessRequest.tsx` | EDIT | filter delivered secret names, vault holders, access receipts and card lookup by grant kind |
 | `afd_db/schema/20261108125110_thread_items.sql`, `afd_fleet/src/run/sql/**`, `afd_turns/src/view/history/**` | EDIT | persist sanitized sources and return them on reload |
+| `af_wire/src/tool_trace/**`, `afd_fleet/src/run/tool_trace/**`, `ui/packages/app/lib/streaming/{fleet-stream-row,fleet-stream-tool-trace}.ts` | EDIT | write and decode the saved trace consumed by the reloaded dashboard |
 | `rustd/crates/foundation/af_core/src/{error_code,problem}/**` | EDIT | the new codes in Interfaces, each with its `REGISTRY` row and problem entry |
 | `rustd/crates/runner/afr_tools/src/{catalog,runtime,stub,verbs,egress,backed}/**`, `afr_tools/src/run.rs`, `afr_tools/src/generic/{browser/**,env/**,mod.rs}`, `afr_tools/src/sandbox/browser/**` | EDIT/CREATE | §2: `Runtime::Provider` and `HostedToolUnavailable` go; §7, §8: `RunBrowser`, `BrowserSource`, the check; the refusal text goes |
-| `rustd/crates/runner/afr_agent/src/{offer,router,loop,engine}/**`, `afr_agent/tests/providers/**` | EDIT | §2: no hosted list; §5: sources on the completed call; §7: the run's `BrowserSource` passed down |
+| `rustd/crates/runner/afr_agent/src/{offer,router,loop,engine,ledger,records}/**`, `afr_agent/tests/providers/**` | EDIT | §2: no hosted list; §5: sources on the completed call; §7: the run's `BrowserSource` passed down |
 | `rustd/crates/runner/afr_supervisor/src/{browser,client/run_verbs,verbs}/**` | CREATE/EDIT | §1 single-send web verbs, §4 typed access outcomes, §7 browser connection |
-| `rustd/crates/runner/{afr_engine_firecracker,afr_executor,afr_guest}/**` | REVIEW AFTER SPIKE | only the transport and confinement changes §6 demonstrates |
+| Firecracker engine, guest protocol, client, confinement and launcher on merged M258 | VERIFY PATHS AT MERGE | Claude reports `af_guest_wire`, `afr_guest_client` and `guest/{afg_agent,afg_confine,afg_entry,main}` in its local tree. Identify the actual owners before changing the transport or confinement. |
 | `rustd/crates/e2e/af_e2e/tests/support/definition_run.rs` | EDIT | it filters on `Runtime::Provider`, which goes |
 | `rustd/Cargo.toml`, `rustd/Cargo.lock` | EDIT | `chromiumoxide` 0.9.1, the CDP client |
 | `scripts/toolbox/**` | EDIT, with Indy's sign-off for any new script | §7: the browser image `[?]` |
@@ -175,24 +177,33 @@ Build order: §1; then §2 and §4; then §3 and §5; §6's spike before §7; th
 
 The runner posts each search or extract once, including on timeout, lost response or 5xx. The daemon validates the input and the live public fleet before dispatch. Search visits each configured vendor at most once in one request, under one deadline inside the runner call timeout. Explicit new tool calls are distinct purchases.
 
-A vendor is skipped while it cools or while the platform-admin vault holds no key bag under its name. Otherwise the daemon makes one call, the key in a header and never in the URL. A 2xx answers `{vendor, results}`; any other outcome moves on to the next vendor.
+**Deadline.** Use a shared 12-second daemon budget for the complete verb, from handler entry through the final outcome. This fits the existing runner minimum of 13 seconds and default of 20 (`afr_supervisor/src/config/tuning.rs`, `client/http.rs`), and follows the existing 12-second bounded-dispatch precedent. Enforce that inequality in the config test. Divide remaining time at each dispatch among the remaining eligible vendors, including the current vendor. Two eligible vendors give the first at most half the remaining time. The second gets the remainder. Key resolution, reservations and reading bodies consume the same budget. The runner measures one monotonic tool deadline from before the verb POST through any local fallback. Pass the remaining duration into the redirect chain. A lost response ends the call with outcome unknown.
 
-Each vendor module implements one `Vendor` trait in `af_providers/src/web/`. It takes the key per call, holds none, and never retries inside a call, as `DecisionEvaluator` documents (`af_providers/src/decision/mod.rs:21`). Each search vendor is asked for 10 results, the count Parallel's and Exa's per-request prices include.
+A vendor is skipped while it cools or while the platform-admin vault holds no key bag under its name. Otherwise the daemon makes one call, the key in a header and never in the URL. Search returns validated results on success. A vendor failure can advance the search. Policy, fencing, reservation and overall deadline failures end the walk.
+
+Each vendor module implements one `Vendor` trait in `af_providers/src/web/`. It takes the key per call, holds none, and never retries inside a call, as `DecisionEvaluator` documents (`af_providers/src/decision/mod.rs:21`). Request up to ten results. Track the requested Exa content options when estimating spend. Search and standalone contents have distinct pricing. [Exa pricing](https://exa.ai/pricing)
 
 **Cooldown.** A vendor cools only for a wait it names, parsed by `guffbolt_ai::wire::retry_after` (`guffbolt-ai/src/wire/retry/mod.rs:253`). No named wait means no cooldown. The cooldown lives in a `moka` cache in `afd_fleet` (`afd_fleet/Cargo.toml:77`), read through the daemon's clock seam.
 
-**Extract.** Parallel reads unlisted public URLs. Admit a credential-free HTTPS URL before sharing it with a vendor. Retain the blocked-address checks. A vendor outage (502/503) can fall back to one local credential-free GET only after rechecking public policy, under the same deadline and redirect rules. A policy refusal ends the read.
+**Extract.** Before vendor dispatch the runner rejects a URL carrying userinfo or changed by the run’s secret masker. The daemon applies its HTTPS, public-fleet and blocked-address checks. Send one URL to Parallel with `advanced_settings.full_content: true`. Accept a successful entry with full content for the single requested page. The vendor’s associated URL alone does not establish the final URL after redirects. Start with its documented dynamic fetch policy and measure freshness on a controlled changing page. [Parallel Extract API](https://docs.parallel.ai/api-reference/extract/extract)
+
+Decode per-URL `errors[]` even on HTTP 200. For a temporary fetch failure (upstream 429 or 5xx), transport failure, vendor outage or cooling, the daemon may return the typed outcome `extract_unavailable` (502/503) with `local_read_permitted: true` only after checking live run ownership, fence and public policy again. The runner may then make one credential-free local GET under its remaining tool deadline and normal per-hop policy. A definitive per-page 4xx other than 429 returns `page_unavailable` with the upstream status. A malformed or ambiguous response, including missing full content, returns `extract_invalid_response`. Neither permits local fallback. A generic 502/503, lost response, denied policy, or reservation failure carries no permission. Expose a bounded reason to the model and omit raw upstream error content.
 
 **State authority.** For each eligible vendor, resolve its platform-admin key, revalidate run ownership, fence and public policy, and increment `thread.run_web_calls` in a committed reservation before dispatch. A refused or failed reservation sends nothing. Release database locks before network I/O. A crash between commit and send can leave one unused reservation. Counts bound physical attempts from above and do not reconcile invoices.
 
+A database failure or ambiguous commit ends the walk with 503 `web_reservation_unavailable`, zero dispatches under that reservation, and no local-read permission. A stale fence retains its existing refusal. A caller who receives this failure sees an unavailable tool result.
+
 - **Dimension 1.1** — `a_vendor_call_is_counted_before_it_leaves`: the fake vendor observes its committed reservation and the explicit fast mode. Crash after commit leaves one reservation and zero calls. A failed reservation or stale fence at fallback leaves the next vendor untouched.
+  Assert the 503 and its problem code, zero vendor requests, and no fallback after a reservation error.
 - **Dimension 1.2** — a failed vendor falls over → Test `a_failed_vendor_falls_over_to_the_next` (integration): Parallel answers 500, Exa answers 200 → `{vendor:"exa"}`, both counted. Both answer 500 → 502 naming each vendor's status, each upstream called once.
 - **Dimension 1.3** — only a named wait cools → Test `a_cooling_vendor_is_skipped_until_its_named_wait_ends` (integration, the clock seam): Parallel's 429 with `Retry-After: 30` → Exa alone answers next. At 31 seconds Parallel is tried again, and a 429 naming no wait cools nothing. Every vendor cooling → 503 with `Retry-After` and zero calls.
 - **Dimension 1.4** — a vendor without a key is skipped → Test `a_vendor_without_a_vault_key_is_skipped` (integration): only the `exa` bag → Parallel sees no call. No bag at all → 503 with the new code, zero calls and no row.
 - **Dimension 1.5** — a call that may not leave reaches no vendor → Test `a_web_call_that_may_not_leave_reaches_no_vendor` (integration): a `restricted` fleet → 403. A stale fence → the stale-fence code; an extract of `https://169.254.169.254/` or `http://example.org` → 400. Each case makes zero upstream calls and writes no row.
 - **Dimension 1.6** — no key leaves the daemon → Test `no_vendor_key_reaches_a_runner_or_a_log` (integration): a sentinel key per vendor. Each is absent from every verb answer, run payload, error sentence and captured log line, and present only in the upstream's header.
 - **Dimension 1.7** — an extract reads a public page → Test `an_extract_returns_the_pages_markdown` (integration): `{url:"https://example.org/a"}` → the upstream's Markdown. One `parallel`/`extract` row reads 1.
+  Exercise per-URL errors inside a 200, a successful full-content result, and a missing full-content field. Before live acceptance, capture sanitized fixtures for a known redirect, an unreachable page and a rate-limited call.
 - **Dimension 1.8** — `a_stalled_vendor_is_dispatched_once_and_answers_inside_the_deadline`: timeout and lost reply exercise the real runner client. Each vendor sees at most one request and the whole walk respects the caller deadline.
+  With both vendors eligible test just below and just above the first share. Repeat at the minimum supported runner timeout and verify that one local fallback can spend only the time left.
 
 ### §2 — `web_search` is our function tool on every wire; hosted search is deleted
 
@@ -220,15 +231,15 @@ With no `max_chars`, a page stops at the command output budget, 40,000 bytes (`g
 - **Dimension 3.4** — a page keeps its structured data → Test `a_fetched_page_comes_back_as_markdown_with_its_json_ld` (unit, guffbolt): an `<h2>`, a `<ul>`, a link and one `application/ld+json` block. The answer holds `## `, `* `, `[text][1]` and the JSON-LD once; a plain `<script>` stays dropped.
 - **Dimension 3.5** — the default budget holds → Test `a_fetch_without_max_chars_stops_at_the_output_budget` (unit, guffbolt): a 50,000-character page → 40,000 characters. A closing line names the total.
 - **Dimension 3.6** — a binary body is named → Test `a_binary_body_is_refused_with_its_type` (unit, guffbolt): `application/pdf` on the local path → `[unsupported_media] application/pdf`, with no body bytes.
-- **Dimension 3.7** — `an_extract_outage_falls_back_to_a_local_read`: one eligible public read on 502/503. Losing public access, a blocked destination or an expired deadline yields zero fallback connections.
+- **Dimension 3.7** — `an_extract_outage_falls_back_to_a_local_read`: one eligible public read on a typed and authorized vendor failure. Losing public access, a blocked destination or an expired deadline yields zero fallback connections. A bare gateway 503 and an extract 200 containing a permanent per-page refusal make zero local requests.
 
 ### §4 — `request_access` asks for a host
 
-Add `{host}` alongside the existing `{name, scope?}` shape. Validate a bare DNS hostname and canonicalize it to ASCII. Refuse address literals, localhost, single-label names, and URLs with scheme, userinfo, port or path. A restricted fetch records the refused tool, original approved origin and refused destination with the runner. Bind this evidence to the run and tool call. Only the typed host argument comes from the model.
+Add `{host}` alongside the existing `{name, scope?}` shape. Validate a bare DNS hostname and canonicalize it to ASCII. Refuse address literals, localhost, single-label names, and URLs with scheme, userinfo, port or path. For a refused redirect the runner binds `evidence: {tool: "web_fetch", from_host, to_host}` to the actual tool call and run. Use only the ASCII hostnames of the redirecting and refused origins. The daemon requires the known tool enum, validates both bare hostnames, checks `to_host == host` and rejects unknown fields. Direct host requests omit redirect evidence. The model supplies only the requested host.
 
-Key grants by `(fleet_id, grant_type, service)`. Include kind in upsert, lookup, decision, revocation, policy build and every credential-only consumer, including the GitHub publisher. Existing secret and integration grants retain their behavior. The card names the host, refused tool and source of the redirect from recorded evidence. It says approval grants every run, tool and command of this fleet access to the host until revoked. Label the pending decision deadline “Card expires”.
+Key grants by `(fleet_id, grant_type, service)`. Include kind in upsert, lookup, decision, revocation, policy build and every credential-only consumer, including the GitHub publisher. Existing secret and integration grants retain their behavior. The card names the host, refused tool and source of the redirect from recorded evidence. Scope the card to the fleet’s web access. Command reach also depends on the assigned runner network policy. Label the advisory decision date “Respond by”. The gate can still be answered after that date.
 
-An approval adds the exact host to the next run’s allowlist. A denial records revoked. Resolve both through the access continuation, with the host and outcome. On approval instruct the resumed agent to retry the original read under fresh policy. On denial explain the refusal and finish without re-asking. Revoking later affects newly built run policies. Search and extraction stay disabled on restricted fleets.
+The grant and gate resolve together. The run whose turn raised the card receives a continuation carrying outcome, host and refused tool. Approval directs the model to retry the original read under fresh policy. Denial directs it to explain the refusal. A concurrent run finding an existing card continues with pending status and receives no continuation for that card. Revocation affects policies built afterwards. Restricted fleets keep search and extraction disabled.
 
 Example dashboard card after a restricted fleet follows a migration guide link:
 
@@ -236,28 +247,32 @@ Example dashboard card after a restricted fleet follows a migration guide link:
 >
 > While reading the migration guide, `web_fetch` received a redirect from `docs.vendor.example` to `support.vendor.example`.
 >
-> Approval lets every run of this fleet reach `support.vendor.example` through its tools and commands until the grant is revoked. Credentials require a separate grant.
+> This read needs access to `support.vendor.example`. Approving adds this host to the fleet’s web access for future runs until you revoke it. Credentials require a separate grant.
 >
 > **Approve** · **Deny**
 
-Approve resumes the original read with the new host in policy. Deny resumes the turn with the refusal so the agent can explain why the guide could not be read. The pending card displays its decision deadline under **Card expires**.
+Approve or Deny resumes the turn that asked. The model chooses whether to call `web_fetch` again. The dashboard can show the recorded decision independently of whether another fetch succeeds.
 
 - **Dimension 4.1** — a host request raises one card → Test `a_host_request_raises_one_card_and_waits` (integration): `{host:"www.booking.com"}` → a `pending` `host` grant and one card. The turn settles waiting.
 - **Dimension 4.2** — an approved host opens no search → Test `an_approved_host_joins_the_allowlist_and_opens_no_search` (integration): Approve → the resumed run's `allow` holds the host. `POST L/searches` still answers 403.
 - **Dimension 4.3** — an address is refused → Test `a_host_request_for_an_address_is_refused` (integration): `10.0.0.5`, `localhost` and `169.254.169.254` → the refusal, no row and no card.
 - **Dimension 4.4** — one kind per request → Test `a_request_naming_both_a_name_and_a_host_is_refused` (unit, `afr_tools`): both, or neither → `invalid_arguments`, and nothing is posted.
-- **Dimension 4.5** — a person sees the host → Test `an access card for a host names it` (unit, vitest, `ui/packages/app/components/domain/approvals/FleetApprovalSummary.test.tsx`): the card names the ASCII host, originating host, refused tool, grant reach and lifetime. “Card expires” labels the decision deadline. Deny leaves “Can access” unchanged. Inspect the card and its serialized evidence for sensitive paths and query strings.
+- **Dimension 4.5** — a person sees the host → Test `an access card for a host names it` (unit, vitest, `ui/packages/app/components/domain/approvals/FleetApprovalSummary.test.tsx`): the card names the ASCII host, originating host, refused tool, grant reach and lifetime. “Respond by” labels the advisory date. Deny leaves “Can access” unchanged. Feed a redirect with a signed path and query. Verify both are absent from the grant, gate, exact-action view and continuation.
 - **Dimension 4.6** — the CLI lists it → Test `grant list shows a host grant` (unit, handler, `cli/test/`): a `host` grant renders its kind and host. `--json` carries `kind: "host"`.
 - **Dimension 4.7** — `a_host_and_a_credential_of_one_name_stay_two_grants`: approval and revocation apply independently and a host grant cannot authorize publication.
+  Assert that host-only grants cannot deliver a vault secret, appear in its holders list, produce a credential receipt, or select a credential on the card.
 - **Dimension 4.8** — preserve raised, already pending and already granted as distinct wire outcomes. Race two requests: one card, and the losing run cannot infer approval from an absent card id. Repeat after an actual approval and verify the covered outcome.
 
 ### §5 — Sources reach the thread
 
-Store bounded `sources: [{url,title}]` on the completed call in `thread.items`. Read it through run history and also emit it on `ToolCallCompleted`. Search records result URLs, fetch records the safely disclosable source of the page actually read, and browser navigation records the committed page, including after a click. Older calls and refused calls have no sources. Apply the same privacy filter before persistence and live emission. Preserve redirect masking until the disclosure decision in Discovery. For vendor extraction distinguish requested and final URL only when the vendor supplies that evidence.
+Create the sanitized sources once and carry the same list in the live `ToolCallCompleted` frame, the saved `af_wire::tool_trace::ToolTraceCall` and the completed call in `thread.items`. On reload the dashboard reads `readSavedTrace(bodies.tool_calls)` in `fleet-stream-row.ts`. Item history and live activity must apply the same visibility rules. Older calls and refusals default to no sources. Measure each serialized envelope against `af_wire::protocol::MESSAGE_BYTES_MAX`, as `afr_agent/src/records/mod.rs` does for a posted call record. Respect the remaining space in the completion frame, call record and saved report. Keep the ordered prefix that fits both. Never truncate a URL into a different link.
+
+Apply the run’s secret masking and URL disclosure rules before serialization, including to browser snapshots and titles. For vendor extraction cite the safely displayable requested URL unless a final destination is independently established and permitted. Keep signed redirect paths and queries masked on every surface.
 
 - **Dimension 5.1** — a search carries its sources → Test `a_completed_search_carries_its_sources` (unit, `afr_agent`): two results → both URLs and titles, in order. A `[network_restricted]` answer carries none.
 - **Dimension 5.2** — a hostile URL is not a link → Test `the run summary links only web sources` (unit, vitest, `ui/packages/app/components/domain/conversation/summary/recorded-run-resources.test.tsx`): two sources → two links with `rel="noopener noreferrer"`. `javascript:alert(1)` → text with no `href`.
 - **Dimension 5.3** — `a_redirected_fetch_keeps_its_source_after_a_reload`: compare the live list to history after a reload. Test a sensitive redirect path and query, and a browser click that alone introduced its destination. No protected URL is recoverable from stored sources or titles.
+  Reload from persisted turn JSON with the live stream disconnected. Compare all three representations, including an old trace without sources and a list near the frame limit.
 
 ### §6 — Spike: Chromium in the run's VM, driven from the supervisor
 
@@ -265,12 +280,16 @@ After M258 merges, run the spike on our Firecracker guest before building browse
 
 1. Record the confinement and effective renderer sandbox from the chosen configuration. M258 supplies tenant confinement. The reviewed guest disables user namespaces. A browser-specific confinement requires a decision and a real launch test.
 2. Inspect the merged M258 toolbox manifest, builder and build-candidate action. Use that same image pipeline for the headless shell, libraries and fonts. At `46723c018` the manifest pins the Debian snapshot, the builder assembles the root with mmdebstrap and packs and checks the EROFS image, and the candidate action inventories and scans it. Build a baseline and browser candidate through the merged pipeline, compare their compressed sizes against its actual cap, and record the image digests and scan result. [M258 builder](https://github.com/agentsfleet/agentsfleet/blob/46723c018/scripts/toolbox/build.sh#L205-L222) · [M258 candidate action](https://github.com/agentsfleet/agentsfleet/blob/46723c018/.github/actions/build-toolbox/action.yml)
+  Compare package and inventory counts, reproducibility, installed dependencies, startup smoke test and scan verdict against the merged build’s actual gates.
 3. `chromiumoxide` 0.9.1 against the pinned build: connect, navigate, `Accessibility.getFullAXTree`, click by `backendDOMNodeId`, `Page.captureScreenshot`. Record every deserialize failure, and which request kinds pause at the `Fetch` stage.
 4. Prove a lossless bidirectional CDP transport, including an intact 5 MiB screenshot. The existing executor route serves its own protocol. Probe supported client pipe or guest stream options before choosing an interface.
+  Compare payload digests at both ends, including across a checkpoint freeze.
 5. The snapshot's size on three real pages, against the tool output budget.
 6. Memory after one page and after ten, and the time from start to the first snapshot, cold and warm.
 7. Hold a browser open across a checkpoint, restore, and prove the disposition of old references and profile data. Verify the profile is outside the persisted workspace and that a restart clears it.
+  Distinguish a boundary save while Chromium is open from final capture and restore preparation. Close and reap the browser process tree before final capture or restore. Record the real final-capture outcome and verify that restored references issue zero input events.
 
+Repeat §8 with each supported runner network policy. For restricted fleets offer browser actions only where the effective engine policy proves enforcement of fleet destinations even when interception is unavailable. Withhold the browser when that proof is absent. Check name resolution and the browser’s real memory grant on the merged guest.
 Record `Browser.getVersion`, the ten-page memory measurement against the actual VM grant, transport integrity and save/restore results. Before shipping actions also pass §8’s origin-policy trial and §9.2 on Firecracker.
 
 - **Dimension 6.1** — the spike is recorded → Test `browser_spike_recorded` (manual): Indy reads the record. Expected: Discovery answers checks 1 to 7, and this line reads `DONE`. Evidence: this spec, in the Pull Request.
@@ -281,9 +300,9 @@ guffbolt gains `Backend::Browser` and `with_browser`, as memory has `Backend::Me
 
 One run owns a lazily started browser, shared with its children and serialized by a mutex. The supervisor supplies the transport and executor-selected confinement proved by §6. Use an ephemeral profile outside the checkpoint and prove its lifetime.
 
-The three tools remain sandbox tools. A snapshot names the committed URL, title, nodes and opaque actionable references. Bind references to the browser generation and snapshot. After navigation, reconnect or restore, an old reference returns `stale_ref` even when node numbers repeat.
+The three tools remain sandbox tools. A snapshot names the safely displayable committed URL, title, nodes and opaque actionable references. Bind references to the browser generation and snapshot. After navigation, reconnect or restore, an old reference returns `stale_ref` even when node numbers repeat.
 
-`screenshot` takes the `image` tool's gate. It is refused before the capture on a wire with no image input, then fitted to 2048 pixels and 5 MiB (`guffbolt/src/tools/limits.rs:41-45`). `fitted` (`files/image.rs:258`) becomes a shared helper. M259_002 owns prompt text and model-specific tool filtering.
+`screenshot` takes the `image` tool's gate. It is refused before the capture on a wire with no image input, then fitted to 2048 pixels and 5 MiB (`guffbolt/src/tools/limits.rs:41-45`). `fitted` (`files/image.rs:258`) becomes a shared helper. M259_001 supplies the usable BrowserSource and runtime check. M259_002 owns prompt text and should withhold both screenshot and image when the wire cannot accept images. M259_001 extends the request_access description just enough to name hosts. M259_002 owns the subsequent wording pass.
 
 M258 provides executor spawn/kill, tenant memory accounting, the egress wall and the guest confinement interface. Choose the browser byte route from §6 evidence on the merged revision.
 
@@ -304,12 +323,13 @@ Use CDP request interception before navigation on each target. Apply shared egre
 - **Dimension 8.1** — private and metadata addresses are refused → Test `the_browser_refuses_a_private_address` (unit, `afr_tools`, a fake CDP session, a stub resolver): a name resolving to `10.0.0.5` → failed. `169.254.169.254`, as a literal and through a name, → failed `blocked_address`.
 - **Dimension 8.2** — a private fleet reaches only its allowlist → Test `the_browser_refuses_a_host_a_private_fleet_lacks` (unit): `allow: [example.org]`. `www.booking.com` fails with `http_request`'s `host_not_allowed` sentence; `example.org` continues with no header.
 - **Dimension 8.3** — what the check misses meets the engine's wall → Test `a_browser_request_the_check_misses_meets_the_engines_wall` (integration, `make test-runner-kernel`): a private fleet's page. Its WebSocket and WebRTC connections to an unlisted host and to `10.0.0.5` all fail.
+  Run the policy matrix against real enforcement. Include an unrestricted runner assignment paired with a restricted fleet and verify browser unavailability unless the engine separately enforces that fleet’s policy.
 
 ### §9 — The real path, end to end
 
 - **Dimension 9.1** — search and read → Test `prime-curious-otter.spec.ts` (e2e, `make acceptance`, fixture `curious-otter`): with "Allow all" on, a person asks for a search and the top page. The turn holds a `web_search` and a `web_fetch` call, and "Sources" lists the URLs. The run has one `search` and one `extract` row.
 - **Dimension 9.2** — open, act, look → Test `prime-nosy-magpie.spec.ts` (e2e, `make acceptance`, fixture `nosy-magpie`, a Messages-wire model): the fleet opens the lane's test page `[?]`. It clicks a link by its reference and reports the new title, and its screenshot reaches the model.
-- **Dimension 9.3** — `approving_a_redirected_host_finishes_the_original_read` (af_e2e): zero contacts before Approve, one after the resumed fetch, and the final answer contains the page sentinel.
+- **Dimension 9.3** — `approving_a_redirected_host_finishes_the_original_read` (af_e2e): a scripted model follows the retry instruction: zero contacts before Approve, one after the resumed fetch, and the final answer contains the page sentinel. A second script declines to retry: the continuation arrives, the destination sees zero requests, and the UI never reports a successful read.
 - **Dimension 9.4** — `denying_a_redirected_host_contacts_neither_it_nor_a_vendor` (af_e2e): zero destination DNS lookups, connections, vendor requests and reservations. The grant is revoked and the resumed agent explains the denial.
 
 ## Interfaces
@@ -333,7 +353,7 @@ refusals  [browser_unavailable] · [stale_ref] · [host_not_allowed] · [image_i
 ```
 POST L/searches {fencing_token, call_number, query}  200 {vendor, results: [{url, title?, published?, excerpts[]}]}
 POST L/extracts {fencing_token, call_number, url}    200 {vendor, url, title?, content}   content is Markdown
-POST L/access   {fencing_token, name, scope?} | {fencing_token, host, evidence?}   grant_id, state: raised|pending|covered, gate_id?
+POST L/access   {fencing_token, name, scope?} | {fencing_token, host, evidence?: {tool:"web_fetch", from_host, to_host}}   grant_id, state: raised|pending|covered, gate_id?
 ```
 
 **Codes.** Allocate new codes against merged M258. Reuse the stale-fence code.
@@ -342,11 +362,13 @@ POST L/access   {fencing_token, name, scope?} | {fencing_token, host, evidence?}
 403  a private fleet's web call                 503  no vendor key is configured
 503  every vendor is cooling, with Retry-After   502  every vendor failed, naming each status
 400  an extract URL or a host request names an address
+503  web_reservation_unavailable (walk ends)     502  page_unavailable or extract_invalid_response
+502/503  extract_unavailable (local_read_permitted explicitly authorized for this call)
 ```
 
-**Runner wire.** `ToolCallCompleted` gains `sources`, and `AccessRequest` takes `name` or `host`. guffbolt-ai's `Request` loses `hosted`. `VERSION` (`af_wire/src/protocol/mod.rs:15`) moves once.
+**Runner wire.** `ToolCallCompleted` and `ToolTraceCall` gain `sources`, and `AccessRequest` takes `name` or `host`. guffbolt-ai's `Request` loses `hosted`. `VERSION` (`af_wire/src/protocol/mod.rs:15`) moves once.
 
-**Schema.** `thread.run_web_calls` is a new table: `run_id` (`uuid`, a foreign key to `thread.runs`), `vendor`, `operation`, `call_count` and the two time columns, keyed by the first three. Grant uniqueness includes fleet, kind and service. Completed tool call items have nullable sources. Vendor, operation and the new `grant_type` `host` of `connector.integration_grants` are application constants.
+**Schema.** `thread.run_web_calls` is a new table: `run_id` (`uuid`, a foreign key to `thread.runs` with `ON DELETE CASCADE`), `vendor`, `operation`, `call_count` and the two time columns, keyed by the first three. Grant uniqueness includes fleet, kind and service. Completed tool call items have nullable sources. Vendor, operation and the new `grant_type` `host` of `connector.integration_grants` are application constants. Counts follow run retention. Test run deletion and fleet purge. Longer-lived spend reporting uses operational metrics and vendor records.
 
 ## Failure Modes
 
@@ -376,7 +398,7 @@ POST L/access   {fencing_token, name, scope?} | {fencing_token, host, evidence?}
 3. Every vendor dispatch has a committed reservation. A crash before dispatch can leave a reservation unused (Dimension 1.1).
 4. No wire sends a provider-hosted tool — `Hosted` is deleted, so no code can name one (Dimension 2.1).
 5. Local requests share the egress policy — `web_fetch`, `http_request` and the browser check all call `Egressed` (Dimensions 3.1, 8.2).
-6. No browser outlives its run — `RunBrowser` drops with the run's `Run`, and Chromium dies with the VM M258 tears down (Dimension 7.5).
+6. End the browser process tree and confirm exit before run-end capture. Prove intermediate save, final capture, restore and stale references separately (§6 and Dimension 7.3).
 
 ## Metrics & Observability
 
@@ -403,7 +425,7 @@ POST L/access   {fencing_token, name, scope?} | {fencing_token, host, evidence?}
 | R9 | The browser acts on references, takes the image gate and refuses what the policy refuses (§7, §8) | `make test-unit-all` | exit 0; `a_click_on_a_reference_answers_the_fresh_snapshot ... ok`, `a_screenshot_takes_the_image_gate ... ok`, `the_browser_refuses_a_private_address ... ok`, `the_browser_refuses_a_host_a_private_fleet_lacks ... ok` | P0 | |
 | R10 | No browser refusal text is left (§7) | `git grep -n -w -e WAITS_FOR_FIRECRACKER -e NO_BROWSER -e test_browser_tools_refuse_until_firecracker -- rustd` | 0 matches | P1 | |
 | R11 | The live paths work (§9) | `make acceptance SUITE=all` | exit 0; `prime-curious-otter.spec.ts` and `prime-nosy-magpie.spec.ts` passed | P1 | |
-| R12 | The original read resumes on approval and stops on denial (§9.3–4) | `make test-integration-rustd` | both af_e2e redirect grant cases pass | P0 | |
+| R12 | The asking turn resumes and its scripted retry reads only after approval (§9.3–4) | `make test-integration-rustd` | both af_e2e redirect grant cases pass | P0 | |
 | R13 | Host and credential grants keep separate authority, dispatch is bounded, and reloaded sources preserve redirect privacy (§1, §4, §5) | `make test-integration-rustd` | Dimensions 1.8, 4.7–8 and 5.3 pass | P0 | |
 | S1 | Lint | `make lint-all` | exit 0 | P0 | |
 | S2 | Unit | `make test-unit-all` | exit 0 | P0 | |
@@ -482,13 +504,14 @@ Same spelling, other meaning, kept: `afd_http/src/openapi/mod.rs` ("Hosted sched
 - **Nov 27 owner decisions.** Firecracker only. Parallel Fast, Exa search fallback and platform-owned vendor keys. All implementation waits for M258 to merge.
 - **Nov 27 owner direction.** The implementer decides the browser design after M258 merges, using the toolbox pipeline that lands and the Firecracker spike evidence. D1, D2 and D4 are post-merge implementation decisions. D3 concerns what the thread can disclose.
   - D1: choose browser confinement after reviewing the isolation trade-off. A disabled renderer sandbox is a proposal, not an accepted launch configuration.
-  - D2: should an open browser permit workspace saves? At `46723c018`, `pin_sandbox` checks executor idle before freezing. Test real behavior on merged M258. Recommendation: preserve workspace saves and restart browser state on restore. Skipping saves could replay earlier external actions.
-  - D3: which redirect destinations may a thread retain? Query stripping alone can expose a signed path. Recommendation: retain origin only for protected redirects and expose a deeper final URL only where the existing privacy rules permit it.
+  - D2: verify boundary save, final capture and restore preparation on merged M258. Claude reports that a boundary save freezes a live tenant on its local branch and final capture requires tenant processes to exit. Preserve the workspace save, reap Chromium for final capture, and invalidate browser references after restore.
+  - D3 (owner decision pending): recommend the safely displayable requested link and only the final origin on a redirected fetch. Strip sensitive arguments before persistence and suppress the redirect path and query. Use the requested link alone when the final origin is unknown.
   - D4: measure the Debian shell and dependencies in the single toolbox before deciding whether to raise its cap.
+- **Denial and tool-offer scope.** Pending owner decision: limit a repeated request for the same denied host to a later human-initiated turn. The existing grant can reopen on a new request. For §2, keep the restricted-fleet refusal and explain “Allow all”. Revisit offer-time filtering when M259_002 builds its environment prompt.
 - **Verify before live acceptance.** Confirm vendor retention and resale terms, Parallel’s returned extraction URL and rate-limit headers, vault provisioning, transport support, ephemeral profile behavior and the real Firecracker image size.
 - **Known limit, needs an owner disposition** — no browser engine passes a bot wall. Every headless stack failed a Cloudflare managed challenge in an October 2026 test, and so did a headed browser on a cloud address. A vendor's page reader stays the route for reading those sites.
-- **Cost monitoring.** Compare dispatch reservations with run duration as an upper bound on vendor spend. Reconcile actual charges with vendor records.
-- **Consults, search** — the vendor research read opencode at `44344bd22d` on Nov 26, 2026. Borrowed: the two-layer split, the at-most-once walk, the named-wait cooldown, the vendor named on every call and URL-free error sentences. Left: the random pick, the consent form, keyless tiers and the Model Context Protocol (MCP) transport.
+- **Cost monitoring.** Reservations bound the number of attempted dispatches. Vendor invoices settle charges. Cached results and requested content options can affect cost or freshness.
+- **Search references.** OpenCode’s per-query attempted set and provider progress informed §1. Its random selection falls back on HTTP 429 and uses 60 seconds when Retry-After is missing. Fixed ordering, fallback on other vendor failures and cooldown only for a named wait are M259 decisions. See the pinned sources in Prior-Art.
 - **Consults, browser** — the snapshot with references is where Playwright MCP, Chrome DevTools MCP, agent-browser and opencode all converged.
 - **Engine choice** — `chrome-headless-shell`, version-pinned, driven by `chromiumoxide` 0.9.1, the most used maintained tokio CDP client. Firefox is blocked less when headless but has only WebDriver BiDi, with no maintained Rust client; Lightpanda stays dropped (AGPL-3.0, no pixels).
 - **Corrections to the source specs:**
@@ -497,5 +520,7 @@ Same spelling, other meaning, kept: `afd_http/src/openapi/mod.rs` ("Hosted sched
   - The blast list adds `afr_agent/src/router/tests.rs:173,233` and `afr_agent/tests/providers/main.rs:51,202`.
 - **Restructure record** — this spec takes §1 to §5 and §8 of the web search spec and the browser from the browser spec, both drafted on Nov 26, 2026 and removed by the Pull Request that adds this one. The web spec's §6, §7 and §9 moved to M259_002.
 - **Model review, Nov 27.** Fable 5.2 supplied eleven findings. Verified the key collision, retry and reservation boundaries, pending/covered ambiguity, redirect privacy, call history persistence, and compute prerequisites against `ece273764` and `46723c018`. The review also cites `680a26110`; recheck that revision or its successor after merge.
+- **Claude Code review, Nov 27.** Verified main and published M258 at `ece273764` and `46723c018`. Claude inspected the additional local-only revisions `680a26110` and `121dc6918`. Refresh the guest paths, runner policies, checkpoint behavior, image limits and wire version from merged main. The web tools can proceed independently of the browser spike after that merge.
 - **Delivery.** Sync the feature branch to merged main before implementing §§1–5. Reconcile shared route inventories, schema registration, error codes, protocol version, OpenAPI and acceptance setup there. Run §6 before §§7–8 and the live browser fixture.
+  Start with the reservation table and migration registration, vendor interface, and Dimension 1.1 against a fake vendor. The spike is ready once the merged engine is available. Shipping browser actions additionally requires confinement evidence, policy isolation, intact transport, successful final capture and §9.2.
 - **Deferrals and transfers** — none. Each one needs an owner quote below, as `> Owner (<name>, <MMM DD, YYYY HH:MM>): "<quote>" — context: <item, why>`.
