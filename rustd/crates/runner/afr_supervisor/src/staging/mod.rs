@@ -26,14 +26,13 @@ use std::path::{Path, PathBuf};
 use af_core::id::Uuid7;
 use af_guest_wire::Imported;
 use af_guest_wire::protocol::PinWalked;
+use afr_engine::Bounded;
 use afr_guest_client::GuestAgent;
 use cap_std::ambient_authority;
 use cap_std::fs::Dir;
 
-use self::bounded::Bounded;
 use crate::error::{self, Result};
 
-mod bounded;
 mod volume;
 
 pub(crate) use self::volume::{FREEZE_TENANT, WalkPin, WalkVolume};

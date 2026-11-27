@@ -27,8 +27,13 @@ af_wire.workspace = true
 bytes = { workspace = true, optional = true }
 # The conformance suite's trials fail as the kernel lane's do (`test-util`).
 libtest-mimic = { workspace = true, optional = true }
-# The conformance suite's file trial packs and reads a tree (`test-util`).
-tar = { workspace = true, optional = true }
+# A snapshot's pin is read, and its saved tree packed for an import, as the
+# guest agent's tar stream.
+tar.workspace = true
+# A snapshot's pin and its restored tree wait in spools only the runner reads.
+tempfile.workspace = true
+# A chunk's plaintext is wiped when dropped.
+zeroize.workspace = true
 # Every sandbox serves the same guest agent, reached through one client, which
 # is what makes a second engine an addition rather than a rewrite.
 afr_guest_client.workspace = true
@@ -43,13 +48,14 @@ backon.workspace = true
 # The park mode's log spelling, from one attribute rather than a match.
 strum.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
+tokio = { workspace = true, features = ["fs", "io-util", "macros", "rt", "sync", "time"] }
 tracing.workspace = true
 
 [features]
 # M-TEST-UTIL. A fresh sandbox identifier, the build of unknown outcome a
 # test's engine answers, and the conformance suite every engine passes.
-test-util = ["dep:bytes", "dep:libtest-mimic", "dep:tar"]
+# The conformance suite's snapshot trials run over the in-memory chunk store.
+test-util = ["dep:bytes", "dep:libtest-mimic", "af_chunk_store/test-util"]
 
 [dev-dependencies]
 af_core = { workspace = true, features = ["test-util"] }
@@ -57,7 +63,6 @@ af_core = { workspace = true, features = ["test-util"] }
 bytes.workspace = true
 # The conformance suite, which its own tests run over fakes.
 libtest-mimic.workspace = true
-tar.workspace = true
-tempfile.workspace = true
+af_chunk_store = { workspace = true, features = ["test-util"] }
 # `io-util`: the conformance fakes read an import and write an export.
 tokio = { workspace = true, features = ["io-util", "macros", "rt", "rt-multi-thread", "sync", "test-util", "time"] }

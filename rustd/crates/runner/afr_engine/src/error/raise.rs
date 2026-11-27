@@ -2,7 +2,7 @@
 //! that bind what only the call site knows. The raisers are public: every
 //! engine and building block refuses in the seam's words.
 
-use super::{EgressRefusal, Error, ErrorKind};
+use super::{EgressRefusal, Error, ErrorKind, SnapshotRefusal};
 
 // Every lift is a `From`, so `?` does the conversion and no `map_err` appears
 // on a path that adds nothing (`docs/RUST_ERROR_STANDARD.md` rule 2).
@@ -11,6 +11,7 @@ af_core::error_lifts!(Error, ErrorKind:
     af_guest_wire::Error => GuestAgent,
     tokio::task::JoinError => Task,
     af_crypto::error::Error => Entropy,
+    af_chunk_store::Error => ChunkStore,
 );
 
 /// Refuses every run on this host: `missing` is what it lacks.
@@ -61,4 +62,11 @@ pub fn sandbox_exists(sandbox: &af_core::id::Uuid7) -> Error {
 #[must_use]
 pub fn unconfined(detail: &'static str) -> Error {
     ErrorKind::Unconfined { detail }.into()
+}
+
+/// Refuses a snapshot offered to a sandbox it does not belong to, naming what
+/// differs.
+#[must_use]
+pub fn snapshot_refused(refusal: SnapshotRefusal) -> Error {
+    ErrorKind::SnapshotRefused { refusal }.into()
 }

@@ -1,6 +1,6 @@
-//! A spool that takes no more than a bound: what an export's stream is
-//! written through, so a guest decides nothing about how much host disk its
-//! export takes.
+//! A spool that takes no more than a bound: what an export's or a pin's
+//! stream is written through, so a guest decides nothing about how much host
+//! disk its stream takes.
 
 use std::io;
 use std::pin::Pin;
@@ -9,9 +9,11 @@ use std::task::{Context, Poll, ready};
 use tokio::fs::File;
 use tokio::io::AsyncWrite;
 
+use super::byte_count;
+
 /// A spool with room for a fixed number of bytes more.
 #[derive(Debug)]
-pub(super) struct Bounded {
+pub struct Bounded {
     spool: File,
     room: u64,
     outgrown: bool,
@@ -19,7 +21,7 @@ pub(super) struct Bounded {
 
 impl Bounded {
     /// `spool`, taking at most `room` bytes.
-    pub(super) const fn new(spool: File, room: u64) -> Self {
+    pub const fn new(spool: File, room: u64) -> Self {
         Self {
             spool,
             room,
@@ -28,12 +30,12 @@ impl Bounded {
     }
 
     /// Whether a write was refused for want of room.
-    pub(super) const fn outgrown(&self) -> bool {
+    pub const fn outgrown(&self) -> bool {
         self.outgrown
     }
 
     /// The spool, holding what was written.
-    pub(super) fn into_spool(self) -> File {
+    pub fn into_spool(self) -> File {
         self.spool
     }
 }
@@ -46,12 +48,12 @@ impl AsyncWrite for Bounded {
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<io::Result<usize>> {
-        if crate::byte_count(buf.len()) > self.room {
+        if byte_count(buf.len()) > self.room {
             self.outgrown = true;
             return Poll::Ready(Err(io::ErrorKind::FileTooLarge.into()));
         }
         let written = ready!(Pin::new(&mut self.spool).poll_write(cx, buf))?;
-        self.room = self.room.saturating_sub(crate::byte_count(written));
+        self.room = self.room.saturating_sub(byte_count(written));
         Poll::Ready(Ok(written))
     }
 
@@ -63,3 +65,7 @@ impl AsyncWrite for Bounded {
         Pin::new(&mut self.spool).poll_shutdown(cx)
     }
 }
+
+#[cfg(test)]
+#[path = "tests/bounded.rs"]
+mod tests;

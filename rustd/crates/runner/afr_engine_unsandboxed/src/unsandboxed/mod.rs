@@ -141,6 +141,9 @@ impl Engine for UnsandboxedEngine {
                 environment: Environment {
                     engine: SandboxEngine::Unsandboxed,
                     root: Root::Host,
+                    // Its guest agent runs in the runner's own process, from
+                    // no image of its own.
+                    guest_agent: None,
                 },
                 dir,
                 client,

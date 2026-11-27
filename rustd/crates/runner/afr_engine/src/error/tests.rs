@@ -115,3 +115,34 @@ fn test_an_engine_failure_keeps_the_seam_refusal_it_carries() {
     assert_eq!(own.told(), "the launcher went away");
     assert!(own.to_string().starts_with("[UZ-"), "{own}");
 }
+
+/// A chunk store's failure crosses the seam under its own code, and a
+/// refused snapshot says what it names that the sandbox does not hold.
+#[tokio::test]
+async fn test_a_chunk_store_failure_keeps_its_code() {
+    use af_chunk_store::ChunkStore as _;
+
+    let forgotten = af_chunk_store::MemoryStore::default()
+        .forget(&crate::engine::fresh_sandbox_id())
+        .await
+        .err()
+        .map(Error::from);
+    assert_eq!(
+        forgotten.map(|error| error.code()),
+        Some(af_core::error_code::RUN_CHECKPOINT_INCOMPATIBLE)
+    );
+    let refused = super::snapshot_refused(super::SnapshotRefusal::Environment);
+    assert_eq!(
+        refused.snapshot_refusal(),
+        Some(super::SnapshotRefusal::Environment)
+    );
+    assert_eq!(
+        refused.code(),
+        af_core::error_code::INTERNAL_OPERATION_FAILED
+    );
+    assert!(
+        refused.detail().contains("another environment"),
+        "{}",
+        refused.detail()
+    );
+}

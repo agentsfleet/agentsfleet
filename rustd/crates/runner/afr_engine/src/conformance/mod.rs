@@ -9,7 +9,8 @@
 //!
 //! What must match on every engine: network verdicts, granted caps, file
 //! transfer, command streams and exit codes, the walls a write meets, parks
-//! and snapshots as declared, and the planted-token search. What may differ
+//! and snapshots as declared, and the planted-token search. Snapshot trials
+//! hand each sandbox an in-memory chunk store at its build. What may differ
 //! is [`Differences`]: the root image, tool versions, start time and the park
 //! modes an engine declares. A trial for a mechanism an engine does not
 //! declare asserts that the engine answers `Unsupported` for it, so a trial
@@ -18,8 +19,10 @@
 use std::fmt;
 use std::net::Ipv4Addr;
 use std::pin::Pin;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use af_chunk_store::MemoryStore;
 use libtest_mimic::Failed;
 
 use crate::engine::{Engine, Environment, Limits, ParkMode, Sandbox};
@@ -73,6 +76,9 @@ pub struct Context<'a> {
     pub far: FarHost,
     /// The checkout the planted-token search runs after.
     pub checkout: &'a dyn Checkout,
+    /// The store a snapshot trial's sandbox is handed, which counts what it
+    /// reads.
+    pub store: &'a Arc<MemoryStore>,
 }
 
 impl fmt::Debug for Context<'_> {
@@ -141,6 +147,8 @@ pub const TRIALS: &[Trial] = trials![
     "test_no_process_survives_a_restore" => snapshots::no_process_survives,
     "test_a_forgotten_snapshot_cannot_be_restored" => snapshots::forgotten,
     "test_a_restore_of_an_unknown_snapshot_is_refused" => snapshots::unknown,
+    "test_a_snapshot_never_crosses_environments" => snapshots::never_crosses_environments,
+    "test_a_restore_never_brings_back_an_older_plan" => snapshots::never_an_older_plan,
 ];
 
 /// The tools a trial runs, whose versions may differ between engines.

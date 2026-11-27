@@ -160,6 +160,10 @@ libc.workspace = true
 # The egress far host, killed-run leftovers and host objects the kernel lane
 # proves egress against.
 afr_firewall = { workspace = true, features = ["test-util"] }
+# The kernel lane's snapshot trial seals each chunk on the host over the
+# in-memory chunk store, the plaintext wiped as the store's is.
+af_chunk_store = { workspace = true, features = ["test-util"] }
+zeroize.workspace = true
 
 # The kernel lane drives Firecracker and proves egress with the firewall's
 # `test-util` far host. Linux only: elsewhere its `main` reports the platform

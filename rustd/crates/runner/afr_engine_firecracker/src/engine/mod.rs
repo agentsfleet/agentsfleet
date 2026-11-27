@@ -7,15 +7,16 @@ use std::net::Ipv4Addr;
 use std::num::NonZeroU64;
 use std::os::unix::fs::DirBuilderExt as _;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use af_core::error_code::{Coded as _, Logged};
 use af_core::id::Uuid7;
 use af_wire::runner::SandboxEngine;
 use afr_engine::error::sandbox_exists;
 use afr_engine::{
-    AdmissionBound, Allowlist, Capabilities, EgressPlan, Engine, Environment, Generation, Granted,
-    Limits, Network, Overcommitted, Result, Root, Sandbox, SandboxSpec, Sweep, Swept,
+    AdmissionBound, Allowlist, Capabilities, EgressPlan, Engine, Environment, FileSnapshots,
+    Generation, Granted, Limits, Network, Overcommitted, Result, Root, Sandbox, SandboxSpec, Sweep,
+    Swept,
 };
 use afr_image::{HostTools, Toolbox};
 
@@ -62,6 +63,9 @@ pub(crate) struct Shared {
     pub(crate) config: FirecrackerConfig,
     pub(crate) jails: Arc<JailIds>,
     pub(crate) admission: Admission,
+    /// The SHA-256 of the initial file system every guest boots its agent
+    /// from, read on the first build.
+    guest_agent: OnceLock<Box<str>>,
     /// Held while the engine or a sandbox of it lives: no second engine
     /// sweeps or builds over this state directory.
     _state: StateLock,
@@ -114,6 +118,7 @@ impl FirecrackerEngine {
                 config,
                 jails,
                 admission,
+                guest_agent: OnceLock::new(),
                 _state: state,
             }),
         })
@@ -153,16 +158,10 @@ impl FirecrackerEngine {
         )
         .await;
         let booted = match made {
-            Ok(()) => {
-                let kept = Kept {
-                    id: spec.id.clone(),
-                    granted: spec.granted,
-                    environment: self.environment(),
-                    plan: Plan::from(spec.egress),
-                    layout: layout.clone(),
-                };
-                build::boot(&self.shared, kept, reservation).await
-            }
+            Ok(()) => match self.kept(spec, &layout).await {
+                Ok(kept) => build::boot(&self.shared, kept, reservation).await,
+                Err(unread) => Err(unread),
+            },
             Err(refused) => Err(refused.into()),
         };
         match booted {
@@ -174,13 +173,43 @@ impl FirecrackerEngine {
         }
     }
 
-    fn environment(&self) -> Environment {
-        Environment {
+    /// What sandbox `spec.id` keeps across a park, its pieces under `layout`.
+    async fn kept(&self, spec: SandboxSpec<'_>, layout: &Layout) -> Result<Kept> {
+        let disk_bytes = spec.granted.limits().disk_bytes;
+        let snapshots = spec.store.map(|store| {
+            FileSnapshots::new(Arc::clone(store), layout.dir().to_owned(), disk_bytes)
+        });
+        Ok(Kept {
+            id: spec.id.clone(),
+            granted: spec.granted,
+            environment: self.environment().await?,
+            plan: Plan::from(spec.egress),
+            layout: layout.clone(),
+            snapshots,
+        })
+    }
+
+    /// What every guest runs on: our engine, the verified toolbox and the
+    /// guest agent in the initial file system, each by its digest.
+    async fn environment(&self) -> Result<Environment> {
+        Ok(Environment {
             engine: SandboxEngine::Firecracker,
             root: Root::Toolbox {
                 digest: self.shared.config.toolbox.digest().into(),
             },
+            guest_agent: Some(self.guest_agent().await?),
+        })
+    }
+
+    /// The SHA-256 of the initial file system the guest agent boots from,
+    /// read once.
+    async fn guest_agent(&self) -> Result<Box<str>> {
+        if let Some(digest) = self.shared.guest_agent.get() {
+            return Ok(digest.clone());
         }
+        let initrd = tokio::fs::read(&self.shared.config.tuning.binaries.initrd).await?;
+        let digest = af_core::etag::sha256_hex(&initrd).into_boxed_str();
+        Ok(self.shared.guest_agent.get_or_init(|| digest).clone())
     }
 }
 
@@ -260,6 +289,9 @@ pub(crate) struct Kept {
     pub(crate) environment: Environment,
     pub(crate) plan: Plan,
     pub(crate) layout: Layout,
+    /// Its snapshots, when its build was handed a chunk store; their spools
+    /// live in its directory, which only the runner reaches.
+    pub(crate) snapshots: Option<FileSnapshots>,
 }
 
 /// The plan a sandbox was last held to, owned, so a resumed sandbox boots

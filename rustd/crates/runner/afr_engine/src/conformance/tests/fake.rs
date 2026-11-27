@@ -15,8 +15,8 @@ use tokio::io::{AsyncRead, AsyncReadExt as _, AsyncWrite, AsyncWriteExt as _};
 use self::sandbox::FakeSandbox;
 use super::super::{Checkout, FarHost, files, network, run, secrets, walls};
 use crate::engine::{
-    Capabilities, Engine, Environment, Granted, Limits, ParkMode, ResourceFacts, Root, Sandbox,
-    SandboxSpec, SnapshotRef, Sweep, Swept,
+    Capabilities, Engine, Environment, Generation, Granted, Limits, ParkMode, ResourceFacts, Root,
+    Sandbox, SandboxSpec, SnapshotRef, Sweep, Swept,
 };
 use crate::error::Result;
 
@@ -51,6 +51,14 @@ pub(super) enum Flaw {
     RestoreKeepsAProcess,
     /// A restore brings a saved file back one byte off.
     RestoreChangesAByte,
+    /// A restore takes a snapshot from another environment.
+    RestoreCrossesEnvironments,
+    /// A restore brings back the plan the snapshot was taken under.
+    RestoreBringsBackThePlan,
+    /// It declares snapshots, and its sandbox offers none.
+    SnapshotsNotOffered,
+    /// Its sandbox offers snapshots it does not declare.
+    SnapshotsNotDeclared,
 }
 
 /// The fake engine: its root, whether it offers snapshots, and its flaw.
@@ -123,8 +131,13 @@ impl Engine for Fake {
             environment: Environment {
                 engine: ENGINE,
                 root: self.root.clone(),
+                guest_agent: Some("sha256-fake-guest-agent".into()),
             },
-            snapshots: self.snapshots,
+            snapshots: match self.flaw {
+                Flaw::SnapshotsNotOffered => false,
+                Flaw::SnapshotsNotDeclared => true,
+                _faithful_here => self.snapshots && spec.store.is_some(),
+            },
             agent: FakeGuest {
                 flaw: self.flaw,
                 state: Arc::default(),
@@ -146,11 +159,13 @@ struct State {
     saved: Vec<(SnapshotRef, Disk)>,
 }
 
-/// What a snapshot saves.
+/// What a snapshot saves, beside the plan in force when it was taken, which
+/// only a flawed restore brings back.
 #[derive(Debug, Default, Clone)]
 struct Disk {
     files: BTreeMap<String, Vec<u8>>,
     tree: Vec<u8>,
+    plan: Generation,
 }
 
 /// The guest agent inside a fake sandbox.

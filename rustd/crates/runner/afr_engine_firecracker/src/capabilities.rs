@@ -14,7 +14,7 @@ pub const CAPABILITIES: Capabilities = Capabilities {
     engine: SandboxEngine::Firecracker,
     isolation: Isolation::HardwareVm,
     parks: &[ParkMode::Stop],
-    snapshots: false,
+    snapshots: true,
     resources: ResourceFacts::ENFORCED,
 };
 

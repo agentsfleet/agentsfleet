@@ -186,6 +186,7 @@ impl Engine for Counting {
             environment: Environment {
                 engine: SandboxEngine::Firecracker,
                 root: Root::Host,
+                guest_agent: None,
             },
             destroyed: Arc::clone(&self.destroyed),
             panics: self.panics,

@@ -64,6 +64,8 @@ mod release;
 #[cfg(target_os = "linux")]
 mod run;
 #[cfg(target_os = "linux")]
+mod snapshot_keys;
+#[cfg(target_os = "linux")]
 mod supervisor;
 #[cfg(target_os = "linux")]
 mod supervisor_checks;

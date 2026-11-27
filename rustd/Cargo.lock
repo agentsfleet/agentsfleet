@@ -71,8 +71,10 @@ dependencies = [
  "af_core",
  "af_crypto",
  "af_wire",
+ "async-trait",
  "base64 0.23.1",
  "thiserror 2.0.21",
+ "tokio",
  "zeroize",
 ]
 
@@ -1535,6 +1537,7 @@ dependencies = [
  "thiserror 2.0.21",
  "tokio",
  "tracing",
+ "zeroize",
 ]
 
 [[package]]
@@ -1790,6 +1793,7 @@ name = "agentsfleet_runner"
 version = "0.90.0"
 dependencies = [
  "af_cgroup",
+ "af_chunk_store",
  "af_config",
  "af_core",
  "af_crypto",
@@ -1834,6 +1838,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "tracing-subscriber",
+ "zeroize",
 ]
 
 [[package]]

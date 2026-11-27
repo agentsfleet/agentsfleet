@@ -17,10 +17,19 @@ af_core.workspace = true
 af_crypto.workspace = true
 # The manifest entry a change carries and the registration a check compares.
 af_wire.workspace = true
+# A store's publication and reads are awaited behind one object-safe trait.
+async-trait.workspace = true
 # The key and nonce the daemon hands over ride the registration as base64.
 base64.workspace = true
 thiserror.workspace = true
 zeroize.workspace = true
+
+[features]
+# M-TEST-UTIL. A chunk store held in memory, which counts its reads.
+test-util = []
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }
 
 [lints]
 workspace = true

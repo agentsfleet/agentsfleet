@@ -8,17 +8,21 @@ use af_core::id::Uuid7;
 use afr_guest_client::GuestAgent;
 
 use crate::error::{Error, Result};
-use crate::network::{Network, NetworkKind};
+use crate::network::NetworkKind;
 
 mod bound;
 mod egress;
 mod facts;
 mod snapshots;
+mod spec;
 pub(crate) mod volume;
 pub use self::bound::{AdmissionBound, Overcommitted, Resource};
 pub use self::egress::{EgressEnforcer, EgressPlan, Generation, enforce, until_in_force};
 pub use self::facts::{Cap, Capabilities, Environment, Granted, ParkMode, ResourceFacts, Root};
-pub use self::snapshots::{SnapshotRef, Snapshots};
+pub use self::snapshots::{SnapshotFormat, SnapshotRef, Snapshots};
+pub use self::spec::SandboxSpec;
+#[cfg(any(test, feature = "test-util"))]
+pub use self::spec::fresh_sandbox_id;
 
 /// Memory a run's sandbox may use before its tree is killed.
 pub const DEFAULT_MEMORY_BYTES: u64 = 2 * 1024 * 1024 * 1024;
@@ -79,69 +83,6 @@ impl Limits {
     pub const fn shared_memory_bytes(&self) -> u64 {
         self.memory_bytes.div_euclid(SHARED_MEMORY_SHARE)
     }
-}
-
-/// What a sandbox is built for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SandboxSpec<'a> {
-    /// Its identifier, minted by the caller: every directory, cgroup and
-    /// device the engine makes for it carries this name, so a leftover of a
-    /// build that ended badly is found by it.
-    pub id: &'a Uuid7,
-    /// What it enforces, as its engine admitted.
-    pub granted: Granted,
-    /// What its network reaches, numbered: the build returns only once its
-    /// enforcer reads this plan back in force.
-    pub egress: EgressPlan<'a>,
-}
-
-impl<'a> SandboxSpec<'a> {
-    /// A sandbox named `id` enforcing `granted`, reaching nothing beyond
-    /// loopback until [`SandboxSpec::with_egress`] says otherwise: an engine
-    /// never opens a network no one asked for.
-    #[must_use]
-    pub const fn new(id: &'a Uuid7, granted: Granted) -> Self {
-        Self {
-            id,
-            granted,
-            egress: EgressPlan {
-                generation: Generation(0),
-                network: Network::Isolated,
-            },
-        }
-    }
-
-    /// The spec `engine` builds for `id`: `limits` as `engine` grants them,
-    /// and no network yet.
-    ///
-    /// # Errors
-    /// As [`Engine::grant`].
-    pub fn granted_by(engine: &dyn Engine, id: &'a Uuid7, limits: Limits) -> Result<Self> {
-        Ok(Self::new(id, engine.grant(limits)?))
-    }
-
-    /// The same spec, held to `egress`.
-    #[must_use]
-    pub const fn with_egress(self, egress: EgressPlan<'a>) -> Self {
-        Self { egress, ..self }
-    }
-}
-
-/// A fresh sandbox identifier, minted the one way identifiers are, for a
-/// test that builds a sandbox.
-///
-/// # Panics
-/// When the operating system refuses entropy, which fails the test.
-#[cfg(any(test, feature = "test-util"))]
-#[must_use]
-#[expect(
-    clippy::expect_used,
-    reason = "test support: a host with no entropy fails the test loudly"
-)]
-pub fn fresh_sandbox_id() -> Uuid7 {
-    af_crypto::entropy::Entropy::new()
-        .uuid7(af_core::clock::now())
-        .expect("the operating system gives entropy")
 }
 
 /// Whether a sandbox can still serve.

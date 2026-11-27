@@ -21,8 +21,9 @@ use crate::network::Network;
 /// caller's budget runs out.
 const FIRST_READ_BACK: Duration = Duration::from_millis(1);
 
-/// A plan's number: a later plan carries a larger one.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// A plan's number: a later plan carries a larger one; a sandbox built with
+/// none is held to plan 0.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Generation(pub u64);
 
 /// What one run's sandbox may reach, numbered.

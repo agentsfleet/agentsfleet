@@ -10,7 +10,8 @@
 //!
 //! The traits and the facts an engine states, the egress plan every engine
 //! enforces through [`enforce`], boot admission ([`Backend`], [`boot`]) and
-//! [`WarmSlots`], which wraps any engine. Nothing here calls the operating
+//! [`WarmSlots`], which wraps any engine; [`FileSnapshots`], what an engine
+//! whose guest agent pins and renews serves snapshots with. Nothing here calls the operating
 //! system: each engine lives in a crate of its own, over the building blocks
 //! it composes, and only the runner binary names one. The supervisor depends
 //! on this crate alone.
@@ -24,6 +25,7 @@ pub mod error;
 
 mod boot;
 mod engine;
+mod file_snapshots;
 mod network;
 mod probe;
 mod warm_slots;
@@ -36,12 +38,13 @@ pub use self::engine::{
     AdmissionBound, Cap, Capabilities, DEFAULT_CPU_MILLIS, DEFAULT_DISK_BYTES,
     DEFAULT_MEMORY_BYTES, DEFAULT_PIDS, DEFAULT_READY_TIMEOUT, EgressEnforcer, EgressPlan, Engine,
     Environment, Generation, Granted, Killed, Limits, Overcommitted, ParkMode, Parked, Quiescence,
-    Resource, ResourceFacts, Root, Sandbox, SandboxSpec, SandboxState, SnapshotRef, Snapshots,
-    Sweep, Swept, enforce, until_in_force,
+    Resource, ResourceFacts, Root, Sandbox, SandboxSpec, SandboxState, SnapshotFormat, SnapshotRef,
+    Snapshots, Sweep, Swept, enforce, until_in_force,
 };
 #[cfg(feature = "test-util")]
 pub use self::error::ambiguous;
-pub use self::error::{EgressRefusal, EngineFailure, Error, Result};
+pub use self::error::{EgressRefusal, EngineFailure, Error, Result, SnapshotRefusal};
+pub use self::file_snapshots::{Bounded, FileSnapshots};
 pub use self::network::{
     Allowlist, Network, NetworkKind, RESOLV_CONF, SANDBOX_HOSTS, SANDBOX_RESOLV_CONF,
 };

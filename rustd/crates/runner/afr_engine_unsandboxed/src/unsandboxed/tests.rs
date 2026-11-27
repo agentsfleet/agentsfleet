@@ -211,6 +211,7 @@ async fn test_destroy_aborts_a_lingering_server_and_removes_its_directory() {
         environment: afr_engine::Environment {
             engine: af_wire::runner::SandboxEngine::Unsandboxed,
             root: afr_engine::Root::Host,
+            guest_agent: None,
         },
         dir: dir.clone(),
         client,

@@ -31,7 +31,9 @@ pub use self::egress::EgressRefusal;
 pub use self::fault::{EngineFailure, Fault};
 #[cfg(feature = "test-util")]
 pub use self::raise::ambiguous;
-pub use self::raise::{egress_refused, refused, sandbox_exists, unconfined, unsupported};
+pub use self::raise::{
+    egress_refused, refused, sandbox_exists, snapshot_refused, unconfined, unsupported,
+};
 
 af_core::error_shell!(
     /// A sandbox failure, with the backtrace of where it was raised.
@@ -128,6 +130,21 @@ pub(crate) enum ErrorKind {
         refusal: EgressRefusal,
     },
 
+    /// A snapshot was offered to a sandbox it does not belong to.
+    #[error("the snapshot names another {refusal} than the sandbox's")]
+    SnapshotRefused {
+        /// What differs.
+        refusal: SnapshotRefusal,
+    },
+
+    /// The chunk store a snapshot is published into or read from failed.
+    #[error("the snapshot's chunk store failed")]
+    ChunkStore {
+        /// The store's failure.
+        #[source]
+        source: af_chunk_store::Error,
+    },
+
     /// An engine's or a building block's own failure, told as itself.
     #[error(transparent)]
     Engine {
@@ -139,12 +156,24 @@ pub(crate) enum ErrorKind {
 /// The one alias every signature in this crate spells.
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
+/// What a snapshot names that the sandbox offered it does not hold, as a log
+/// line and a test read it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::Display, strum::IntoStaticStr)]
+#[strum(serialize_all = "snake_case")]
+pub enum SnapshotRefusal {
+    /// Another engine, root or guest agent: what it saved runs nowhere else.
+    Environment,
+    /// Another generation than the store names under its identifier.
+    Generation,
+}
+
 impl Error {
     /// The registry code this failure is logged under.
     #[must_use]
     pub const fn code(&self) -> ErrorCode {
         match self.kind() {
             ErrorKind::GuestAgent { source } => source.code(),
+            ErrorKind::ChunkStore { source } => source.code(),
             ErrorKind::Engine { source } => source.code(),
             ErrorKind::Io { .. }
             | ErrorKind::Refused { .. }
@@ -154,7 +183,8 @@ impl Error {
             | ErrorKind::Unsupported { .. }
             | ErrorKind::Ambiguous { .. }
             | ErrorKind::SandboxExists { .. }
-            | ErrorKind::EgressRefused { .. } => error_code::INTERNAL_OPERATION_FAILED,
+            | ErrorKind::EgressRefused { .. }
+            | ErrorKind::SnapshotRefused { .. } => error_code::INTERNAL_OPERATION_FAILED,
         }
     }
 
@@ -179,7 +209,9 @@ impl Error {
             | ErrorKind::Unsupported { .. }
             | ErrorKind::Ambiguous { .. }
             | ErrorKind::SandboxExists { .. }
-            | ErrorKind::EgressRefused { .. } => self,
+            | ErrorKind::EgressRefused { .. }
+            | ErrorKind::SnapshotRefused { .. }
+            | ErrorKind::ChunkStore { .. } => self,
         }
     }
 
@@ -215,6 +247,16 @@ impl Error {
     pub fn egress_refusal(&self) -> Option<&EgressRefusal> {
         match self.seam().kind() {
             ErrorKind::EgressRefused { refusal } => Some(refusal),
+            _other => None,
+        }
+    }
+
+    /// What a refused snapshot names that the sandbox does not hold, when that
+    /// is the failure.
+    #[must_use]
+    pub fn snapshot_refusal(&self) -> Option<SnapshotRefusal> {
+        match self.seam().kind() {
+            ErrorKind::SnapshotRefused { refusal } => Some(*refusal),
             _other => None,
         }
     }

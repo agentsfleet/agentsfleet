@@ -152,8 +152,12 @@ impl Sandbox for Vm {
         enforce(self, plan, within).await
     }
 
+    /// Its snapshots, when its build was handed a chunk store.
     fn snapshots(&self) -> Option<&dyn Snapshots> {
-        None
+        self.kept
+            .snapshots
+            .is_some()
+            .then_some(self as &dyn Snapshots)
     }
 
     /// Ends the monitor and waits until it has: nothing of the guest runs
@@ -298,6 +302,9 @@ async fn resolve(client: &Client, allowlist: &Allowlist) -> Result<()> {
 fn remove(kept: &Kept) {
     let _left_for_the_sweep = fs::remove_dir_all(kept.layout.dir());
 }
+
+#[path = "snapshot.rs"]
+mod snapshot;
 
 #[cfg(test)]
 #[path = "vm_tests.rs"]

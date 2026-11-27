@@ -231,18 +231,17 @@ impl Engine for FakeEngine {
         if let Some(ready) = &self.ready {
             let _reader_gone = ready.send(tokio::time::Instant::now());
         }
-        let root = self
-            .toolbox
-            .clone()
-            .map_or(Root::Host, |digest| Root::Toolbox {
-                digest: digest.into_boxed_str(),
-            });
+        let toolbox = self.toolbox.as_deref();
+        let root = toolbox.map_or(Root::Host, |digest| Root::Toolbox {
+            digest: digest.into(),
+        });
         Ok(Box::new(FakeSandbox {
             id: spec.id.clone(),
             granted: spec.granted,
             environment: Environment {
                 engine: CAPABILITIES.engine,
                 root,
+                guest_agent: None,
             },
             fail_teardown: self.fail_teardown,
             kill: self.kill,

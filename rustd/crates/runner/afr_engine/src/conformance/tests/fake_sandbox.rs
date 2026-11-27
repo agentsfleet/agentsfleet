@@ -1,14 +1,20 @@
-//! The fake engine's sandbox, its snapshots, and the sandbox parked.
+//! The fake engine's sandbox, its plan and its snapshots, and the sandbox
+//! parked.
+
+use std::time::Duration;
 
 use af_core::id::Uuid7;
 use afr_guest_client::GuestAgent;
 
 use super::{ENGINE, FakeGuest, Flaw};
 use crate::engine::{
-    EgressPlan, Environment, Granted, Killed, ParkMode, Parked, Quiescence, Sandbox, SandboxState,
-    SnapshotRef, Snapshots,
+    EgressEnforcer, EgressPlan, Environment, Generation, Granted, Killed, ParkMode, Parked,
+    Quiescence, Sandbox, SandboxState, SnapshotFormat, SnapshotRef, Snapshots, enforce,
 };
 use crate::error::{Result, unsupported};
+
+/// How long a fake's plan takes to read back: it holds whatever it is given.
+const READ_BACK: Duration = Duration::from_millis(10);
 
 /// A fake sandbox.
 #[derive(Debug)]
@@ -60,8 +66,8 @@ impl Sandbox for FakeSandbox {
         }))
     }
 
-    async fn egress(&mut self, _plan: EgressPlan<'_>) -> Result<()> {
-        Ok(())
+    async fn egress(&mut self, plan: EgressPlan<'_>) -> Result<()> {
+        enforce(self, plan, READ_BACK).await
     }
 
     fn snapshots(&self) -> Option<&dyn Snapshots> {
@@ -79,27 +85,47 @@ impl Sandbox for FakeSandbox {
 }
 
 #[async_trait::async_trait]
+impl EgressEnforcer for FakeSandbox {
+    async fn apply(&mut self, plan: EgressPlan<'_>) -> Result<()> {
+        self.agent.state().disk.plan = plan.generation;
+        Ok(())
+    }
+
+    async fn in_force(&self) -> Result<Option<Generation>> {
+        Ok(Some(self.agent.state().disk.plan))
+    }
+}
+
+#[async_trait::async_trait]
 impl Snapshots for FakeSandbox {
     async fn take(&self, id: Uuid7) -> Result<SnapshotRef> {
-        let snapshot = SnapshotRef::new(id);
         let state = &mut *self.agent.state();
+        let generation = u64::try_from(state.saved.len()).unwrap_or(u64::MAX) + 1;
+        let environment = self.environment.clone();
+        let snapshot = SnapshotRef::new(id, environment, generation, SnapshotFormat::Files);
         state.saved.push((snapshot.clone(), state.disk.clone()));
         Ok(snapshot)
     }
 
     async fn restore(&self, snapshot: &SnapshotRef) -> Result<()> {
         let flaw = self.agent.flaw;
+        if flaw != Flaw::RestoreCrossesEnvironments {
+            snapshot.restores_on(&self.environment)?;
+        }
         let state = &mut *self.agent.state();
         let mut disk = state
             .saved
             .iter()
-            .find(|(taken, _disk)| taken == snapshot)
+            .find(|(taken, _disk)| taken.id() == snapshot.id())
             .map(|(_taken, disk)| disk.clone())
             .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::NotFound))?;
         if flaw == Flaw::RestoreChangesAByte
             && let Some(byte) = disk.files.values_mut().flatten().next()
         {
             *byte ^= 1;
+        }
+        if flaw != Flaw::RestoreBringsBackThePlan {
+            disk.plan = state.disk.plan;
         }
         state.disk = disk;
         state.running &= flaw == Flaw::RestoreKeepsAProcess;
@@ -110,7 +136,7 @@ impl Snapshots for FakeSandbox {
         self.agent
             .state()
             .saved
-            .retain(|(taken, _disk)| taken != snapshot);
+            .retain(|(taken, _disk)| taken.id() != snapshot.id());
         Ok(())
     }
 }

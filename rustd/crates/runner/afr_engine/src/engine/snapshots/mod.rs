@@ -1,29 +1,91 @@
 //! Snapshots of a running sandbox: taken under a caller-minted identifier,
 //! restored in place, and forgotten. The seam states the behaviour every
-//! engine that offers them holds to; the conformance suite proves it, and no
-//! mechanism behind it is designed here.
+//! engine that offers them holds to; the conformance suite proves it.
+//!
+//! A snapshot names what it ran on, and restores nowhere else:
+//!
+//! ```text
+//!   SnapshotRef { id, environment, generation, format }
+//!   restore ─► environment the sandbox's? ─ no ─► refused naming `environment`,
+//!                     │                              before any chunk is read
+//!                    yes ─► the saved tree
+//! ```
 
 use af_core::id::Uuid7;
 
-use crate::error::Result;
+use super::Environment;
+use crate::error::{Result, SnapshotRefusal, snapshot_refused};
 
-/// One snapshot a sandbox took, named by the identifier its caller minted.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+/// How a snapshot's generation holds the workspace.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SnapshotFormat {
+    /// As files: entries and the chunks of each file.
+    Files,
+}
+
+/// One snapshot a sandbox took: the identifier its caller minted, what the
+/// sandbox ran on, and the generation its store committed it as.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SnapshotRef {
     id: Uuid7,
+    environment: Environment,
+    generation: u64,
+    format: SnapshotFormat,
 }
 
 impl SnapshotRef {
-    /// The snapshot named `id`; a sandbox that never took it refuses it.
+    /// The snapshot named `id`, taken on `environment` and committed as
+    /// `generation` in `format`.
     #[must_use]
-    pub const fn new(id: Uuid7) -> Self {
-        Self { id }
+    pub const fn new(
+        id: Uuid7,
+        environment: Environment,
+        generation: u64,
+        format: SnapshotFormat,
+    ) -> Self {
+        Self {
+            id,
+            environment,
+            generation,
+            format,
+        }
     }
 
     /// The identifier it was taken under.
     #[must_use]
     pub const fn id(&self) -> &Uuid7 {
         &self.id
+    }
+
+    /// What the sandbox it was taken on ran on.
+    #[must_use]
+    pub const fn environment(&self) -> &Environment {
+        &self.environment
+    }
+
+    /// The generation its store committed it as.
+    #[must_use]
+    pub const fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    /// How it holds the workspace.
+    #[must_use]
+    pub const fn format(&self) -> SnapshotFormat {
+        self.format
+    }
+
+    /// Nothing when it was taken on `environment`.
+    ///
+    /// # Errors
+    /// It names another engine, root or guest agent, refused naming
+    /// [`SnapshotRefusal::Environment`].
+    pub fn restores_on(&self, environment: &Environment) -> Result<()> {
+        if self.environment == *environment {
+            Ok(())
+        } else {
+            Err(snapshot_refused(SnapshotRefusal::Environment))
+        }
     }
 }
 
@@ -38,9 +100,13 @@ pub trait Snapshots: Send + Sync {
 
     /// Replaces the sandbox's files with what `snapshot` saved, and ends every
     /// process that ran before it: nothing of the old environment survives.
+    /// It returns once the sandbox's egress plan reads back in force, so no
+    /// restore brings back a plan older than the one the run holds.
     ///
     /// # Errors
-    /// `snapshot` names none this sandbox holds, or the restore failed.
+    /// `snapshot` was taken on another environment, refused before anything
+    /// is read; it names none this sandbox's store holds; or the restore
+    /// failed.
     async fn restore(&self, snapshot: &SnapshotRef) -> Result<()>;
 
     /// Drops `snapshot`; a later restore of it is refused.
@@ -49,3 +115,6 @@ pub trait Snapshots: Send + Sync {
     /// What it held could not be removed.
     async fn forget(&self, snapshot: &SnapshotRef) -> Result<()>;
 }
+
+#[cfg(test)]
+mod tests;

@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use af_chunk_store::MemoryStore;
 use afr_engine::Engine as _;
 use afr_engine::conformance::{self, Context, FarHost};
 use afr_firewall::far::{FAR_GREETING, FAR_LISTED, FAR_PORT, FAR_UNLISTED, Far};
@@ -136,6 +137,7 @@ pub(crate) fn run(arguments: &Arguments, lane: &Arc<Lane>) -> Conclusion {
         .chain(crate::microvm_pool::TRIALS)
         .chain(crate::pin_pause::TRIALS)
         .chain(crate::pin_mapping::TRIALS)
+        .chain(crate::snapshot_keys::TRIALS)
         .chain(ENGINE_TRIALS)
         .chain(crate::egress::TRIALS)
         .chain(crate::supervisor_trials::TRIALS)
@@ -151,14 +153,17 @@ pub(crate) fn run(arguments: &Arguments, lane: &Arc<Lane>) -> Conclusion {
     libtest_mimic::run(arguments, suite.chain(own).collect())
 }
 
-/// Holds the lane's engine to `trial`, with the far host answering and the
-/// supervisor's checkout serving a fixture repository.
+/// Holds the lane's engine to `trial`, with the far host answering, the
+/// supervisor's checkout serving a fixture repository and an in-memory chunk
+/// store handed to each snapshot trial's sandbox.
 fn conformed(lane: &Lane, trial: &conformance::Trial) -> Result<(), Failed> {
     let _far = Far::start()?;
     let checkout = LaneCheckout::serve()?;
+    let store = Arc::new(MemoryStore::default());
     let context = Context {
         far: FAR,
         checkout: &checkout,
+        store: &store,
     };
     let engine = lane.microvms()?;
     runtime().block_on(trial.run(&engine, &context))

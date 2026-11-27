@@ -155,13 +155,17 @@ impl Capabilities {
     }
 }
 
-/// What a sandbox's code runs on: its engine and its root file system.
+/// What a sandbox's code runs on: its engine, its root file system and the
+/// guest agent serving it. A snapshot restores only where all three match.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Environment {
     /// The engine that built it.
     pub engine: SandboxEngine,
     /// Its root file system.
     pub root: Root,
+    /// The SHA-256 digest of the image its guest agent boots from; none for
+    /// the debug engine, whose guest agent runs in the runner's own process.
+    pub guest_agent: Option<Box<str>>,
 }
 
 /// A sandbox's root file system.
