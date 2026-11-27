@@ -46,7 +46,7 @@ Harness::save_boundary                         afr_agent loop/recovery_boundary.
          -> remove the stage -> acknowledge the saved generation
 ```
 
-The sandbox's engine answers `quiesce` from its own mechanism: bubblewrap reads its tenant cgroup, and Firecracker reads its executor's idleness. A workspace that will not export skips the save, and the run goes on ([capture](../../rustd/crates/runner/afr_supervisor/src/run_loop/recovery_capture.rs)).
+Firecracker answers `quiesce` by asking the guest's executor whether it is idle. A workspace that will not export skips the save, and the run goes on ([capture](../../rustd/crates/runner/afr_supervisor/src/run_loop/recovery_capture.rs)).
 
 A checkpoint names its turn and owner, never a version of the fleet. A restore under a different model keeps the conversation and tool results. It drops only reasoning the old provider signed, because another provider cannot read it.
 
@@ -103,7 +103,7 @@ B runs                 the first resumed model call; one fenced settlement at th
 
 A required file restore waits for a transfer slot while renewal continues. The supervisor writes the files into a host stage through checked directory descriptors ([restore](../../rustd/crates/runner/afr_supervisor/src/recovery/turn/restore.rs)).
 
-It then imports the stage through the executor into the sandbox's workspace, which must be empty ([staging](../../rustd/crates/runner/afr_supervisor/src/staging/mod.rs)). No engine offers a host path into a sandbox, so capture and restore cross the same way on bubblewrap and Firecracker.
+It then imports the stage through the executor into the sandbox's workspace, which must be empty ([staging](../../rustd/crates/runner/afr_supervisor/src/staging/mod.rs)). Firecracker offers no host path into a microVM, so capture and restore both cross through the executor.
 
 Frames from the dead run carry the old fence and cannot change the new attempt. With resume off, a turn holding a committed checkpoint waits at its fleet's head after its run expires; saving still happens.
 

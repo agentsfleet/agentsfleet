@@ -93,22 +93,24 @@ Policy flows down. Sandbox tier, network policy, registry allowlist, worker coun
 
 An operator changes them with `agentsfleet platform runners update --policy`. Every heartbeat reply carries the current policy, so a change reaches the host within one beat.
 
-Capability flows up. At boot the runner probes Landlock, seccomp, its delegated control groups (cgroups), bubblewrap, the toolbox filesystem, `/dev/kvm` and egress enforcement.
+Capability flows up. At boot the runner probes Landlock, seccomp, its delegated control groups (cgroups), `/dev/kvm`, the toolbox filesystem and egress enforcement.
 
-Every heartbeat carries that probe report. The daemon compares assigned against achievable and writes `degraded_reason` when the host falls short ([reconcile](../../rustd/crates/daemon/afd_runner/src/reconcile.rs)).
-
-The report also names what builds the host's sandboxes ([report](../../rustd/crates/protocol/af_wire/src/runner/capability.rs)):
+Every heartbeat carries a capability report that names what builds the host's sandboxes ([report](../../rustd/crates/protocol/af_wire/src/runner/capability.rs)). The daemon compares it with the assigned tier and writes `degraded_reason` when the host falls short ([reconcile](../../rustd/crates/daemon/afd_runner/src/reconcile.rs)).
 
 | Field | Values |
 |---|---|
-| `engine` | `bubblewrap`, `firecracker` or `unsandboxed` |
-| `isolation` | `shared_kernel`, `hardware_vm` or `unconfined` |
+| `engine` | `firecracker`, or `unsandboxed` from a debug build |
+| `isolation` | `hardware_vm` or `unconfined` |
 | `kvm` | `usable`, `denied` or `absent`: whether `/dev/kvm` opens for reading and writing |
 | `sandboxes_max` | How many sandboxes the host's memory holds at once; absent when the engine reserves no memory per sandbox |
+| `durable_tasks_v1` | `true` when the build supports fenced task work and workspace handoff; omitted when false |
+| `build_id` | The 64-character source digest compiled into the runner; absent for an unbound build |
 
-A `hardware_vm` report proves file system isolation, system-call filtering, resource limits and process containment, because the guest kernel is the wall. Egress control still needs `egress_enforcement`, and an `unconfined` report reads degraded under any demand.
+A `hardware_vm` report proves file system isolation, system-call filtering, resource limits and process containment, because the guest kernel is the wall. The daemon asks the host for no Linux mechanism by name.
 
-The runner's self-test judges only what its engine uses ([self-test](../../rustd/crates/runner/afr_supervisor/src/capability/mod.rs)). The `bubblewrap` check runs only for bubblewrap, and the `kvm` check only for a `hardware_vm` engine. A bubblewrap host without the Kernel-based Virtual Machine (KVM) device therefore passes.
+The runner's self-test states each probed fact as a named check ([self-test](../../rustd/crates/runner/afr_supervisor/src/capability/mod.rs)). The checks are `landlock`, `seccomp`, `cgroup_controllers`, `toolbox_filesystem`, `kvm` for a `hardware_vm` engine only, and `workspace_direct_io` when the probe had a state directory.
+
+`agentsfleet-runner probe` prints the capability report and every check as JSON ([probe](../../rustd/crates/runner/main/src/probe.rs)). It exits zero only when Firecracker's boot would admit the host. That boot needs a usable Kernel-based Virtual Machine (KVM) device, the toolbox filesystem and every required controller.
 
 `agentsfleet platform runners list` and `show` print the reported engine, and `unknown` for a runner that never reported one.
 
@@ -126,15 +128,16 @@ A runner whose durable-task switch is off takes no new durable run. It is never 
 
 ### Sandbox tiers
 
-The tier is an assigned attribute that sets what the daemon demands of the probe report ([runner types](../../rustd/crates/protocol/af_wire/src/runner/mod.rs)).
+The tier is an assigned attribute that sets what the daemon demands of the capability report ([runner types](../../rustd/crates/protocol/af_wire/src/runner/mod.rs)).
 
 | `sandbox_tier` | Where | What the daemon demands |
 |---|---|---|
-| `landlock_full` | A Linux host | Landlock, seccomp, bubblewrap and every required cgroup controller, or a `hardware_vm` engine |
-| `container_nested` | A runner inside a container on Linux | The same set; the sandbox applies Landlock on every tier |
-| `dev_none` | Development | Nothing; any network policy except `allow_all` reads degraded, because only a sandbox enforces one |
+| `firecracker` | A Linux host with a usable KVM device | A report naming `engine: firecracker` with `isolation: hardware_vm` |
+| `dev_none` | Development | No report; any network policy except `allow_all` reads degraded, because only a sandbox enforces one |
 
-The tier never picks the engine; the operator's `--engine` flag does ([runner runtime](runner_execution.md#sandbox-engines)). The tier sets the isolation the daemon demands, and network reach is the separate [egress policy](runner_execution.md#network-egress). On a Mac the runner runs inside a Linux virtual machine.
+A `firecracker` runner that has never reported reads degraded as `no capability report`. One whose report names another engine or wall reads degraded as `the runner's engine is not its tier's`, as a debug runner on `unsandboxed` does.
+
+The tier never picks the engine; the runner's build and its `--engine` flag do ([runner runtime](runner_execution.md#sandbox-engines)). Network reach is the separate [egress policy](runner_execution.md#network-egress). On a Mac the runner runs inside a Linux virtual machine.
 
 ### Runner state
 

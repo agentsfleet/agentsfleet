@@ -390,7 +390,7 @@ Unset, the daemon stores no task checkpoints in R2, Cloudflare's object storage.
 
 #### `[firecracker]`
 
-Read only when the runner starts with `--engine firecracker` (`main/src/config/firecracker.rs`).
+Every build parses it, and only the Firecracker engine uses it (`main/src/config/firecracker.rs`).
 
 | Key | Default | Change it when… |
 |---|---|---|

@@ -58,7 +58,7 @@ Every Rust test that needs a datastore is `#[ignore]`d, so only this lane and `m
 It ends with a standalone `cargo publish --dry-run` of `guffbolt-ai` and `guffbolt` (`make/quality.mk`).
 The rest of `lint-all` covers the ast-grep rules, the model allowlist, TypeScript, shell, workflows, playbooks and the deploy safety gate.
 
-`make test-runner-kernel` proves the runner's sandbox on a real Linux kernel, as root, with bubblewrap, Landlock and cgroup v2.
+`make test-runner-kernel` proves the runner's Firecracker sandbox on a real Linux kernel, as root, on a host with a usable `/dev/kvm` and cgroup v2.
 It finishes with `test-runner-startup`, the runner's startup under systemd, and fails rather than skips.
 `make check-version` checks that `cli/package.json` and `rustd/Cargo.toml` match `VERSION`.
 

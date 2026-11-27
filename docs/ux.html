@@ -1993,10 +1993,10 @@ function retryHealthCheck() {
 function terminalView() {
   return `<div class="page terminal-preview">${pageHeading('Runner status','Use the runner ID to inspect its heartbeat, capacity and recent runs.', '<button class="secondary" data-action="replay-runner-list">Replay a slow request</button>')}
     <pre class="terminal-output" tabindex="0" aria-label="Sample command output"><span class="command-line">$ agentsfleet platform runners list</span>
-<span class="runner-wait" id="runner-list-progress" role="status" hidden><span aria-hidden="true">[<span class="orbit-ball">o</span>      ]</span><span>Waiting for agentsfleet…</span></span><span id="runner-list-output">ID                                    HOST                 OWNER     STATE   CONNECTION  AUTO CORDON  DEFAULT ENGINE
-<span class="table-rule">────────────────────────────────────  ───────────────────  ────────  ──────  ──────────  ───────────  ──────────────</span>
-018dc937-0220-7c01-8f02-ff0000000001  example-runner       Platform  <span class="active">active</span>  <span class="online">online</span>      None         Bubblewrap
-018dc937-0220-7c01-8f02-ff0000000002  example-runner-west  Platform  <span class="active">active</span>  <span class="offline">offline</span>     None         Bubblewrap</span></pre></div>`;
+<span class="runner-wait" id="runner-list-progress" role="status" hidden><span aria-hidden="true">[<span class="orbit-ball">o</span>      ]</span><span>Waiting for agentsfleet…</span></span><span id="runner-list-output">ID                                    HOST                 OWNER     STATE   CONNECTION  AUTO CORDON  ENGINE
+<span class="table-rule">────────────────────────────────────  ───────────────────  ────────  ──────  ──────────  ───────────  ───────────</span>
+018dc937-0220-7c01-8f02-ff0000000001  example-runner       Platform  <span class="active">active</span>  <span class="online">online</span>      None         firecracker
+018dc937-0220-7c01-8f02-ff0000000002  example-runner-west  Platform  <span class="active">active</span>  <span class="offline">offline</span>     None         firecracker</span></pre></div>`;
 }
 
 function replayRunnerList() {

@@ -134,7 +134,7 @@ Each row is a one-line pointer; the linked section owns the definition.
 | **Delivery** (`thread.deliveries`) | An answer the fleet owes to a destination such as a Slack thread. [(more)](./data_flow.md#outbound-deliveries) |
 | **Wake** | A NATS hint that starts an assignment pass; losing one costs latency, never work. [(more)](./datastore_scaling.md#the-turns-ledger-is-the-queue) |
 | **Supervisor** (`afr_supervisor`) | The trusted half of the runner, outside every sandbox; it holds model keys. [(more)](./runner_execution.md#crates) |
-| **Sandbox** (`afr_engine`) | The confined environment where one run's tool calls run: a bubblewrap process tree or a Firecracker microVM. [(more)](./runner_execution.md#sandbox-engines) |
+| **Sandbox** (`afr_engine`) | The confined environment where one run's tool calls run: a Firecracker microVM. [(more)](./runner_execution.md#sandbox-engines) |
 | **Engine** (`afr_engine_*`) | What builds a runner's sandboxes, chosen by `agentsfleet-runner run --engine`. [(more)](./runner_execution.md#sandbox-engines) |
 | **Egress guard** (`af_egress`) | The supervisor's outbound check, which also puts secrets in at send time. [(more)](./runner_execution.md#credentials) |
 | **Grant** (`connector.integration_grants`) | One fleet's approved credential: a workspace secret or an integration. [(more)](./user_flow.md#access) |

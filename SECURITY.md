@@ -22,7 +22,7 @@ This is the short policy entrypoint for agentsfleet.
 
 1. `agentsfleet-runner` runs one event and runs its tool calls in a sandbox of its own. The runner destroys it when the run ends, or parks it for the same fleet's next run.
 2. The agent loop and the model keys stay in the runner's supervisor (`rustd/crates/runner/afr_agent`), outside every sandbox. No secret enters a sandbox: the fetch token stays with the host's repository mirror, and files cross only through the executor.
-3. The engine is the operator's `--engine` choice. bubblewrap (`afr_engine_bubblewrap`) confines a process tree on the host kernel with namespaces, Landlock, seccomp and cgroup v2. Firecracker (`afr_engine_firecracker`) gives each run a microVM with its own kernel.
+3. Every release build runs one engine, Firecracker (`afr_engine_firecracker`), which gives each run a microVM with its own kernel. Only a debug build offers `--engine unsandboxed`, which confines nothing.
 4. If the sandbox posture is unsafe, run admission must fail closed. A Firecracker runner whose `/dev/kvm` will not open refuses to boot, and no other engine starts in its place.
 5. If a sandboxed child dies mid-stage, the run expires. The run is then reclaimed and re-run by another runner, or blocked from saved stage state.
 6. Active runs are not guaranteed to survive `agentsfleet-runner` upgrades.
@@ -34,8 +34,6 @@ Under Firecracker, a tenant's code runs inside a guest kernel, so a kernel bug i
 Only the host reaches a guest's executor. The executor drops a vsock peer that is not the host, and the guest kernel has no vsock loopback.
 
 Simultaneous multithreading (SMT) stays on, on every host, by Indy's ruling ("On everywhere", Nov 26, 2026). Two microVMs may therefore share one physical core, and a guest may read another's activity through cache timing. That cross-VM cache-timing risk is accepted.
-
-Under bubblewrap, every sandbox shares the host kernel, and a kernel privilege-escalation bug escapes it. Production runs bubblewrap until M258_003 moves it to Firecracker.
 
 ## Detection
 

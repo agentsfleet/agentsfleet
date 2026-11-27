@@ -77,21 +77,23 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 Production runner hosts start with `--engine firecracker` from the release that ships M258. Each host is assumed to match the dev host: Debian 13, its stock kernel, `/dev/kvm` usable, SMT on (Indy: "just make assumptions around how you saw in dev machine = same kernel debian 13, kvm"). Boot refuses a host without usable KVM, naming it, as M258_001 §7 built.
 
-- **Dimension 1.1** — production reports Firecracker → Test `production_runners_report_firecracker` (manual, after merge). Every production runner row shows `engine: firecracker`, `kvm: usable` and a self-test `all_ok`; evidence goes in the Pull Request's follow-up note.
+- **Dimension 1.1** — open: needs Indy's approval for the deploy and workflow edits — production reports Firecracker → Test `production_runners_report_firecracker` (manual, after merge). Every production runner row shows `engine: firecracker`, `kvm: usable` and a self-test `all_ok`; evidence goes in the Pull Request's follow-up note.
 
 ### §2 — Tiers name engines
 
 `SandboxTier` becomes `firecracker` and `dev_none`; `landlock_full` and `container_nested` go. The reconcile demands that a runner's reported `engine` match its tier, and a mismatch reads degraded with its own reason.
 
-- **Dimension 2.1** — a tier names an engine → Test `test_a_tier_names_its_engine` (unit, `af_wire` and `afd_runner`). `firecracker` and `dev_none` round-trip, and `landlock_full` fails to decode. A `firecracker` tier whose report names `unsandboxed` reads degraded with its own reason.
+- **Dimension 2.1** — ✅ DONE (unit) — a tier names an engine → Test `test_a_tier_names_its_engine` (unit, `af_wire` and `afd_runner`). `firecracker` and `dev_none` round-trip, and `landlock_full` fails to decode. A `firecracker` tier whose report names `unsandboxed` reads degraded with its own reason.
 
 ### §3 — bubblewrap deleted
 
 `afr_engine_bubblewrap`, `EngineChoice::Bubblewrap` and its feature go, with the report's `landlock`, `seccomp`, `cgroup_controllers`, `bubblewrap` and `egress_enforcement` fields, `FailureClass::LandlockDeny`, the bubblewrap install and the shared-kernel `Isolation` value if nothing else reports it. `afr_guest`'s hardening stays: the Firecracker guest's inner environment runs it.
 
-- **Dimension 3.1** — no engine named bubblewrap → Test `test_bubblewrap_is_not_an_engine` (unit, `main`). `--engine bubblewrap` answers `InvalidValue`; `EngineChoice` holds `firecracker`, plus `unsandboxed` in debug builds.
-- **Dimension 3.2** — the report names no Linux mechanism → Test `test_a_report_naming_a_linux_mechanism_is_refused` (unit, `af_wire`). A report carrying `landlock` is refused as an unknown field; an engine report round-trips.
-- **Dimension 3.3** — the lane runs Firecracker by default → Test `make test-runner-kernel` (integration, a KVM host). With no `ENGINE`, the suite runs on Firecracker, and every trial passes.
+- **Dimension 3.1** — ✅ DONE (unit) — no engine named bubblewrap → Test `test_bubblewrap_is_not_an_engine` (unit, `main`). `--engine bubblewrap` answers `InvalidValue`; `EngineChoice` holds `firecracker`, plus `unsandboxed` in debug builds.
+- **Dimension 3.2** — ✅ DONE (unit) — the report names no Linux mechanism → Test `test_a_report_naming_a_linux_mechanism_is_refused` (unit, `af_wire`). A report carrying `landlock` is refused as an unknown field; an engine report round-trips.
+- **Dimension 3.3** — wired, not yet run on a KVM host — the lane runs Firecracker by default → Test `make test-runner-kernel` (integration, a KVM host). With no `ENGINE`, the suite runs on Firecracker, and every trial passes.
+
+**What §2 and §3 built.** `SandboxTier` is `firecracker` or `dev_none`; a `firecracker` tier needs a report naming `engine: firecracker` with `hardware_vm`, and any other reads degraded with `REASON_ENGINE_NOT_THE_TIERS`. `afr_engine_bubblewrap`, the `sandbox` subcommand, the report's Linux booleans, `LandlockDeny` and `Isolation::SharedKernel` are deleted; `--engine unsandboxed` replaces `--unsandboxed` in debug builds. The kernel lane boots through `FirecrackerBackend` as a host does, and its real-host trials were ported to the seam. With `egress_enforcement` gone, an `allow_list_egress` runner is proven by its engine alone: Firecracker reads every plan back in force before a build returns, so a host that cannot enforce fails its builds closed. Open: the deploy files, `Dockerfile`, workflows and playbooks that still name bubblewrap wait on Indy's approval; `deploy/local/bootstrap.ts` still assigns `container_nested`.
 
 ## Interfaces
 
