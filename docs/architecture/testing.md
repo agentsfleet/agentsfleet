@@ -103,7 +103,7 @@ ISO-3 costs wall time, so prefer a private database or scoped labels where a tes
 
 | Language | Paths | Floor | Graded by |
 |---|---|---|---|
-| Rust | `rustd/crates/`, `rustd/guffbolt/`, `rustd/guffbolt-ai/` | 98 percent, project and patch | `scripts/rustd_coverage.py`, with `RUSTD_COVERAGE_FLOOR` in `make/test-integration-rustd.mk` |
+| Rust | `rustd/crates/`, `rustd/guffbolt/`, `rustd/guffbolt-ai/` | 98 percent project, 99 percent patch (`RUSTD_PATCH_FLOOR`) | `scripts/rustd_coverage.py`, with `RUSTD_COVERAGE_FLOOR` in `make/test-integration-rustd.mk` |
 | TypeScript | `app`, `website`, `cli` | 100 percent, project and patch | Codecov, threshold 0 |
 
 The Rust lane measures the unit and live-datastore tiers together, in eight shards: `foundation`, `harness`, `runner`, `daemon-api`, `daemon`, `e2e-a`, `e2e-b` and `guffbolt`.

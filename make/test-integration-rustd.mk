@@ -65,8 +65,8 @@ test-integration-rustd: $(TEST_STATE_DEP) _migrate-test-db  ## Run the Rust subs
 	@echo "→ [rustd] Running the tests that need the cluster to themselves..."; \
 	$(call _rust_lane,rustd-integration-exclusive.log,[rustd] integration suite (exclusive),cargo test --locked --workspace --exclude afd_bench --all-features --test "*" --no-fail-fast -- --ignored --test-threads=1 $(EXCLUSIVE_FILTER))
 
-# The one Rust floor: the merged line coverage and the patch, the Rust lines
-# the branch adds, both hold it. Change it here and every grade moves; Codecov
+# The merged Rust floor: the merged line coverage holds it, and the patch
+# holds RUSTD_PATCH_FLOOR below. Change it here and every grade moves; Codecov
 # reports Rust without a status, so it carries no copy (codecov.yml).
 # A ratchet toward 100%: raise it when a run beats it, lower it only on Indy's
 # word, recorded here. The judge compares exact decimals, so a fraction is
@@ -75,6 +75,10 @@ test-integration-rustd: $(TEST_STATE_DEP) _migrate-test-db  ## Run the Rust subs
 # ("Use aggregate gates only"); M253_004 switched one on and Indy removed it on
 # Nov 23, 2026: "Can you move or remove the individual file coverage".
 RUSTD_COVERAGE_FLOOR ?= 98
+# The patch, the Rust lines a branch adds, holds a floor of its own above the
+# merged one (Indy, Nov 27, 2026: "the coverage of the changes of rust in this
+# Pr must bne 99%").
+RUSTD_PATCH_FLOOR ?= 99
 
 # Out of the denominator, on Indy's calls: whole-file test_util modules (fixture
 # code; a filename filter cannot see in-file `#[cfg]` helpers, which still count)
@@ -91,7 +95,7 @@ RUSTD_PATCH_BASE ?= $(shell git merge-base HEAD origin/main 2>/dev/null)
 RUSTD_GUFFBOLT_FLOOR ?= 99
 _RUSTD_COVERAGE_JUDGE = PYTHONDONTWRITEBYTECODE=1 python3 scripts/rustd_coverage.py --floor $(RUSTD_COVERAGE_FLOOR) \
   --crate-floor guffbolt=$(RUSTD_GUFFBOLT_FLOOR) --crate-floor guffbolt-ai=$(RUSTD_GUFFBOLT_FLOOR) \
-  $(if $(RUSTD_PATCH_BASE),--patch-floor $(RUSTD_COVERAGE_FLOOR) --patch-base $(RUSTD_PATCH_BASE))
+  $(if $(RUSTD_PATCH_BASE),--patch-floor $(RUSTD_PATCH_FLOOR) --patch-base $(RUSTD_PATCH_BASE))
 
 # Each shard owns its Postgres and NATS; test-coverage-rustd-merge grades them.
 # A shard is a layer group, named by folder globs under rustd/ as the unit
