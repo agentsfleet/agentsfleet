@@ -67,7 +67,7 @@ const READ_BUMP: &[Verb] = &[Verb::Select, Verb::Update];
 /// so do `fleet.durable_task_items` and `fleet.durable_task_inputs` on their
 /// receipt columns and `fleet.durable_task_effects` on its acknowledgement and
 /// private target.
-const GRANTS: [(&str, &str, &[Verb]); 53] = [
+const GRANTS: [(&str, &str, &[Verb]); 54] = [
     ("identity.tenants", "api_runtime", WRITE_ONCE),
     ("identity.workspaces", "api_runtime", WRITE_ONCE),
     ("identity.users", "api_runtime", WRITE_ONCE),
@@ -102,6 +102,7 @@ const GRANTS: [(&str, &str, &[Verb]); 53] = [
     ("fleet.activity_counters", "api_runtime", READ_ONLY),
     ("runner.runners", "api_runtime", READ_WRITE),
     ("thread.runs", "api_runtime", READ_WRITE),
+    ("thread.run_web_calls", "api_runtime", KEPT),
     ("runner.decision_calls", "api_runtime", KEPT),
     ("runner.decision_payloads", "api_runtime", READ_WRITE),
     ("thread.threads", "api_runtime", KEPT),

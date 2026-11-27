@@ -14,6 +14,7 @@ use sqlx::Connection as _;
 
 use crate::report_seed::{DEEP_POOL, Held, held};
 use crate::rows::Row;
+use crate::seed::{MODEL, PROVIDER};
 
 /// The input tokens the runner's one reported request read.
 const INPUT_TOKENS: u32 = 900;
@@ -230,6 +231,7 @@ async fn a_run_removed_while_its_renewal_waits_is_lost() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_known_request_is_billed_once_under_a_concurrent_tool_post() {
     let held = funded().await;
+    held.fixtures.seed_model_rate(PROVIDER, MODEL).await;
     let run = &held.issued.run_id;
     sqlx::query(MARK_CANCELLED)
         .bind(run)
