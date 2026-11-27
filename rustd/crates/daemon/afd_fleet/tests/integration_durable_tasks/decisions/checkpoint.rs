@@ -121,6 +121,7 @@ pub(super) fn input(
         commit_oid: Some(head.to_owned()),
         format_version: 1,
         toolbox_digest: "3".repeat(64),
+        sandbox: None,
         page_count: 1,
         upload_budget_bytes: 0,
         logical_bytes: 0,

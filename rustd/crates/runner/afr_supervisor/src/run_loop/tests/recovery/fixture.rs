@@ -84,6 +84,7 @@ pub(super) fn plan(input: &CheckpointPlanInput) -> CheckpointPlan {
         repository: "api-only".to_owned(),
         format_version: input.format_version,
         toolbox_digest: input.toolbox_digest.clone(),
+        sandbox: input.sandbox.clone(),
         page_ids: vec![PAGE.to_owned()],
         base_page_ids: vec![],
         base_manifest_root: None,

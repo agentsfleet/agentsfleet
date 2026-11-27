@@ -269,6 +269,7 @@ dependencies = [
  "cap-std",
  "clap",
  "jsonrpsee-types",
+ "proptest",
  "rustix 1.1.6",
  "serde",
  "serde_json",
@@ -1448,6 +1449,7 @@ dependencies = [
  "netlink-packet-core",
  "netlink-packet-route",
  "netlink-sys",
+ "procfs-core 0.18.0",
  "rustix 1.1.6",
  "tempfile",
  "thiserror 2.0.21",
@@ -1545,6 +1547,7 @@ name = "afr_engine_firecracker"
 version = "0.90.0"
 dependencies = [
  "af_cgroup",
+ "af_chunk_store",
  "af_core",
  "af_guest_wire",
  "af_wire",

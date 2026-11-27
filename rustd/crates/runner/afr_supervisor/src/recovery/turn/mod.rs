@@ -1,10 +1,10 @@
 //! Ordinary roots use native event-owned commands, without a synthetic task identity.
 
 mod capture;
-mod files;
-#[cfg(test)]
-mod files_tests;
 mod publication;
+mod reading;
+#[cfg(test)]
+mod reading_tests;
 mod restore;
 mod session;
 

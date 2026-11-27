@@ -14,6 +14,7 @@ mod pins;
 mod plan;
 mod retire;
 mod row;
+pub(crate) mod sandbox;
 mod transfer;
 
 pub(super) use commit::publish;

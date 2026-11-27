@@ -149,6 +149,14 @@ impl Case {
 
 /// A `LIKE` pattern for the allocation receipts of `turn`, whatever its
 /// workspace: `thread.replay_receipts` scopes them `<workspace>:turn:<turn>:checkpoint`.
+/// The sandbox a fixture capture's files are taken in.
+const fn sandbox() -> af_wire::durable_task::CheckpointSandbox {
+    af_wire::durable_task::CheckpointSandbox {
+        engine: af_wire::runner::SandboxEngine::Firecracker,
+        guest_agent_digest: None,
+    }
+}
+
 fn receipts_of(turn: &Uuid7) -> String {
     format!("%:turn:{turn}:checkpoint")
 }

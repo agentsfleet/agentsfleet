@@ -21,7 +21,8 @@ pub(crate) struct Capture<'a> {
     pub(crate) workspace: &'a Uuid7,
     pub(crate) fence: u64,
     pub(crate) task: &'a DurableTaskContext<'a>,
-    pub(crate) toolbox: &'a str,
+    /// Where its files are taken: the toolbox, and the sandbox when one ran.
+    pub(crate) taken: &'a super::Taken,
     pub(crate) mode: CheckpointMode,
     pub(crate) base: Option<&'a CheckpointPlan>,
     pub(crate) stop: &'a tokio_util::sync::CancellationToken,
@@ -124,7 +125,8 @@ impl Capture<'_> {
         if plan.mode != self.mode
             || plan.parent != catalog.parent.as_ref().map(ToString::to_string)
             || plan.format_version != CHECKPOINT_FORMAT
-            || plan.toolbox_digest != self.toolbox
+            || plan.toolbox_digest != self.taken.toolbox
+            || plan.sandbox != self.taken.sandbox
         {
             return Err(error::config(
                 "checkpoint plan differs from capture compatibility",
@@ -199,7 +201,8 @@ impl Capture<'_> {
                         DurableTaskTarget::ExistingPr { head, .. } => Some(head.clone()),
                     },
                     format_version: CHECKPOINT_FORMAT,
-                    toolbox_digest: self.toolbox.to_owned(),
+                    toolbox_digest: self.taken.toolbox.clone(),
+                    sandbox: self.taken.sandbox.clone(),
                     page_count: u32::try_from(
                         catalog
                             .pages(None, af_wire::durable_task::CHECKPOINT_PAGE_BYTES)?
@@ -258,6 +261,7 @@ impl Session<'_> {
             || saved.repository != self.plan.repository
             || saved.format_version != self.plan.format_version
             || saved.toolbox_digest != self.plan.toolbox_digest
+            || saved.sandbox != self.plan.sandbox
             || saved.page_ids != self.plan.page_ids
             || saved.manifest_root.as_deref() != Some(input.manifest_root.as_str())
             || saved.history_digest.as_deref() != Some(input.history_digest.as_str())

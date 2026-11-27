@@ -129,13 +129,17 @@ async fn across(sandbox: &dyn Sandbox, sealing: &Sealing, procs: &Path) -> Resul
 /// spelled in two halves joined in an unexported variable, so no command
 /// line or environment of the search itself holds it.
 fn search(tokens: &[String]) -> String {
-    let mut script = String::new();
-    let mut joined = String::new();
-    for (index, token) in tokens.iter().enumerate() {
-        let (head, tail) = token.split_at(token.len() / 2);
-        script.push_str(&format!("a{index}='{head}'; b{index}='{tail}'; "));
-        joined.push_str(&format!(" \"$a{index}$b{index}\""));
-    }
+    let script: String = tokens
+        .iter()
+        .enumerate()
+        .map(|(index, token)| {
+            let (head, tail) = token.split_at(token.len() / 2);
+            format!("a{index}='{head}'; b{index}='{tail}'; ")
+        })
+        .collect();
+    let joined: String = (0..tokens.len())
+        .map(|index| format!(" \"$a{index}$b{index}\""))
+        .collect();
     format!(
         "{script}printf '%s\\n'{joined} | grep -rlsF -D skip --exclude-dir=lost+found -f - \
          /workspace /tmp /run /etc /home /root /var /proc/[0-9]*/environ /proc/[0-9]*/cmdline; true"

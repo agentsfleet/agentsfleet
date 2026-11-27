@@ -1,5 +1,6 @@
 //! Ordinary recovery belongs to an event and never impersonates a native task.
 
+use crate::durable_task::CheckpointSandbox;
 use crate::protocol::MESSAGE_BYTES_MAX;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
@@ -80,11 +81,16 @@ pub struct CheckpointOperationId(
 pub enum TurnWorkspace {
     /// No sandbox was needed or built for this run.
     ApiOnly,
-    /// A complete supported workspace captured under this toolbox.
+    /// A complete supported workspace captured under this toolbox, in this
+    /// sandbox.
     Files {
         /// Verified host-local toolbox; its bytes are excluded from the snapshot.
         #[garde(length(bytes, min = 64, max = 64), pattern(r"^[0-9a-f]+$"))]
         toolbox_digest: String,
+        /// The sandbox the files were taken in, which a restore lands them
+        /// only in.
+        #[garde(dive)]
+        sandbox: CheckpointSandbox,
     },
 }
 

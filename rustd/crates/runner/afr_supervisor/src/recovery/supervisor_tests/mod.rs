@@ -102,6 +102,7 @@ fn scope(run: &af_wire::run::RunPayload<'_>) -> TurnScope {
         workspace_id: CheckpointOperationId(run.event.workspace_id.to_string()),
         workspace: TurnWorkspace::Files {
             toolbox_digest: "b".repeat(64),
+            sandbox: test_support::recorded(),
         },
     }
 }

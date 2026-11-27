@@ -14,6 +14,9 @@ use futures_util::{StreamExt as _, stream};
 use std::collections::BTreeMap;
 use zeroize::Zeroizing;
 
+/// One object's plaintext, shared by every place a batch names it.
+pub(super) type Chunk = std::sync::Arc<af_crypto::secret::SecretBytes>;
+
 impl Session<'_> {
     pub(super) async fn renew(&mut self) -> Result<()> {
         if self.stop.is_cancelled() || self.plan.pin.operation_deadline <= clock::now() {
@@ -176,10 +179,7 @@ impl Session<'_> {
 
     /// Authorize at most four unique objects once, then restore concurrently.
     /// The result preserves manifest order, including repeated content chunks.
-    pub(super) async fn download_batch(
-        &mut self,
-        ids: &[String],
-    ) -> Result<Vec<super::window::Chunk>> {
+    pub(super) async fn download_batch(&mut self, ids: &[String]) -> Result<Vec<Chunk>> {
         let objects = self.restore_objects(ids).await?;
         self.progress(
             af_wire::activity::DurableTaskActivityOperation::Restore,

@@ -13,8 +13,7 @@ use super::{
 };
 use crate::{
     Result,
-    recovery::{Capture, Restore, Tree},
-    staging::Staged,
+    recovery::{Capture, Landing, Restore, Taken, Tree},
 };
 
 impl Run<'_> {
@@ -23,26 +22,24 @@ impl Run<'_> {
         task: &DurableTaskContext<'static>,
         sandbox: &dyn Sandbox,
         scope: &Uuid7,
-        toolbox: &str,
-        permit: Option<&afr_agent::FileRecoveryPermit>,
+        taken: &Taken,
     ) -> Result<State> {
         if task.checkpoint_id.is_some() {
-            let staged = self.lessee.staging.stage(sandbox.id())?;
+            let landing = Landing {
+                sandbox,
+                spools: self.lessee.staging.root(),
+            };
             let restored = Restore {
                 plane: &self.lessee.plane,
                 transfers: &self.lessee.recovery.transfers,
-                permit,
                 run: &self.ids.run,
                 workspace: scope,
                 fence: self.payload.fencing_token,
                 task,
-                toolbox,
+                toolbox: &taken.toolbox,
                 stop: &self.interrupt,
             }
-            .run(
-                Some((staged.path().to_owned(), Staged::owner())),
-                staged.restore(sandbox.agent()),
-            )
+            .run(Some(landing))
             .await?;
             return Ok(State {
                 turn: None,
@@ -60,7 +57,7 @@ impl Run<'_> {
             staged.export(sandbox.agent(), disk_bytes).await?;
             verify_fresh_checkout(staged.path(), repository, head).await?;
             return self
-                .native_base(task, staged.path().to_owned(), scope, toolbox, permit)
+                .native_base(task, staged.path().to_owned(), scope, taken)
                 .await;
         }
         Ok(State {
@@ -76,8 +73,7 @@ impl Run<'_> {
         task: &DurableTaskContext<'static>,
         root: std::path::PathBuf,
         scope: &Uuid7,
-        toolbox: &str,
-        permit: Option<&afr_agent::FileRecoveryPermit>,
+        taken: &Taken,
     ) -> Result<State> {
         let base = Capture {
             plane: &self.lessee.plane,
@@ -86,7 +82,7 @@ impl Run<'_> {
             workspace: scope,
             fence: self.payload.fencing_token,
             task,
-            toolbox,
+            taken,
             mode: CheckpointMode::RetainBase,
             base: None,
             stop: &self.interrupt,
@@ -101,12 +97,11 @@ impl Run<'_> {
         let base_paths = Restore {
             plane: &self.lessee.plane,
             transfers: &self.lessee.recovery.transfers,
-            permit,
             run: &self.ids.run,
             workspace: scope,
             fence: self.payload.fencing_token,
             task,
-            toolbox,
+            toolbox: &taken.toolbox,
             stop: &self.interrupt,
         }
         .base_paths(&base)

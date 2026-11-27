@@ -18,22 +18,24 @@ mod progress;
 #[cfg(test)]
 mod progress_tests;
 mod restore;
-mod restore_manifest;
 mod session;
+mod source;
 #[cfg(test)]
 mod supervisor_tests;
+mod taken;
 #[cfg(test)]
 mod tests;
 mod transfer;
 mod tree;
 mod turn;
 mod uploads;
-mod window;
 
 pub(crate) use admission::RecoveryResources;
 pub(super) use capture::Capture;
 pub(crate) use lineage::Lineage;
 pub(super) use restore::Restore;
+pub(crate) use source::Landing;
+pub(crate) use taken::Taken;
 pub(crate) use transfer::Transfers;
 pub(crate) use tree::{ChangeSource, Tree};
 pub(super) use turn::NativeTurn;

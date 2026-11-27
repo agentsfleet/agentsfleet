@@ -48,6 +48,7 @@ pub use self::error::ambiguous;
 pub use self::error::{EgressRefusal, EngineFailure, Error, Result, SnapshotRefusal};
 pub use self::file_snapshots::{
     Bounded, FREEZE_TENANT, FileSnapshots, GuestPin, GuestVolume, quiesce_workspace,
+    restore_workspace,
 };
 pub use self::network::{
     Allowlist, Network, NetworkKind, RESOLV_CONF, SANDBOX_HOSTS, SANDBOX_RESOLV_CONF,

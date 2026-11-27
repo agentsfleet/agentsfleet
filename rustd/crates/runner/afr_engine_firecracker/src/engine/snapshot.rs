@@ -5,7 +5,9 @@
 //! ```text
 //!   quiesce(parent)  freeze tenant ─► pin walk ─► thaw         the fleet runs on
 //!   publish(q, id)   changes ─► store ─► release(q, id)
-//!   restore(ref)     environment? ─► tree ─► renew ─► import ─► hosts ─► plan read back
+//!   restore_from(ref, source)
+//!                    environment? ─► tree ─► renew ─► import ─► hosts ─► plan read back
+//!   restore(ref)     restore_from(ref, the store its build was handed)
 //! ```
 //!
 //! The monitor keeps running through all of it: a restore ends every process
@@ -13,6 +15,7 @@
 //! once the run's egress plan reads back in force, so a snapshot taken under
 //! an older plan never brings it back.
 
+use af_chunk_store::ChunkSource;
 use af_core::id::Uuid7;
 use afr_engine::{Quiesced, Result, SnapshotRef, Snapshots, until_in_force};
 
@@ -36,20 +39,38 @@ impl Snapshots for Vm {
         self.kept.snapshots.take(self, id).await
     }
 
+    /// Restores the workspace from the store the build was handed, as
+    /// [`Snapshots::restore_from`] does.
+    async fn restore(&self, snapshot: &SnapshotRef) -> Result<()> {
+        self.kept.snapshots.restore(self, snapshot).await?;
+        self.in_force_again().await
+    }
+
     /// Restores the workspace inside the running VM, then gives the renewed
     /// environment the run's hosts file again and reads the run's plan back
     /// in force before the guest agent serves anything.
-    async fn restore(&self, snapshot: &SnapshotRef) -> Result<()> {
-        self.kept.snapshots.restore(self, snapshot).await?;
+    async fn restore_from(&self, snapshot: &SnapshotRef, source: &dyn ChunkSource) -> Result<()> {
+        self.kept
+            .snapshots
+            .restore_from(self, snapshot, source)
+            .await?;
+        self.in_force_again().await
+    }
+
+    async fn forget(&self, snapshot: &SnapshotRef) -> Result<()> {
+        self.kept.snapshots.forget(snapshot).await
+    }
+}
+
+impl Vm {
+    /// Gives the renewed environment the run's hosts file again and reads
+    /// the run's plan back in force: what a restore returns after.
+    async fn in_force_again(&self) -> Result<()> {
         let plan = &self.kept.plan;
         if let Reach::Allowed(allowlist) = &plan.reach {
             resolve(&self.client, allowlist).await?;
         }
         let within = self.shared.config.tuning.ready_timeout;
         until_in_force(self, plan.generation, within).await
-    }
-
-    async fn forget(&self, snapshot: &SnapshotRef) -> Result<()> {
-        self.kept.snapshots.forget(snapshot).await
     }
 }

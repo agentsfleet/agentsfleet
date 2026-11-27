@@ -38,6 +38,10 @@ fn begin(workspace: TurnWorkspace) -> TurnCheckpointAction {
 fn files() -> TurnWorkspace {
     TurnWorkspace::Files {
         toolbox_digest: "b".repeat(64),
+        sandbox: af_wire::durable_task::CheckpointSandbox {
+            engine: af_wire::runner::SandboxEngine::Firecracker,
+            guest_agent_digest: None,
+        },
     }
 }
 

@@ -1,4 +1,6 @@
 //! Frozen workspace access uses directory descriptors and never traverses links.
+//! Only a capture reads a workspace on the host: a restore lands through the
+//! sandbox's engine.
 
 use crate::{Result, error};
 use cap_std::fs::Dir;
@@ -6,7 +8,7 @@ use rustix::fs::{Mode, OFlags};
 use std::{
     collections::BTreeMap,
     fs::File,
-    io::{Read as _, Seek as _, SeekFrom, Write as _},
+    io::{Read as _, Seek as _, SeekFrom},
     os::unix::fs::MetadataExt as _,
     path::{Component, Path},
 };
@@ -47,78 +49,13 @@ pub(super) enum Entry {
     },
 }
 
-/// An opened root is owned by the capture/restore operation, never a tenant path string.
+/// An opened root is owned by the capture operation, never a tenant path string.
 #[derive(Debug)]
 pub(super) struct Workspace {
     root: Dir,
 }
 
 impl Workspace {
-    pub(super) fn require_empty(&self) -> Result<()> {
-        if self.root.entries()?.next().is_some() {
-            return Err(error::config(
-                "checkpoint restore requires a fresh empty workspace",
-            ));
-        }
-        Ok(())
-    }
-
-    pub(super) fn make_directory(&self, path: &str, owner: (u32, u32)) -> Result<()> {
-        valid_path(path)?;
-        let (parent, name) = path.rsplit_once('/').unwrap_or(("", path));
-        let parent = self.directory(parent)?;
-        rustix::fs::mkdirat(&parent, name, Mode::from_raw_mode(0o700))
-            .map_err(std::io::Error::from)?;
-        let directory = self.directory(path)?;
-        owned(&directory, owner)?;
-        rustix::fs::fchmod(&directory, Mode::from_raw_mode(0o700)).map_err(std::io::Error::from)?;
-        Ok(())
-    }
-
-    pub(super) fn make_link(&self, path: &str, target: &str, owner: (u32, u32)) -> Result<()> {
-        valid_path(path)?;
-        valid_link(path, target)?;
-        let (parent, name) = path.rsplit_once('/').unwrap_or(("", path));
-        let parent = self.directory(parent)?;
-        rustix::fs::symlinkat(target, &parent, name).map_err(std::io::Error::from)?;
-        rustix::fs::chownat(
-            &parent,
-            name,
-            Some(rustix::fs::Uid::from_raw(owner.0)),
-            Some(rustix::fs::Gid::from_raw(owner.1)),
-            rustix::fs::AtFlags::SYMLINK_NOFOLLOW,
-        )
-        .map_err(std::io::Error::from)?;
-        Ok(())
-    }
-
-    pub(super) fn make_file(
-        &self,
-        path: &str,
-        size: u64,
-        executable: bool,
-        owner: (u32, u32),
-    ) -> Result<Restoring> {
-        valid_path(path)?;
-        let (parent, name) = path.rsplit_once('/').unwrap_or(("", path));
-        let parent = self.directory(parent)?;
-        let mode = Mode::from_raw_mode(if executable { 0o700 } else { 0o600 });
-        let fd = rustix::fs::openat(
-            &parent,
-            name,
-            OFlags::WRONLY | OFlags::CREATE | OFlags::EXCL | OFlags::NOFOLLOW | OFlags::CLOEXEC,
-            mode,
-        )
-        .map_err(std::io::Error::from)?;
-        let file = File::from(fd);
-        owned(&file, owner)?;
-        rustix::fs::fchmod(&file, mode).map_err(std::io::Error::from)?;
-        Ok(Restoring {
-            file,
-            remaining: size,
-        })
-    }
-
     pub(super) fn open(path: &Path) -> Result<Self> {
         let fd = rustix::fs::open(
             path,
@@ -184,41 +121,6 @@ impl Workspace {
         }
         Ok(directory)
     }
-}
-
-#[derive(Debug)]
-pub(super) struct Restoring {
-    file: File,
-    remaining: u64,
-}
-
-impl Restoring {
-    pub(super) fn append(&mut self, bytes: &[u8]) -> Result<()> {
-        if crate::byte_count(bytes.len()) > self.remaining {
-            return Err(error::config("checkpoint file exceeds declared size"));
-        }
-        self.file.write_all(bytes)?;
-        self.remaining -= crate::byte_count(bytes.len());
-        Ok(())
-    }
-
-    pub(super) fn finish(self) -> Result<()> {
-        if self.remaining != 0 {
-            return Err(error::config("checkpoint file is incomplete"));
-        }
-        self.file.sync_all()?;
-        Ok(())
-    }
-}
-
-fn owned(file: &impl std::os::fd::AsFd, owner: (u32, u32)) -> Result<()> {
-    rustix::fs::fchown(
-        file,
-        Some(rustix::fs::Uid::from_raw(owner.0)),
-        Some(rustix::fs::Gid::from_raw(owner.1)),
-    )
-    .map_err(std::io::Error::from)?;
-    Ok(())
 }
 
 pub(super) const fn size(entry: &Entry) -> u64 {

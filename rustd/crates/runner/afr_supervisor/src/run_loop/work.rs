@@ -144,7 +144,6 @@ impl Run<'_> {
                 af_wire::run::TurnWorkspace::ApiOnly,
                 None,
                 &self.interrupt,
-                None,
             )
             .await
             {

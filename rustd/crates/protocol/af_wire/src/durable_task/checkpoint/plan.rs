@@ -1,6 +1,7 @@
 //! Native plans, renewable pins and manifest publication.
 
 use crate::durable_task::DecisionDurableTaskVersion;
+use crate::runner::SandboxEngine;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
@@ -24,6 +25,21 @@ impl CheckpointMode {
             Self::Incremental => "incremental",
         }
     }
+}
+
+/// The sandbox a checkpoint's files were taken in. A restore lands them only
+/// in a sandbox of the same engine and guest agent image.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct CheckpointSandbox {
+    /// The engine that built it.
+    #[garde(skip)]
+    pub engine: SandboxEngine,
+    /// The SHA-256 of the image its guest agent booted from; absent for the
+    /// debug engine, whose guest agent runs in the runner's own process.
+    #[garde(inner(custom(super::digest)))]
+    pub guest_agent_digest: Option<String>,
 }
 
 /// Allocate immutable page identities before capture uploads.
@@ -69,6 +85,10 @@ pub struct CheckpointPlanInput {
     /// Pinned host-local toolbox, excluded from checkpoint bytes.
     #[garde(custom(super::digest))]
     pub toolbox_digest: String,
+    /// The sandbox the files were taken in; absent for a task that ran with
+    /// none.
+    #[garde(dive)]
+    pub sandbox: Option<CheckpointSandbox>,
     /// Ordered page identities to allocate.
     #[garde(range(min = 1, max = i32::MAX.unsigned_abs()))]
     pub page_count: u32,
@@ -133,6 +153,9 @@ pub struct CheckpointPlan {
     pub format_version: u32,
     /// Host-local toolbox compatibility.
     pub toolbox_digest: String,
+    /// The sandbox the files were taken in, which a restore lands them only
+    /// in; absent for a task that ran with none.
+    pub sandbox: Option<CheckpointSandbox>,
     /// Complete ordered pages; never an unbounded inline manifest.
     pub page_ids: Vec<String>,
     /// Verified retained base pages, read through the same scoped page resource.

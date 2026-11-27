@@ -81,6 +81,25 @@ impl Server {
         .await
     }
 
+    /// Answers each path `payloads` names with its body, one request after
+    /// another.
+    pub(in crate::recovery) async fn serving(payloads: BTreeMap<String, Vec<u8>>) -> Result<Self> {
+        let expected = payloads.len();
+        Self::configured(
+            Reply {
+                status: StatusCode::OK,
+                body: Vec::new(),
+                chunked: false,
+                headers: HeaderMap::new(),
+                payloads,
+                barrier: None,
+                refuse: None,
+            },
+            expected,
+        )
+        .await
+    }
+
     pub(in crate::recovery) async fn simultaneous(
         payloads: BTreeMap<String, Vec<u8>>,
     ) -> Result<Self> {

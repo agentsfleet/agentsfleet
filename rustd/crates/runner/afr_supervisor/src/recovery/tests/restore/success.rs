@@ -4,14 +4,12 @@ use super::*;
 async fn restore_verifies_base_and_overlay_before_writing_a_fresh_workspace() -> crate::Result<()> {
     let archive = overlay_archive();
     let (plane, mut calls, _) = remote(archive, |_, _| None);
-    let destination = tempfile::tempdir()?;
-    let owner = destination.path().metadata()?;
+    let lander = Lander::on(&toolbox()).await;
     let identity = id();
     let task = task();
     let restored = Restore {
         plane: &plane,
         transfers: &crate::recovery::Transfers::new()?,
-        permit: None,
         run: &identity,
         workspace: &identity,
         fence: FENCE,
@@ -19,17 +17,14 @@ async fn restore_verifies_base_and_overlay_before_writing_a_fresh_workspace() ->
         toolbox: &toolbox(),
         stop: &CancellationToken::new(),
     }
-    .run(
-        Some((destination.path().to_owned(), (owner.uid(), owner.gid()))),
-        std::future::ready(Ok(())),
-    )
+    .run(Some(lander.landing()))
     .await?;
     assert_eq!(restored.history.expose(), b"");
     assert_eq!(
         restored.base_paths,
         ["deleted", "deleted/old", "repo", "repo/kept"]
     );
-    assert_restored_files(&destination)?;
+    assert_restored_files(lander.workspace())?;
     assert_eq!(restored.plan.pin.resource_version, 2);
     let requests = drain(&mut calls).await;
     let requests_for = |verb| requests.iter().filter(|call| call.verb == verb).count();
@@ -54,7 +49,6 @@ async fn retained_base_inspection_returns_verified_paths_without_restoring_histo
     let paths = Restore {
         plane: &plane,
         transfers: &crate::recovery::Transfers::new()?,
-        permit: None,
         run: &identity,
         workspace: &identity,
         fence: FENCE,
@@ -104,19 +98,16 @@ fn overlay_archive() -> Archive {
     archive
 }
 
-fn assert_restored_files(destination: &tempfile::TempDir) -> crate::Result<()> {
-    assert!(!destination.path().join("deleted").exists());
-    assert_eq!(fs::read(destination.path().join("repo/kept"))?, b"");
+fn assert_restored_files(workspace: &std::path::Path) -> crate::Result<()> {
+    assert!(!workspace.join("deleted").exists());
+    assert_eq!(fs::read(workspace.join("repo/kept"))?, b"");
     assert_eq!(
-        fs::read_link(destination.path().join("repo/alias"))?.to_str(),
+        fs::read_link(workspace.join("repo/alias"))?.to_str(),
         Some("kept")
     );
-    assert_eq!(
-        fs::metadata(destination.path().join("repo/new"))?
-            .permissions()
-            .mode()
-            & 0o777,
-        0o700
-    );
+    let mode = fs::metadata(workspace.join("repo/new"))?
+        .permissions()
+        .mode();
+    assert_eq!(mode & 0o111, 0o111, "an executable lands executable");
     Ok(())
 }

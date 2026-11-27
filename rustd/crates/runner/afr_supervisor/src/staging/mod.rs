@@ -1,8 +1,8 @@
 //! Where a sandbox's files wait on the host on their way in or out.
 //!
-//! A repository is checked out here before it is imported, what a save's pin
-//! copied out of a workspace waits here before a checkpoint reads it, and a
-//! checkpoint is restored here before it is imported.
+//! A repository is checked out here before it is imported, and what a save's
+//! pin copied out of a workspace waits here before a checkpoint reads it. A
+//! checkpoint's restore packs its tree in a spool here on its way in.
 //!
 //! ```text
 //!   <home>/staging/<sandbox>-<random>/      one step's tree: 0700, the runner's,
@@ -45,8 +45,6 @@ const DETAIL_EXPORT: &str = "the workspace would not export into its stage";
 const DETAIL_OUTGROWN: &str = "the workspace's export outgrew the disk the run was granted";
 /// Why a stage could not be imported into the workspace.
 const DETAIL_IMPORT: &str = "the workspace refused a staged tree";
-/// Why a restore found the workspace already holding files.
-const DETAIL_NOT_EMPTY: &str = "checkpoint restore requires a fresh empty workspace";
 
 /// The directory every stage is made under.
 #[derive(Debug, Clone)]
@@ -120,16 +118,6 @@ impl Staged {
         self.dir.path()
     }
 
-    /// The user and group a file restored into the stage is written as: the
-    /// runner's own, since the import hands every file to the sandbox's user.
-    #[must_use]
-    pub fn owner() -> (u32, u32) {
-        (
-            rustix::process::getuid().as_raw(),
-            rustix::process::getgid().as_raw(),
-        )
-    }
-
     /// Packs what the stage holds under `at` and imports it at `at` in the
     /// workspace `agent` serves; `.` is the whole stage and workspace.
     ///
@@ -193,22 +181,6 @@ impl Staged {
             return Err(error::capture_limit(DETAIL_OUTGROWN));
         }
         Ok(())
-    }
-
-    /// Imports a restored stage into the workspace `agent` serves, which
-    /// must hold nothing yet: what lands is the checkpoint, nothing beside it.
-    ///
-    /// # Errors
-    /// The workspace holds files, or the import failed.
-    pub async fn restore(&self, agent: &dyn GuestAgent) -> Result<Imported> {
-        let listed = agent
-            .list_dir(WHOLE)
-            .await
-            .map_err(|source| error::boundary(DETAIL_IMPORT, source))?;
-        if !listed.entries.is_empty() || listed.truncated {
-            return Err(error::config(DETAIL_NOT_EMPTY));
-        }
-        self.import(agent, WHOLE).await
     }
 
     /// A spool beside the stage that no name reaches.

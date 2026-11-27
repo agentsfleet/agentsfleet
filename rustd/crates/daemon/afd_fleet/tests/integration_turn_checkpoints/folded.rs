@@ -100,6 +100,7 @@ async fn publish(files: &Files) -> Checked<(Box<TurnResume>, FoldRef)> {
 async fn commit_covering(files: &Files, fold: &FoldRef) -> Checked<Response> {
     let workspace = TurnWorkspace::Files {
         toolbox_digest: "a".repeat(64),
+        sandbox: super::sandbox(),
     };
     let history = history(files, workspace.clone(), fold)?;
     let Response::Begun(plan) = files

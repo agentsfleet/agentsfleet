@@ -20246,6 +20246,17 @@
             "type": "string",
             "description": "Repository identity selected by native task authority."
           },
+          "sandbox": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CheckpointSandbox",
+                "description": "The sandbox the files were taken in, which a restore lands them only\nin; absent for a task that ran with none."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "toolbox_digest": {
             "type": "string",
             "description": "Host-local toolbox compatibility."
@@ -20331,6 +20342,17 @@
             ],
             "description": "The generation this plan's pages are a delta against: the task's\ncurrent checkpoint. Absent for a full manifest."
           },
+          "sandbox": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CheckpointSandbox",
+                "description": "The sandbox the files were taken in; absent for a task that ran with\nnone."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "toolbox_digest": {
             "type": "string",
             "description": "Pinned host-local toolbox, excluded from checkpoint bytes."
@@ -20340,6 +20362,27 @@
             "format": "int64",
             "description": "Declared unique new content allowance, clamped natively by mode.\nBounded by its Postgres `BIGINT` column.",
             "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "CheckpointSandbox": {
+        "type": "object",
+        "description": "The sandbox a checkpoint's files were taken in. A restore lands them only\nin a sandbox of the same engine and guest agent image.",
+        "required": [
+          "engine"
+        ],
+        "properties": {
+          "engine": {
+            "$ref": "#/components/schemas/SandboxEngine",
+            "description": "The engine that built it."
+          },
+          "guest_agent_digest": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The SHA-256 of the image its guest agent booted from; absent for the\ndebug engine, whose guest agent runs in the runner's own process."
           }
         },
         "additionalProperties": false
@@ -29182,9 +29225,10 @@
           },
           {
             "type": "object",
-            "description": "A complete supported workspace captured under this toolbox.",
+            "description": "A complete supported workspace captured under this toolbox, in this\nsandbox.",
             "required": [
               "toolbox_digest",
+              "sandbox",
               "kind"
             ],
             "properties": {
@@ -29193,6 +29237,10 @@
                 "enum": [
                   "files"
                 ]
+              },
+              "sandbox": {
+                "$ref": "#/components/schemas/CheckpointSandbox",
+                "description": "The sandbox the files were taken in, which a restore lands them\nonly in."
               },
               "toolbox_digest": {
                 "type": "string",

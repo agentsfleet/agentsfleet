@@ -27,6 +27,7 @@ pub(super) fn code<T>(result: Checked<T>) -> Option<ErrorCode> {
 fn files_mode() -> TurnWorkspace {
     TurnWorkspace::Files {
         toolbox_digest: "a".repeat(64),
+        sandbox: super::sandbox(),
     }
 }
 

@@ -4,19 +4,21 @@ use super::*;
 use crate::{
     client::Verb,
     recovery::{progress::Progress, transfer::http_tests::server::Server},
-    test_support::{self, Answer},
+    test_support::{self, Answer, Lander},
 };
 use af_wire::durable_task::{
-    CheckpointAuthorizations, CheckpointFile, CheckpointObject, CheckpointObjectStatus,
-    CheckpointPlaintext, CheckpointTransfer,
+    CheckpointAuthorizations, CheckpointEntry, CheckpointFile, CheckpointObject,
+    CheckpointObjectStatus, CheckpointPage, CheckpointPlaintext, CheckpointTransfer,
 };
 use base64::Engine as _;
-use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
+use std::collections::BTreeMap;
+use std::os::unix::fs::PermissionsExt as _;
 use tokio_util::sync::CancellationToken;
 
 type TestResult<T = ()> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 const ID: &str = "019f0000-0000-7000-8000-000000000001";
 const OBJECT: &str = "019f0000-0000-7000-8000-000000000010";
+const PAGE: &str = "019f0000-0000-7000-8000-000000000011";
 const CONTENT: &[u8] = b"#!/bin/sh\nexit 0\n";
 
 fn encrypted(kind: &str) -> TestResult<(CheckpointObject, Vec<u8>)> {
@@ -65,6 +67,7 @@ fn plan(object: &CheckpointObject) -> CheckpointPlan {
         repository: object.repository.clone(),
         format_version: CHECKPOINT_FORMAT,
         toolbox_digest: "a".repeat(64),
+        sandbox: Some(test_support::recorded()),
         page_ids: vec![],
         base_page_ids: vec![],
         base_manifest_root: None,
@@ -88,9 +91,12 @@ fn plan(object: &CheckpointObject) -> CheckpointPlan {
     }
 }
 
+/// A daemon answering each object's authorization with `object` under
+/// `plan`, and its one manifest page with `page`.
 fn native(
     object: CheckpointObject,
     plan: CheckpointPlan,
+    page: Option<CheckpointPage>,
 ) -> TestResult<(ControlPlane, test_support::Calls)> {
     let response = serde_json::to_value(CheckpointAuthorizations {
         plan,
@@ -98,6 +104,7 @@ fn native(
     })?;
     Ok(test_support::plane(move |call| match call.verb {
         Verb::Progress => test_support::json(&serde_json::json!({})),
+        Verb::DurableTaskCheckpointPage if page.is_some() => test_support::json(&page),
         Verb::DurableTaskCheckpointAuthorizations => {
             let input = call.body.as_ref().and_then(|bytes| {
                 serde_json::from_slice::<CheckpointAuthorizationInput>(bytes).ok()
@@ -159,7 +166,7 @@ async fn repeated_manifest_ids_share_one_authorization_and_one_authenticated_dow
 {
     let (mut server, object) = server_object("history", true).await?;
     let plan = plan(&object);
-    let (plane, mut calls) = native(object, plan.clone())?;
+    let (plane, mut calls) = native(object, plan.clone(), None)?;
     let identity = Uuid7::parse(ID)?;
     let mut progress = Progress::default();
     let stop = CancellationToken::new();
@@ -198,7 +205,7 @@ async fn nonempty_history_is_decrypted_and_checked_against_its_manifest_root() -
         if !correct_root {
             plan.history_digest = Some("f".repeat(64));
         }
-        let (plane, _calls) = native(object, plan.clone())?;
+        let (plane, _calls) = native(object, plan.clone(), None)?;
         let identity = Uuid7::parse(ID)?;
         let mut progress = Progress::default();
         let stop = CancellationToken::new();
@@ -219,48 +226,58 @@ async fn nonempty_history_is_decrypted_and_checked_against_its_manifest_root() -
 }
 
 #[tokio::test]
-async fn nonempty_file_restore_preserves_exact_bytes_and_owner_only_executable_mode() -> TestResult
-{
+async fn nonempty_file_restore_preserves_exact_bytes_and_executable_mode() -> TestResult {
     let (server, object) = server_object("file", true).await?;
-    let plan = plan(&object);
-    let (plane, _calls) = native(object, plan.clone())?;
-    let identity = Uuid7::parse(ID)?;
-    let mut progress = Progress::default();
-    let stop = CancellationToken::new();
-    let mut session = session(&plane, &identity, plan, &mut progress, &stop, &server);
-    let root = tempfile::tempdir()?;
-    let metadata = root.path().metadata()?;
-    let entries = BTreeMap::from([
-        (
-            "repo".to_owned(),
+    let page = CheckpointPage {
+        page_number: 0,
+        entries: vec![
             CheckpointEntry::Directory {
                 path: "repo".to_owned(),
             },
-        ),
-        (
-            "repo/run.sh".to_owned(),
             CheckpointEntry::File(CheckpointFile {
                 path: "repo/run.sh".to_owned(),
                 executable: true,
                 size: crate::byte_count(CONTENT.len()),
                 objects: vec![OBJECT.to_owned()],
             }),
-        ),
-    ]);
-    session
-        .restore_files(
-            Some((root.path().to_owned(), (metadata.uid(), metadata.gid()))),
-            entries,
-            None,
-        )
-        .await?;
-    assert_eq!(std::fs::read(root.path().join("repo/run.sh"))?, CONTENT);
-    let restored = std::fs::metadata(root.path().join("repo/run.sh"))?;
-    assert_eq!(restored.permissions().mode() & 0o777, 0o700);
-    assert_eq!(
-        (restored.uid(), restored.gid()),
-        (metadata.uid(), metadata.gid())
+        ],
+        history_objects: Vec::new(),
+    };
+    let digest = af_core::etag::sha256_hex(&serde_json::to_vec(&page)?);
+    let mut plan = plan(&object);
+    plan.page_ids = vec![PAGE.to_owned()];
+    plan.manifest_root = Some(af_crypto::checkpoint_digest::manifest_root([(
+        PAGE,
+        digest.as_str(),
+    )]));
+    let (plane, _calls) = native(object, plan.clone(), Some(page))?;
+    let identity = Uuid7::parse(ID)?;
+    let mut progress = Progress::default();
+    let stop = CancellationToken::new();
+    let mut session = session(
+        &plane,
+        &identity,
+        plan.clone(),
+        &mut progress,
+        &stop,
+        &server,
     );
+    let lander = Lander::on(&plan.toolbox_digest).await;
+    let reading = TaskReading::new(&mut session);
+    land(
+        reading,
+        (identity.clone(), plan.generation),
+        lander.environment(),
+        lander.landing(),
+    )
+    .await?;
+    let restored = lander.workspace().join("repo/run.sh");
+    assert_eq!(std::fs::read(&restored)?, CONTENT);
+    assert_eq!(
+        std::fs::metadata(&restored)?.permissions().mode() & 0o111,
+        0o111
+    );
+    assert_eq!(session.progress.completed, 1);
     server.finish().await?;
     Ok(())
 }
@@ -270,7 +287,7 @@ async fn matching_ciphertext_descriptor_does_not_bypass_a_failed_authentication_
 {
     let (server, object) = server_object("history", false).await?;
     let plan = plan(&object);
-    let (plane, _calls) = native(object, plan.clone())?;
+    let (plane, _calls) = native(object, plan.clone(), None)?;
     let identity = Uuid7::parse(ID)?;
     let mut progress = Progress::default();
     let stop = CancellationToken::new();

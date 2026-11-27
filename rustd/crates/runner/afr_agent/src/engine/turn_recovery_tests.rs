@@ -139,6 +139,10 @@ fn changed_scope_workspace_digest_or_adopted_membership_refuses() -> crate::Resu
             4 => {
                 workspace = TurnWorkspace::Files {
                     toolbox_digest: "a".repeat(64),
+                    sandbox: af_wire::durable_task::CheckpointSandbox {
+                        engine: af_wire::runner::SandboxEngine::Firecracker,
+                        guest_agent_digest: None,
+                    },
                 }
             }
             5 => saved.history.push(b' '),

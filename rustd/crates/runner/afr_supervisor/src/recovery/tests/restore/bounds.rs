@@ -52,7 +52,6 @@ async fn assert_retained_case(fault: &str) -> crate::Result<()> {
     let error = Restore {
         plane: &plane,
         transfers: &crate::recovery::Transfers::new()?,
-        permit: None,
         run: &identity,
         workspace: &identity,
         fence: FENCE,
@@ -120,14 +119,12 @@ fn bounded_archive(fault: &str) -> crate::Result<Archive> {
 
 async fn assert_bounded(archive: Archive, expected: &str) -> crate::Result<()> {
     let (plane, mut calls, _) = remote(archive, |_, _| None);
-    let destination = tempfile::tempdir()?;
-    let owner = destination.path().metadata()?;
+    let lander = Lander::on(&toolbox()).await;
     let identity = id();
     let task = task();
     let error = Restore {
         plane: &plane,
         transfers: &crate::recovery::Transfers::new()?,
-        permit: None,
         run: &identity,
         workspace: &identity,
         fence: FENCE,
@@ -135,14 +132,11 @@ async fn assert_bounded(archive: Archive, expected: &str) -> crate::Result<()> {
         toolbox: &toolbox(),
         stop: &CancellationToken::new(),
     }
-    .run(
-        Some((destination.path().to_owned(), (owner.uid(), owner.gid()))),
-        std::future::ready(Ok(())),
-    )
+    .run(Some(lander.landing()))
     .await
     .unwrap_err();
     config_failure(&error, expected);
-    assert_eq!(fs::read_dir(destination.path())?.count(), 0);
+    assert_eq!(fs::read_dir(lander.workspace())?.count(), 0);
     let requests = drain(&mut calls).await;
     assert_eq!(
         requests

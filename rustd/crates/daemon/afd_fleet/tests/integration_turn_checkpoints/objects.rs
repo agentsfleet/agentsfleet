@@ -206,6 +206,7 @@ async fn a_restore_never_signs_an_unverified_chunk() -> Checked {
         &files.case,
         TurnWorkspace::Files {
             toolbox_digest: "a".repeat(64),
+            sandbox: super::sandbox(),
         },
     );
     let Action::Begin(input) = &mut command.action else {
@@ -213,6 +214,7 @@ async fn a_restore_never_signs_an_unverified_chunk() -> Checked {
     };
     input.workspace = TurnWorkspace::Files {
         toolbox_digest: "a".repeat(64),
+        sandbox: super::sandbox(),
     };
     input.history_digest = af_core::etag::sha256_hex(history.history.as_bytes());
     input.page_count = 1;

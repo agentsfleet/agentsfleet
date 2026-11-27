@@ -1,6 +1,8 @@
-//! Verify complete base and overlay roots before writing a fresh frozen workspace.
+//! Verify complete base and overlay roots, then land the tree through the
+//! sandbox's engine, before the task's history is trusted.
 
-use super::{Object, Session, transfer::Transfers, window};
+use super::source::{Custody as _, Landing, TaskReading, land};
+use super::{Object, Session, transfer::Transfers};
 use crate::{Result, client::ControlPlane, error};
 use af_core::id::Uuid7;
 use af_crypto::secret::SecretBytes;
@@ -8,17 +10,15 @@ use af_wire::activity::{
     DurableTaskActivityOperation as Operation, DurableTaskActivityPhase as Phase,
 };
 use af_wire::durable_task::{
-    CHECKPOINT_FORMAT, CheckpointAuthorizationInput, CheckpointEntry, CheckpointMode,
-    CheckpointPlan, CheckpointTransferPurpose, DecisionDurableTaskVersion, DurableTaskContext,
+    CHECKPOINT_FORMAT, CheckpointAuthorizationInput, CheckpointMode, CheckpointPlan,
+    CheckpointTransferPurpose, DecisionDurableTaskVersion, DurableTaskContext,
 };
-use std::{collections::BTreeMap, path::PathBuf};
 use zeroize::Zeroizing;
 
 #[derive(Debug)]
 pub(crate) struct Restore<'a> {
     pub(crate) plane: &'a ControlPlane,
     pub(crate) transfers: &'a Transfers,
-    pub(crate) permit: Option<&'a afr_agent::FileRecoveryPermit>,
     pub(crate) run: &'a Uuid7,
     pub(crate) workspace: &'a Uuid7,
     pub(crate) fence: u64,
@@ -103,14 +103,10 @@ impl Restore<'_> {
         Ok(entries.into_entries().into_keys().collect())
     }
 
-    /// Restores into `destination`, then runs `install` (what moves the
-    /// restored files into the sandbox), and only then reports the restore
-    /// done: a restore whose install fails is reported failed.
-    pub(crate) async fn run<Installed>(
-        &self,
-        destination: Option<(PathBuf, (u32, u32))>,
-        install: impl Future<Output = Result<Installed>>,
-    ) -> Result<Restored> {
+    /// Restores into `landing`'s sandbox, or with none a checkpoint that
+    /// holds no file, and only then reports the restore done: a restore whose
+    /// landing fails is reported failed.
+    pub(crate) async fn run(&self, landing: Option<Landing<'_>>) -> Result<Restored> {
         let activity = af_crypto::entropy::Entropy::new()
             .uuid7(af_core::clock::now())?
             .to_string();
@@ -125,10 +121,7 @@ impl Restore<'_> {
         )
         .await;
         let mut progress = super::progress::Progress::default();
-        let restored = match self.restore(&activity, &mut progress, destination).await {
-            Ok(restored) => install.await.map(|_installed| restored),
-            Err(failure) => Err(failure),
-        };
+        let restored = self.restore(&activity, &mut progress, landing).await;
         let phase = if restored.is_ok() {
             Phase::Restored
         } else {
@@ -179,7 +172,7 @@ impl Restore<'_> {
         &self,
         activity: &str,
         progress: &mut super::progress::Progress,
-        destination: Option<(PathBuf, (u32, u32))>,
+        landing: Option<Landing<'_>>,
     ) -> Result<Restored> {
         let checkpoint = Uuid7::parse(
             self.task
@@ -206,6 +199,14 @@ impl Restore<'_> {
             )
             .await?;
         let plan = self.checked_plan(&checkpoint, response)?;
+        let generation = plan.generation;
+        // Read only where files land: a task that ran with no sandbox lands
+        // none.
+        let taken = plan
+            .sandbox
+            .as_ref()
+            .map(|sandbox| super::taken::environment(&plan.toolbox_digest, sandbox))
+            .ok_or_else(|| error::config("checkpoint was taken in no sandbox"));
         let mut session = Session {
             plane: self.plane,
             run: self.run,
@@ -221,10 +222,17 @@ impl Restore<'_> {
         session
             .progress(Operation::Restore, Phase::Verifying, None)
             .await;
-        let (entries, history_ids, base_paths) = session.manifest().await?;
-        session
-            .restore_files(destination, entries, self.permit)
-            .await?;
+        let mut reading = TaskReading::new(&mut session);
+        if let Some(landing) = landing {
+            reading = land(reading, (checkpoint, generation), taken?, landing).await?;
+        } else if !reading.tree().await?.entries().is_empty() {
+            return Err(error::config("checkpoint files require a workspace"));
+        }
+        let TaskReading {
+            history: history_ids,
+            base_paths,
+            ..
+        } = reading;
         let history = session.history(history_ids).await?;
         Ok(Restored {
             plan: session.plan,
@@ -235,39 +243,6 @@ impl Restore<'_> {
 }
 
 impl Session<'_> {
-    async fn restore_files(
-        &mut self,
-        destination: Option<(PathBuf, (u32, u32))>,
-        entries: BTreeMap<String, CheckpointEntry>,
-        permit: Option<&afr_agent::FileRecoveryPermit>,
-    ) -> Result<()> {
-        super::links::validate(entries.values().filter_map(|entry| match entry {
-            CheckpointEntry::Symlink { path, target } => Some((path.as_str(), target.as_str())),
-            CheckpointEntry::File(_)
-            | CheckpointEntry::Directory { .. }
-            | CheckpointEntry::Remove { .. } => None,
-        }))?;
-        let Some((path, owner)) = destination else {
-            return if entries.is_empty() {
-                Ok(())
-            } else {
-                Err(error::config("checkpoint files require a workspace"))
-            };
-        };
-        window::apply(self, (path, owner), entries, permit, |session, ids| {
-            Box::pin(async move {
-                if ids.is_empty() {
-                    session.renew().await?;
-                    return Ok(Vec::new());
-                }
-                let chunks = session.download_batch(ids).await?;
-                session.renew().await?;
-                Ok(chunks)
-            })
-        })
-        .await
-    }
-
     async fn history(&mut self, ids: Vec<String>) -> Result<SecretBytes> {
         let mut history = Zeroizing::new(Vec::new());
         let mut digests = Vec::new();

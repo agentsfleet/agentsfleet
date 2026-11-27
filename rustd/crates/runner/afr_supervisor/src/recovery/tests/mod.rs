@@ -8,7 +8,6 @@ mod layout;
 mod restore;
 mod session;
 mod turn_ack;
-mod window;
 
 use crate::client::{Call, ControlPlane, Verb};
 use crate::test_support::{Answer, Calls, json, plane};
@@ -35,6 +34,14 @@ const FENCE: u64 = 31;
 
 fn toolbox() -> String {
     "a".repeat(64)
+}
+
+/// Where the fixture's files are taken: its toolbox, in a fake sandbox.
+fn taken() -> crate::recovery::Taken {
+    crate::recovery::Taken {
+        toolbox: toolbox(),
+        sandbox: Some(crate::test_support::recorded()),
+    }
 }
 
 fn task() -> DurableTaskContext<'static> {
@@ -72,6 +79,7 @@ fn plan() -> CheckpointPlan {
         repository: "owner/repository".to_owned(),
         format_version: CHECKPOINT_FORMAT,
         toolbox_digest: toolbox(),
+        sandbox: Some(crate::test_support::recorded()),
         page_ids: vec![PAGE.to_owned()],
         base_page_ids: vec![],
         base_manifest_root: None,

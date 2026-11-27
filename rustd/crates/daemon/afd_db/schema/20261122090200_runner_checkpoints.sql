@@ -16,6 +16,11 @@ CREATE TABLE runner.checkpoints (
     cipher TEXT NOT NULL,
     -- NULL for an API-only turn: it saves no files.
     toolbox_digest TEXT,
+    -- The sandbox the files were taken in, which a restore lands them only in: its engine and
+    -- the SHA-256 of the image its guest agent booted from. NULL engine when no sandbox ran;
+    -- NULL digest for the debug engine, whose guest agent runs in the runner's own process.
+    engine TEXT,
+    guest_agent_digest TEXT,
     page_ids UUID[] NOT NULL,
     upload_budget_bytes BIGINT NOT NULL CHECK (upload_budget_bytes >= 0),
     uploaded_bytes BIGINT NOT NULL CHECK (uploaded_bytes >= 0),
@@ -67,6 +72,9 @@ CREATE TABLE runner.checkpoints (
         toolbox_digest IS NOT NULL AND cardinality(page_ids) > 0)),
     CONSTRAINT ck_checkpoints_api_only CHECK (toolbox_digest IS NOT NULL OR (
         cardinality(page_ids) = 0 AND logical_bytes = 0 AND entry_count = 0 AND upload_budget_bytes = 0)),
+    CONSTRAINT ck_checkpoints_sandbox CHECK ((engine IS NULL OR toolbox_digest IS NOT NULL)
+        AND (guest_agent_digest IS NULL OR engine IS NOT NULL)),
+    CONSTRAINT ck_checkpoints_turn_sandbox CHECK (turn_id IS NULL OR (toolbox_digest IS NULL) = (engine IS NULL)),
     CONSTRAINT ck_checkpoints_uploaded_within_budget CHECK (uploaded_bytes <= upload_budget_bytes),
     CONSTRAINT ck_checkpoints_folds CHECK (
         (covered_fold_ids IS NULL) = (covered_fold_sequences IS NULL)

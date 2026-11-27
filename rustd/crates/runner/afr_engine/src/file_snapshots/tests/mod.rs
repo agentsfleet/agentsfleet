@@ -18,6 +18,7 @@ use crate::error::SnapshotRefusal;
 use crate::network::Network;
 
 mod guest;
+mod restore;
 
 /// The disk a test's sandbox was granted.
 const DISK: u64 = 1 << 20;

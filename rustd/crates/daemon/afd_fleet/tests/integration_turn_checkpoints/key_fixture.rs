@@ -81,6 +81,7 @@ pub(super) async fn begun(
 )> {
     let workspace = TurnWorkspace::Files {
         toolbox_digest: "a".repeat(64),
+        sandbox: super::sandbox(),
     };
     let history = root(&files.case, workspace.clone());
     let bytes: usize = contents.iter().map(|content| content.len()).sum();

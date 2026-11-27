@@ -1,6 +1,7 @@
 //! The fake guest agent as the sandbox around it, and the snapshots it
 //! offers when a test hands it some.
 
+use af_chunk_store::ChunkSource;
 use af_core::id::Uuid7;
 use af_wire::runner::SandboxEngine;
 use afr_guest_client::GuestAgent;
@@ -87,6 +88,14 @@ impl Snapshots for Guest {
 
     async fn restore(&self, snapshot: &SnapshotRef) -> crate::Result<()> {
         self.served().restore(self, snapshot).await
+    }
+
+    async fn restore_from(
+        &self,
+        snapshot: &SnapshotRef,
+        source: &dyn ChunkSource,
+    ) -> crate::Result<()> {
+        self.served().restore_from(self, snapshot, source).await
     }
 
     async fn forget(&self, snapshot: &SnapshotRef) -> crate::Result<()> {

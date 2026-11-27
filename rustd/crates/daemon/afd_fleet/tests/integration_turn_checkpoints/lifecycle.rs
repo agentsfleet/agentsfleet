@@ -22,6 +22,7 @@ fn modes() -> [TurnWorkspace; 2] {
         TurnWorkspace::ApiOnly,
         TurnWorkspace::Files {
             toolbox_digest: "a".repeat(64),
+            sandbox: super::sandbox(),
         },
     ]
 }

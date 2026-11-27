@@ -119,10 +119,14 @@ async fn insert(
     pages: &[Uuid7],
     cipher: &'static str,
 ) -> Result<()> {
-    let toolbox = match &input.workspace {
-        TurnWorkspace::ApiOnly => None,
-        TurnWorkspace::Files { toolbox_digest } => Some(toolbox_digest),
+    let (toolbox, sandbox) = match &input.workspace {
+        TurnWorkspace::ApiOnly => (None, None),
+        TurnWorkspace::Files {
+            toolbox_digest,
+            sandbox,
+        } => (Some(toolbox_digest), Some(sandbox)),
     };
+    let (engine, guest_agent) = crate::durable_task::checkpoint::sandbox::columns(sandbox);
     sqlx::query(include_str!("sql/plan_insert.sql"))
         .bind(id)
         .bind(&owner.current.turn_id)
@@ -148,6 +152,8 @@ async fn insert(
         .bind(owner.limits.transfer_seconds())
         .bind(cipher)
         .bind(input.parent.as_ref().map(guard::id).transpose()?)
+        .bind(engine)
+        .bind(guest_agent)
         .execute(&mut *owner.tx)
         .await
         .map_err(query("persist complete turn capture plan"))?;

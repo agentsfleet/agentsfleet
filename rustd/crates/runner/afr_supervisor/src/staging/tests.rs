@@ -165,10 +165,9 @@ async fn test_checkout_fills_a_workspace_the_host_cannot_see() {
     let captured = staging.stage(first.id()).unwrap();
     captured.export(first.agent(), DISK).await.unwrap();
     let second = Served::start(&sandboxes).await;
-    captured.restore(second.agent()).await.unwrap();
+    captured.import(second.agent(), ".").await.unwrap();
     let restored = staging.stage(second.id()).unwrap();
     restored.export(second.agent(), DISK).await.unwrap();
-    let refused = captured.restore(second.agent()).await;
     first.stop().await;
     second.stop().await;
 
@@ -190,11 +189,6 @@ async fn test_checkout_fills_a_workspace_the_host_cannot_see() {
         "the workspace holds the base head"
     );
     assert_eq!(git(&copy, &["status", "--porcelain"]), "", "a clean tree");
-    assert_eq!(
-        test_support::detail(&refused),
-        Some("checkpoint restore requires a fresh empty workspace"),
-        "a restore lands only in an empty workspace"
-    );
     let stage = captured.path().to_owned();
     drop(captured);
     assert!(!stage.exists(), "a stage goes when its step ends");

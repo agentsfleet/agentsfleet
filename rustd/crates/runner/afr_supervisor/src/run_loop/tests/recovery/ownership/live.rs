@@ -116,7 +116,8 @@ async fn a_ready_sandbox_names_its_toolbox_and_one_without_one_is_unavailable() 
             Some(digest) => assert_eq!(
                 named,
                 Ok(af_wire::run::TurnWorkspace::Files {
-                    toolbox_digest: digest
+                    toolbox_digest: digest,
+                    sandbox: test_support::recorded(),
                 })
             ),
             None => assert_eq!(named, Err(RecoverySkip::Unavailable)),

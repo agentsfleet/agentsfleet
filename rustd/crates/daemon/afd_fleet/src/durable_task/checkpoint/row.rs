@@ -37,6 +37,10 @@ pub(super) struct Plan {
     /// The cipher this plan's new objects are sealed under, as recorded.
     pub cipher: String,
     pub toolbox_digest: String,
+    /// The engine the files were taken in; none when the task ran with no
+    /// sandbox.
+    pub engine: Option<String>,
+    pub guest_agent_digest: Option<String>,
     pub page_count: i32,
     pub page_ids: Vec<Uuid7>,
     pub upload_budget_bytes: i64,
@@ -126,6 +130,11 @@ impl Plan {
             repository: self.repository.clone(),
             format_version: small_counter(self.format_version, "checkpoint format_version")?,
             toolbox_digest: self.toolbox_digest.clone(),
+            sandbox: super::sandbox::recorded(
+                self.engine.as_deref(),
+                self.guest_agent_digest.as_deref(),
+                DurableTaskRefusal::CheckpointIncompatible,
+            )?,
             page_ids: self.page_ids.iter().cloned().map(String::from).collect(),
             base_page_ids: self
                 .base_page_ids

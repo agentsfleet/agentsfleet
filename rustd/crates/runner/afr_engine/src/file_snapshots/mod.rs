@@ -6,23 +6,25 @@
 //!   quiesce(parent)  pause ─► pin(parent) ─► resume        tenant code held only here
 //!   publish(q, id)   changes ─► the store ─► release(q, id)  after it runs on
 //!   take(id)         quiesce(last) ─► publish
-//!   restore(ref)   environment? ─► tree ─► pack ─► renew ─► import
+//!   restore(ref)   restore_from(ref, the store)
+//!   restore_from(ref, source)  environment? ─► tree ─► pack ─► renew ─► import
 //!   forget(ref)    the store stops naming it
 //! ```
 //!
 //! [`quiesce_workspace`] is the one way the supervisor holds a workspace for
-//! a save: a sandbox's snapshots where its engine offers them, the same guest
-//! agent walk otherwise.
+//! a save, and [`restore_workspace`] the one way it lands a saved tree: a
+//! sandbox's snapshots where its engine offers them, the same guest agent
+//! calls otherwise.
 //!
 //! A restore refuses a ref from another environment before it reads the
-//! store, and reads every chunk before the guest agent renews: a restore that
-//! cannot read its tree leaves the workspace as it was. The engine reads its
-//! egress plan back after, since only it holds the plan.
+//! source, and reads every chunk before the guest agent renews: a restore
+//! that cannot read its tree leaves the workspace as it was. The engine reads
+//! its egress plan back after, since only it holds the plan.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use af_chunk_store::ChunkStore;
+use af_chunk_store::{ChunkSource, ChunkStore};
 use af_core::id::Uuid7;
 use futures_util::StreamExt as _;
 
@@ -32,9 +34,11 @@ use crate::error::{Result, SnapshotRefusal, snapshot_refused};
 
 mod bounded;
 mod pack;
+mod restore;
 mod volume;
 
 pub use self::bounded::Bounded;
+pub use self::restore::restore_workspace;
 pub use self::volume::{FREEZE_TENANT, GuestPin, GuestVolume};
 
 /// Where an import lands a restored tree: the whole workspace.
@@ -119,29 +123,36 @@ impl FileSnapshots {
         self.publish(sandbox, quiesced, id).await
     }
 
-    /// Replaces `sandbox`'s workspace with what `snapshot` saved, ending
-    /// every process of the environment before it.
+    /// Replaces `sandbox`'s workspace with what `snapshot` saved into the
+    /// store, as [`FileSnapshots::restore_from`] does.
     ///
     /// # Errors
-    /// `snapshot` was taken on another environment, refused before the store
-    /// is read; no store; the store names another generation under its
-    /// identifier, or none; or a read, the renewal or the import failed.
+    /// `snapshot` was taken on another environment, refused before anything
+    /// else; no store; or as [`FileSnapshots::restore_from`].
     pub async fn restore(&self, sandbox: &dyn Sandbox, snapshot: &SnapshotRef) -> Result<()> {
         snapshot.restores_on(sandbox.environment())?;
-        let store = self.store()?;
-        let stored = store.tree(snapshot.id()).await?;
-        if stored.generation != snapshot.generation() {
-            return Err(snapshot_refused(SnapshotRefusal::Generation));
-        }
-        let packed = pack::pack(&stored.tree, &**store, &self.spools).await?;
+        self.restore_from(sandbox, snapshot, &**self.store()?).await
+    }
+
+    /// Replaces `sandbox`'s workspace with what `snapshot` saved into
+    /// `source`, ending every process of the environment before it.
+    ///
+    /// # Errors
+    /// `snapshot` was taken on another environment, refused before `source`
+    /// is read; `source` names another generation under its identifier, or
+    /// none; or a read, the renewal or the import failed.
+    pub async fn restore_from(
+        &self,
+        sandbox: &dyn Sandbox,
+        snapshot: &SnapshotRef,
+        source: &dyn ChunkSource,
+    ) -> Result<()> {
+        let packed = restore::packed(sandbox, &self.spools, snapshot, source).await?;
         let agent = sandbox.agent();
         agent.renew().await?;
         // The renewed workspace holds nothing the last take's pin saw.
         *self.last() = None;
-        agent
-            .import(WHOLE, &mut tokio::fs::File::from_std(packed))
-            .await?;
-        Ok(())
+        restore::import(agent, packed).await
     }
 
     /// Drops `snapshot` from the store; the next take is whole when it was

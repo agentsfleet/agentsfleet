@@ -1,8 +1,12 @@
-//! What sealing or checking a chunk refuses.
+//! What sealing or checking a chunk refuses, and a source that could not
+//! answer.
 //!
 //! A refusal reads, on the host's journal, as the checkpoint being
 //! incompatible with its registration, the code a restore that cannot use a
 //! checkpoint already logs; nothing here is a tenant's or a client's to read.
+//! A [`crate::ChunkSource`] another crate implements fails as
+//! [`unavailable`], under its own failure's code: the failure itself stays
+//! with the source's owner, which answers its caller with it.
 
 use af_core::error_code::{self, ErrorCode};
 
@@ -41,6 +45,14 @@ pub(crate) enum ErrorKind {
         source: af_core::error::Error,
     },
 
+    /// A source another crate implements could not answer; its owner holds
+    /// the failure.
+    #[error("the chunk source could not answer")]
+    Unavailable {
+        /// The source's own failure's code.
+        code: ErrorCode,
+    },
+
     /// The key or the nonce is not base64.
     #[error("{detail}")]
     Encoding {
@@ -66,6 +78,7 @@ impl Error {
             | ErrorKind::Crypto { .. }
             | ErrorKind::Identifier { .. }
             | ErrorKind::Encoding { .. } => error_code::RUN_CHECKPOINT_INCOMPATIBLE,
+            ErrorKind::Unavailable { code } => *code,
         }
     }
 }
@@ -73,6 +86,12 @@ impl Error {
 /// A check that failed: `detail` says which.
 pub(crate) fn refused(detail: &'static str) -> Error {
     ErrorKind::Refused { detail }.into()
+}
+
+/// A source that could not answer, under its own failure's `code`.
+#[must_use]
+pub fn unavailable(code: ErrorCode) -> Error {
+    ErrorKind::Unavailable { code }.into()
 }
 
 /// A base64 value that would not decode.

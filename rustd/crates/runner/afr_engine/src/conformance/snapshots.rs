@@ -188,8 +188,9 @@ pub(super) async fn unknown(engine: &dyn Engine, context: &Context<'_>) -> Resul
 }
 
 /// A ref naming another toolbox, another guest agent or the debug engine's
-/// host root is refused naming `environment`, with no chunk read and the
-/// workspace as it was.
+/// host root is refused naming `environment`, from the build's store or a
+/// source handed to the restore, with no chunk read and the workspace as it
+/// was.
 pub(super) async fn never_crosses_environments(
     engine: &dyn Engine,
     context: &Context<'_>,
@@ -205,6 +206,8 @@ pub(super) async fn never_crosses_environments(
         for crossed in crossings(&taken) {
             let refused = snapshots.restore(&crossed).await.err();
             answers.push(refused.and_then(|refused| refused.snapshot_refusal()));
+            let handed = snapshots.restore_from(&crossed, &**context.store).await;
+            answers.push(handed.err().and_then(|refused| refused.snapshot_refusal()));
         }
         let read = context.store.reads() - reads;
         let later = agent.read_file(LATER_FILE, FILE_BYTES).await;
@@ -256,8 +259,9 @@ fn crossings(taken: &SnapshotRef) -> Vec<SnapshotRef> {
         .collect()
 }
 
-/// A snapshot taken under plan 3 and restored while plan 4 is in force
-/// leaves plan 4 in force: plan 3 is then refused as stale, naming 4.
+/// A snapshot taken under plan 3 and restored, from a source handed to the
+/// restore as a run's own checkpoint is, while plan 4 is in force leaves
+/// plan 4 in force: plan 3 is then refused as stale, naming 4.
 pub(super) async fn never_an_older_plan(
     engine: &dyn Engine,
     context: &Context<'_>,
@@ -266,7 +270,9 @@ pub(super) async fn never_an_older_plan(
         sandbox.egress(isolated(TAKEN_UNDER)).await?;
         let snapshot = held(sandbox)?.take(fresh_sandbox_id()).await?;
         sandbox.egress(isolated(IN_FORCE)).await?;
-        held(sandbox)?.restore(&snapshot).await?;
+        held(sandbox)?
+            .restore_from(&snapshot, &**context.store)
+            .await?;
         let refusal = sandbox.egress(isolated(TAKEN_UNDER)).await.err();
         held(sandbox)?.forget(&snapshot).await?;
         let refusal = refusal.and_then(|refused| refused.egress_refusal().cloned());

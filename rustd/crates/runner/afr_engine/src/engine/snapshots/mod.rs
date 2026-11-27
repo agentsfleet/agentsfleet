@@ -11,6 +11,7 @@
 //!                    yes ─► the saved tree
 //! ```
 
+use af_chunk_store::ChunkSource;
 use af_core::id::Uuid7;
 
 use super::Environment;
@@ -96,6 +97,7 @@ impl SnapshotRef {
 ///   quiesce(parent) ─► the fleet runs on ─► publish(quiesced, id)   the store's
 ///                                       └─► the daemon's publication, then release
 ///   take(id) = quiesce(the last take) + publish
+///   restore(ref) = restore_from(ref, the store the build was handed)
 /// ```
 #[async_trait::async_trait]
 pub trait Snapshots: Send + Sync {
@@ -126,16 +128,24 @@ pub trait Snapshots: Send + Sync {
     /// The save could not be made; nothing is kept under `id`.
     async fn take(&self, id: Uuid7) -> Result<SnapshotRef>;
 
-    /// Replaces the sandbox's files with what `snapshot` saved, and ends every
-    /// process that ran before it: nothing of the old environment survives.
-    /// It returns once the sandbox's egress plan reads back in force, so no
-    /// restore brings back a plan older than the one the run holds.
+    /// Replaces the sandbox's files with what `snapshot` saved into the store
+    /// its build was handed, as [`Snapshots::restore_from`] does.
+    ///
+    /// # Errors
+    /// As [`Snapshots::restore_from`], or the build was handed no store.
+    async fn restore(&self, snapshot: &SnapshotRef) -> Result<()>;
+
+    /// Replaces the sandbox's files with what `snapshot` saved into `source`,
+    /// and ends every process that ran before it: nothing of the old
+    /// environment survives. It returns once the sandbox's egress plan reads
+    /// back in force, so no restore brings back a plan older than the one the
+    /// run holds.
     ///
     /// # Errors
     /// `snapshot` was taken on another environment, refused before anything
-    /// is read; it names none this sandbox's store holds; or the restore
-    /// failed.
-    async fn restore(&self, snapshot: &SnapshotRef) -> Result<()>;
+    /// is read; `source` names another generation under its identifier, or
+    /// none; or the restore failed.
+    async fn restore_from(&self, snapshot: &SnapshotRef, source: &dyn ChunkSource) -> Result<()>;
 
     /// Drops `snapshot`; a later restore of it is refused.
     ///

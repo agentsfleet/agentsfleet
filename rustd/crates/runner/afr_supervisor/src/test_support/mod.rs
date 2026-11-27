@@ -31,6 +31,7 @@ use tokio::time::Instant;
 mod daemon;
 mod fixtures;
 mod git_fixture;
+mod landing;
 mod resolver;
 mod rig;
 mod sandbox;
@@ -40,6 +41,7 @@ pub(crate) use self::daemon::{
 };
 pub(crate) use self::fixtures::{healthy, payload, report_body};
 pub(crate) use self::git_fixture::{FIRST_README, FIXTURE_BRANCH, commit, git, head, repository};
+pub(crate) use self::landing::{Lander, recorded};
 pub(crate) use self::resolver::{Stalled, assigned};
 pub(crate) use self::rig::{Rig, daemon, position, reported};
 pub(crate) use self::sandbox::{
@@ -239,8 +241,7 @@ async fn exercise(agent: &dyn GuestAgent) {
     assert!(agent.kill(id).await.is_ok());
     assert!(agent.read_file("a", 1).await.is_ok());
     assert!(agent.write_file("a", Bytes::new()).await.is_ok());
-    let entries = agent.list_dir("/").await.unwrap().entries;
-    assert!(entries.is_empty(), "{entries:?}");
+    assert!(agent.list_dir("/").await.is_ok());
 }
 
 /// What [`Behaviour::Stops`] and [`Behaviour::Spends`] spend before the run

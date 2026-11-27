@@ -163,6 +163,7 @@ fn request_digest(input: &CheckpointPlanInput) -> Result<String> {
             &input.commit_oid,
             input.format_version,
             &input.toolbox_digest,
+            &input.sandbox,
             input.page_count,
             input.upload_budget_bytes,
             input.logical_bytes,
@@ -206,6 +207,7 @@ async fn allocate(
     let ready_base = base
         .as_ref()
         .filter(|base| input.mode == CheckpointMode::RetainBase && base.ready);
+    let (engine, guest_agent) = super::sandbox::columns(input.sandbox.as_ref());
     sqlx::query(include_str!("sql/plan_insert.sql"))
         .bind(&id)
         .bind(task)
@@ -256,6 +258,8 @@ async fn allocate(
                 .map(durable_task_guard::wire)
                 .transpose()?,
         )
+        .bind(engine)
+        .bind(guest_agent)
         .execute(&mut *connection)
         .await
         .map_err(query("persist native checkpoint plan"))?;

@@ -7,8 +7,8 @@ use std::io::Read as _;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use af_core::id::Uuid7;
-use af_guest_wire::Imported;
 use af_guest_wire::protocol::PinWalked;
+use af_guest_wire::{DirEntry, EntryKind, Imported, Listing};
 use afr_guest_client::{GuestAgent, Process, ProcessId, Spawn};
 use bytes::Bytes;
 use tar::{Archive, Builder, EntryType, Header};
@@ -60,6 +60,8 @@ pub(super) enum Fault {
     NoLeaf,
     /// It has no tenant leaf, and a tenant runs.
     NoLeafBusy,
+    /// Its listing of the workspace holds more than it answers.
+    Crowded,
 }
 
 /// The fake guest agent and the sandbox around it, with the failures a test
@@ -159,7 +161,7 @@ impl GuestAgent for Guest {
         match self.fault {
             Fault::NoLeaf | Fault::NoLeafBusy => return Err(af_guest_wire::error::no_tenant_leaf()),
             Fault::FreezeFails | Fault::Stuck => return Err(refused()),
-            Fault::None | Fault::ReleaseFails => {}
+            Fault::None | Fault::ReleaseFails | Fault::Crowded => {}
         }
         self.held().frozen += 1;
         Ok(())
@@ -225,6 +227,25 @@ impl GuestAgent for Guest {
             return Err(refused());
         }
         Ok(())
+    }
+
+    /// The workspace's top-level names, as a listing of `.` answers them.
+    async fn list_dir(&self, _path: &str) -> af_guest_wire::Result<Listing> {
+        let entries = self
+            .held()
+            .nodes
+            .keys()
+            .filter(|path| !path.contains('/'))
+            .map(|name| DirEntry {
+                name: name.clone(),
+                kind: EntryKind::Other,
+                size: 0,
+            })
+            .collect();
+        Ok(Listing {
+            entries,
+            truncated: self.fault == Fault::Crowded,
+        })
     }
 
     async fn renew(&self) -> af_guest_wire::Result<()> {

@@ -1,15 +1,17 @@
 //! The same fresh sandbox supplies the file destination and the restored root witness;
-//! its files are restored into a stage and imported before anything is adopted.
+//! its files land through its engine before anything is adopted.
 
 use std::panic::AssertUnwindSafe;
 
-use af_wire::run::TurnWorkspace;
 use afr_engine::Sandbox;
 use futures_util::FutureExt as _;
 
 use super::recovery::prove_quiescent;
 use super::{Run, build::Build, recovery::State};
-use crate::{Result, error, recovery::NativeTurn};
+use crate::{
+    Result, error,
+    recovery::{Landing, NativeTurn, Taken},
+};
 
 impl Run<'_> {
     pub(super) async fn prepare_turn_recovery(
@@ -17,16 +19,15 @@ impl Run<'_> {
         sandbox: &dyn Sandbox,
         build: &Build<'_>,
     ) -> Result<()> {
-        let toolbox = sandbox
-            .environment()
-            .root
-            .toolbox()
+        let actual = Taken::turn_workspace(sandbox.environment())
             .ok_or_else(|| error::config("ordinary restore has no verified toolbox"))?;
-        let actual = TurnWorkspace::Files {
-            toolbox_digest: toolbox.to_owned(),
+        // Held until the files land: it bounds the restores the host runs
+        // at once.
+        let _permit = self.lessee.recovery.file(build.stop).await?;
+        let landing = Landing {
+            sandbox,
+            spools: self.lessee.staging.root(),
         };
-        let permit = self.lessee.recovery.file(build.stop).await?;
-        let staged = self.lessee.staging.stage(sandbox.id())?;
         let restoring = async {
             prove_quiescent(sandbox).await?;
             NativeTurn::new(
@@ -35,13 +36,7 @@ impl Run<'_> {
                 self.payload.fencing_token,
                 &self.lessee.recovery.transfers,
             )
-            .restore(
-                self.payload,
-                actual,
-                Some((&staged, sandbox.agent())),
-                &self.interrupt,
-                Some(&permit),
-            )
+            .restore(self.payload, actual, Some(landing), &self.interrupt)
             .await
         };
         let turn = AssertUnwindSafe(restoring)

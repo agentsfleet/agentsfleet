@@ -17,6 +17,7 @@ fn assigned() -> Result<Fixture> {
             turn_id: CheckpointOperationId(fixture.run.event.turn_id.to_string()),
             workspace: TurnWorkspace::Files {
                 toolbox_digest: api_toolbox(),
+                sandbox: test_support::recorded(),
             },
         },
         manifest_root: "a".repeat(64),

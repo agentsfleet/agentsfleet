@@ -18,7 +18,7 @@ mod store;
 
 pub use self::chain::{MAX_ENTRIES, Resolved};
 pub use self::change::{Change, ChunkKey};
-pub use self::error::{Error, Result};
+pub use self::error::{Error, Result, unavailable};
 #[cfg(any(test, feature = "test-util"))]
 pub use self::memory::MemoryStore;
 pub use self::sealed::{MAX_OBJECT_BYTES, cipher, open, seal, stored_length};

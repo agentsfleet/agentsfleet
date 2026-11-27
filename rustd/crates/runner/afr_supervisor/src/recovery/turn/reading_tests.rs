@@ -1,10 +1,12 @@
-//! Ordinary file restore authenticates concurrent chunks and preserves their manifest order.
+//! An ordinary file restore reads authenticated chunks in manifest order and
+//! lands them through the sandbox's engine.
 
-use super::{NativeTurn, session::TurnSession};
+use super::{NativeTurn, reading::TurnReading, session::TurnSession};
+use crate::recovery::source::land;
 use crate::recovery::{transfer::Transfers, transfer::http_tests::server::Server};
 use crate::{
     Result, error,
-    test_support::{self, Answer},
+    test_support::{self, Answer, Lander},
 };
 use af_core::{clock, id::Uuid7};
 use af_wire::{
@@ -28,13 +30,13 @@ const ID: &str = "019f0000-0000-7000-8000-000000000001";
 const PAGE: &str = "019f0000-0000-7000-8000-000000000002";
 
 #[tokio::test]
-async fn ordinary_chunks_from_separate_files_share_a_live_batch_in_manifest_order()
+async fn ordinary_chunks_from_separate_files_land_in_manifest_order()
 -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let Encrypted {
         mut objects,
         payloads,
     } = encrypted()?;
-    let server = Server::simultaneous(payloads).await?;
+    let server = Server::serving(payloads).await?;
     for object in &mut objects {
         let mut url = url::Url::parse(&server.url)?;
         url.set_path(&format!("/{}", object.object_id));
@@ -68,9 +70,9 @@ async fn ordinary_chunks_from_separate_files_share_a_live_batch_in_manifest_orde
             target: "dir/script".to_owned(),
         },
     ]);
-    let root = tempfile::tempdir()?;
-    restore(root.path(), page, objects, Some(server.transfers()), None).await?;
-    assert_files(root.path())?;
+    let lander = Lander::on(&"a".repeat(64)).await;
+    restore(&lander, page, objects, Some(server.transfers()), None).await?;
+    assert_files(lander.workspace())?;
     server.finish().await?;
     Ok(())
 }
@@ -82,22 +84,21 @@ fn assert_files(root: &Path) -> Result<()> {
         std::fs::read_link(root.join("link"))?,
         Path::new("dir/script")
     );
-    let metadata = std::fs::metadata(root.join("dir/script"))?;
-    assert_eq!(metadata.mode() & 0o777, 0o700);
-    assert_eq!(metadata.uid(), rustix::process::getuid().as_raw());
-    assert_eq!(metadata.gid(), rustix::process::getgid().as_raw());
+    let script = std::fs::metadata(root.join("dir/script"))?.mode();
+    let text = std::fs::metadata(root.join("dir/text"))?.mode();
+    assert_eq!((script & 0o111, text & 0o111), (0o111, 0));
     Ok(())
 }
 
 #[tokio::test]
 async fn cancellation_after_the_manifest_prevents_directory_creation() -> Result<()> {
-    let root = tempfile::tempdir()?;
+    let lander = Lander::on(&"a".repeat(64)).await;
     let page = page(vec![CheckpointEntry::Directory {
         path: "dir".to_owned(),
     }]);
     assert!(
         restore(
-            root.path(),
+            &lander,
             page,
             Vec::new(),
             None,
@@ -106,7 +107,7 @@ async fn cancellation_after_the_manifest_prevents_directory_creation() -> Result
         .await
         .is_err_and(|failure| failure.code() == af_core::error_code::INTERNAL_OPERATION_FAILED)
     );
-    assert!(!root.path().join("dir").exists());
+    assert!(!lander.workspace().join("dir").exists());
     Ok(())
 }
 
@@ -125,12 +126,13 @@ fn scope() -> TurnScope {
         turn_id: CheckpointOperationId(ID.to_owned()),
         workspace: TurnWorkspace::Files {
             toolbox_digest: "a".repeat(64),
+            sandbox: test_support::recorded(),
         },
     }
 }
 
 async fn restore(
-    root: &Path,
+    lander: &Lander,
     page: CheckpointPage,
     objects: Vec<CheckpointObject>,
     transfers: Option<Transfers>,
@@ -153,21 +155,21 @@ async fn restore(
     if let Some(transfers) = transfers {
         session.transfers = transfers;
     }
-    session
-        .restore_files(
-            &[],
-            &[CheckpointOperationId(PAGE.to_owned())],
-            &manifest,
-            (
-                root.to_owned(),
-                (
-                    rustix::process::getuid().as_raw(),
-                    rustix::process::getgid().as_raw(),
-                ),
-            ),
-            None,
-        )
-        .await
+    let pages = [CheckpointOperationId(PAGE.to_owned())];
+    let reading = TurnReading {
+        session: &mut session,
+        chain: &[],
+        pages: &pages,
+        digest: &manifest,
+    };
+    land(
+        reading,
+        (run.clone(), 1),
+        lander.environment(),
+        lander.landing(),
+    )
+    .await
+    .map(drop)
 }
 
 fn fixture_plane(
@@ -190,7 +192,13 @@ fn fixture_plane(
                     }
                     Ok(Response::PageRead(page.clone()))
                 }
-                Action::Authorize(_) => Ok(Response::Authorized(objects.clone())),
+                Action::Authorize(asked) => Ok(Response::Authorized(
+                    objects
+                        .iter()
+                        .filter(|object| asked.object_ids.iter().any(|id| id.0 == object.object_id))
+                        .cloned()
+                        .collect(),
+                )),
                 _ => Err(error::config("unexpected ordinary file request")),
             }
         })();

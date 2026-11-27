@@ -11,7 +11,7 @@ use zeroize::Zeroizing;
 use super::{Run, build::Build};
 use crate::{
     Result, error,
-    recovery::{Capture, Restore, Tree},
+    recovery::{Capture, Restore, Taken, Tree},
     report::Ending,
 };
 
@@ -44,13 +44,12 @@ impl Run<'_> {
             .current_durable_task
             .as_ref()
             .ok_or_else(|| error::config("durable workspace has no native task"))?;
-        let toolbox = sandbox
-            .environment()
-            .root
-            .toolbox()
+        let taken = Taken::in_sandbox(sandbox.environment())
             .ok_or_else(|| error::config("sandbox has no verified recovery toolbox"))?;
         let scope = Uuid7::parse(&self.payload.event.workspace_id)?;
-        let permit = if task.checkpoint_id.is_some()
+        // Held until the workspace is ready: it bounds the restores and
+        // checkouts the host runs at once.
+        let _permit = if task.checkpoint_id.is_some()
             || matches!(task.target, DurableTaskTarget::ExistingPr { .. })
         {
             Some(self.lessee.recovery.file(build.stop).await?)
@@ -60,9 +59,7 @@ impl Run<'_> {
         // A failure is a failed build; teardown owns the entire sandbox, so
         // no partially restored guest agent enters the slot.
         prove_quiescent(sandbox).await?;
-        let state: State = self
-            .native_workspace(task, sandbox, &scope, toolbox, permit.as_ref())
-            .await?;
+        let state: State = self.native_workspace(task, sandbox, &scope, &taken).await?;
         if build.recovery.set(state).is_err() {
             return Err(error::config("sandbox recovery was prepared twice"));
         }
@@ -86,11 +83,10 @@ impl Run<'_> {
         }
         let scope = Uuid7::parse(&self.payload.event.workspace_id)?;
         let toolbox = api_toolbox();
-        let permit = self.lessee.recovery.file(&self.interrupt).await?;
+        let _permit = self.lessee.recovery.file(&self.interrupt).await?;
         let restored = Restore {
             plane: &self.lessee.plane,
             transfers: &self.lessee.recovery.transfers,
-            permit: Some(&permit),
             run: &self.ids.run,
             workspace: &scope,
             fence: self.payload.fencing_token,
@@ -98,7 +94,7 @@ impl Run<'_> {
             toolbox: &toolbox,
             stop: &self.interrupt,
         }
-        .run(None, std::future::ready(Ok(())))
+        .run(None)
         .await?;
         Ok(Some(recovered_history(
             task,
@@ -123,10 +119,7 @@ impl Run<'_> {
             prove_quiescent(sandbox).await?;
             let state =
                 state.ok_or_else(|| error::config("task workspace has no recovery owner"))?;
-            let toolbox = sandbox
-                .environment()
-                .root
-                .toolbox()
+            let taken = Taken::in_sandbox(sandbox.environment())
                 .ok_or_else(|| error::config("task toolbox is unavailable for capture"))?;
             let scope = Uuid7::parse(&self.payload.event.workspace_id)?;
             let staged = self.lessee.staging.stage(sandbox.id())?;
@@ -139,7 +132,7 @@ impl Run<'_> {
                 workspace: &scope,
                 fence: self.payload.fencing_token,
                 task: &recovery.task,
-                toolbox,
+                taken: &taken,
                 mode: CheckpointMode::Incremental,
                 base: state.base.as_ref(),
                 stop: &self.interrupt,
@@ -180,7 +173,7 @@ impl Run<'_> {
             }
             let _reservation = self.lessee.recovery.file(&self.interrupt).await?;
             let scope = Uuid7::parse(&self.payload.event.workspace_id)?;
-            let toolbox = api_toolbox();
+            let taken = Taken::without_sandbox(api_toolbox());
             let saved = Capture {
                 plane: &self.lessee.plane,
                 transfers: &self.lessee.recovery.transfers,
@@ -188,7 +181,7 @@ impl Run<'_> {
                 workspace: &scope,
                 fence: self.payload.fencing_token,
                 task: &recovery.task,
-                toolbox: &toolbox,
+                taken: &taken,
                 mode: CheckpointMode::Incremental,
                 base: None,
                 stop: &self.interrupt,

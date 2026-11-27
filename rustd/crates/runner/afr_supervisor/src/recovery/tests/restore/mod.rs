@@ -1,10 +1,9 @@
 use super::*;
 use crate::recovery::Restore;
-use af_wire::durable_task::CheckpointFile;
-use std::{
-    fs,
-    os::unix::fs::{MetadataExt as _, PermissionsExt as _},
-};
+use crate::test_support::Lander;
+use af_wire::durable_task::{CheckpointFile, CheckpointSandbox};
+use af_wire::runner::SandboxEngine;
+use std::{fs, os::unix::fs::PermissionsExt as _};
 use tokio_util::sync::CancellationToken;
 
 fn empty_file(path: &str) -> CheckpointEntry {
@@ -38,7 +37,6 @@ async fn restore_rejects_changed_identity_and_future_cursors_before_reading_page
         let error = Restore {
             plane: &plane,
             transfers: &crate::recovery::Transfers::new()?,
-            permit: None,
             run: &identity,
             workspace: &identity,
             fence: FENCE,
@@ -46,7 +44,7 @@ async fn restore_rejects_changed_identity_and_future_cursors_before_reading_page
             toolbox: &toolbox(),
             stop: &CancellationToken::new(),
         }
-        .run(None, std::future::ready(Ok(())))
+        .run(None)
         .await
         .unwrap_err();
         config_failure(
@@ -82,14 +80,12 @@ async fn corrupt_or_unordered_manifests_never_touch_the_destination() -> crate::
             _ => archive.plan.base_page_ids = vec![BASE_PAGE.to_owned()],
         }
         let (plane, mut calls, _) = remote(archive, |_, _| None);
-        let destination = tempfile::tempdir()?;
-        let owner = destination.path().metadata()?;
+        let lander = Lander::on(&toolbox()).await;
         let identity = id();
         let task = task();
         let error = Restore {
             plane: &plane,
             transfers: &crate::recovery::Transfers::new()?,
-            permit: None,
             run: &identity,
             workspace: &identity,
             fence: FENCE,
@@ -97,14 +93,11 @@ async fn corrupt_or_unordered_manifests_never_touch_the_destination() -> crate::
             toolbox: &toolbox(),
             stop: &CancellationToken::new(),
         }
-        .run(
-            Some((destination.path().to_owned(), (owner.uid(), owner.gid()))),
-            std::future::ready(Ok(())),
-        )
+        .run(Some(lander.landing()))
         .await
         .unwrap_err();
         config_failure(&error, expected);
-        assert_eq!(fs::read_dir(destination.path())?.count(), 0);
+        assert_eq!(fs::read_dir(lander.workspace())?.count(), 0);
         assert_eq!(
             phases(&drain(&mut calls).await).last().map(String::as_str),
             Some("failed")
@@ -115,21 +108,16 @@ async fn corrupt_or_unordered_manifests_never_touch_the_destination() -> crate::
 
 #[tokio::test]
 async fn files_require_a_workspace_and_existing_files_are_never_overwritten() -> crate::Result<()> {
-    let destination = tempfile::tempdir()?;
-    fs::write(destination.path().join("keep"), b"human data")?;
-    let owner = destination.path().metadata()?;
-    for destination_path in [
-        None,
-        Some((destination.path().to_owned(), (owner.uid(), owner.gid()))),
-    ] {
+    let lander = Lander::on(&toolbox()).await;
+    fs::write(lander.workspace().join("keep"), b"human data")?;
+    for landing in [None, Some(lander.landing())] {
         let (plane, mut calls, _) = remote(Archive::saved(vec![empty_file("keep")]), |_, _| None);
         let identity = id();
         let task = task();
-        let has_destination = destination_path.is_some();
+        let has_destination = landing.is_some();
         let error = Restore {
             plane: &plane,
             transfers: &crate::recovery::Transfers::new()?,
-            permit: None,
             run: &identity,
             workspace: &identity,
             fence: FENCE,
@@ -137,18 +125,18 @@ async fn files_require_a_workspace_and_existing_files_are_never_overwritten() ->
             toolbox: &toolbox(),
             stop: &CancellationToken::new(),
         }
-        .run(destination_path, std::future::ready(Ok(())))
+        .run(landing)
         .await
         .unwrap_err();
-        config_failure(
-            &error,
-            if has_destination {
-                "checkpoint restore requires a fresh empty workspace"
+        assert_eq!(
+            crate::test_support::detail(&Err::<(), _>(error)),
+            Some(if has_destination {
+                "the checkpoint would not restore into the sandbox"
             } else {
                 "checkpoint files require a workspace"
-            },
+            }),
         );
-        assert_eq!(fs::read(destination.path().join("keep"))?, b"human data");
+        assert_eq!(fs::read(lander.workspace().join("keep"))?, b"human data");
         assert_eq!(
             phases(&drain(&mut calls).await).last().map(String::as_str),
             Some("failed")
@@ -177,7 +165,6 @@ async fn cancellation_and_changed_pin_deadline_end_restore_custody() -> crate::R
         let error = Restore {
             plane: &plane,
             transfers: &crate::recovery::Transfers::new()?,
-            permit: None,
             run: &identity,
             workspace: &identity,
             fence: FENCE,
@@ -185,7 +172,7 @@ async fn cancellation_and_changed_pin_deadline_end_restore_custody() -> crate::R
             toolbox: &toolbox(),
             stop: &stop,
         }
-        .run(None, std::future::ready(Ok(())))
+        .run(None)
         .await
         .unwrap_err();
         config_failure(
@@ -216,7 +203,6 @@ async fn empty_api_recovery_requires_its_matching_history_root() -> crate::Resul
     let restore = Restore {
         plane: &plane,
         transfers: &crate::recovery::Transfers::new()?,
-        permit: None,
         run: &identity,
         workspace: &identity,
         fence: FENCE,
@@ -224,7 +210,7 @@ async fn empty_api_recovery_requires_its_matching_history_root() -> crate::Resul
         toolbox: &toolbox(),
         stop: &stop,
     };
-    let restored = restore.run(None, std::future::ready(Ok(()))).await?;
+    let restored = restore.run(None).await?;
     assert_eq!(restored.history.expose(), b"");
     assert_eq!(restored.base_paths.len(), 0);
     assert_eq!(
@@ -237,10 +223,9 @@ async fn empty_api_recovery_requires_its_matching_history_root() -> crate::Resul
     let error = Restore {
         plane: &plane,
         transfers: &crate::recovery::Transfers::new()?,
-        permit: None,
         ..restore
     }
-    .run(None, std::future::ready(Ok(())))
+    .run(None)
     .await
     .unwrap_err();
     config_failure(&error, "checkpoint history root mismatch");
@@ -258,4 +243,61 @@ fn changed_pin_reply(call: &Call, archive: &Archive, fault: &str) -> Option<Answ
         return Some(json(&pin));
     }
     None
+}
+
+/// A checkpoint taken in another engine's sandbox, or under another guest
+/// agent, is refused by the engine naming `environment` before any manifest
+/// page or chunk is read, and the workspace stays empty; one taken in no
+/// sandbox lands in none.
+#[tokio::test]
+async fn a_checkpoint_from_another_engine_or_guest_agent_is_refused_naming_environment()
+-> crate::Result<()> {
+    let crossings = [
+        CheckpointSandbox {
+            engine: SandboxEngine::Unsandboxed,
+            guest_agent_digest: None,
+        },
+        CheckpointSandbox {
+            engine: SandboxEngine::Firecracker,
+            guest_agent_digest: Some("c".repeat(64)),
+        },
+    ];
+    for crossed in crossings.into_iter().map(Some).chain([None]) {
+        let refused_by_engine = crossed.is_some();
+        let mut archive = Archive::saved(vec![empty_file("kept")]);
+        archive.plan.sandbox = crossed;
+        let (plane, mut calls, _) = remote(archive, |_, _| None);
+        let lander = Lander::on(&toolbox()).await;
+        let identity = id();
+        let task = task();
+        let error = Restore {
+            plane: &plane,
+            transfers: &crate::recovery::Transfers::new()?,
+            run: &identity,
+            workspace: &identity,
+            fence: FENCE,
+            task: &task,
+            toolbox: &toolbox(),
+            stop: &CancellationToken::new(),
+        }
+        .run(Some(lander.landing()))
+        .await
+        .unwrap_err();
+        let refusal = std::error::Error::source(&error)
+            .and_then(|cause| cause.downcast_ref::<afr_engine::Error>())
+            .and_then(afr_engine::Error::snapshot_refusal);
+        if refused_by_engine {
+            assert_eq!(refusal, Some(afr_engine::SnapshotRefusal::Environment));
+        } else {
+            config_failure(&error, "checkpoint was taken in no sandbox");
+        }
+        let requests = drain(&mut calls).await;
+        assert!(
+            !requests
+                .iter()
+                .any(|call| call.verb == Verb::DurableTaskCheckpointPage)
+        );
+        assert_eq!(fs::read_dir(lander.workspace())?.count(), 0);
+    }
+    Ok(())
 }

@@ -13,7 +13,8 @@ pub use objects::{
 };
 pub use plan::{
     CheckpointCommitInput, CheckpointLink, CheckpointMode, CheckpointPin, CheckpointPinInput,
-    CheckpointPlan, CheckpointPlanInput, CheckpointReadQuery, CheckpointTransferPurpose,
+    CheckpointPlan, CheckpointPlanInput, CheckpointReadQuery, CheckpointSandbox,
+    CheckpointTransferPurpose,
 };
 
 /// Current independently validated capture/restore format.

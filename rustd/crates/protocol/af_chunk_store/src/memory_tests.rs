@@ -144,3 +144,19 @@ async fn a_forgotten_tree_is_no_longer_named() {
     store.read("never stored").await.unwrap_err();
     assert_eq!(store.reads(), 1);
 }
+
+/// A source another crate implements fails under its own failure's code,
+/// and says only that it could not answer.
+#[test]
+fn a_source_that_could_not_answer_fails_under_its_own_code() {
+    let failure = crate::unavailable(af_core::error_code::INTERNAL_OPERATION_FAILED);
+
+    assert_eq!(
+        failure.code(),
+        af_core::error_code::INTERNAL_OPERATION_FAILED
+    );
+    assert!(
+        failure.to_string().contains("could not answer"),
+        "{failure}"
+    );
+}

@@ -48,6 +48,10 @@ fn api_only_cannot_discard_the_files_declared_by_a_capture() -> crate::Result<()
     input.page_count = 0;
     input.workspace = TurnWorkspace::Files {
         toolbox_digest: "a".repeat(64),
+        sandbox: af_wire::durable_task::CheckpointSandbox {
+            engine: af_wire::runner::SandboxEngine::Firecracker,
+            guest_agent_digest: None,
+        },
     };
     assert!(
         plan::shape(&input)

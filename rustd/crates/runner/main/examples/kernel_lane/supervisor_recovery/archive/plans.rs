@@ -37,6 +37,7 @@ impl Archive {
             .to_owned(),
             format_version: input.format_version,
             toolbox_digest: input.toolbox_digest,
+            sandbox: input.sandbox,
             page_ids: pages,
             base_page_ids: base.map_or_else(Vec::new, |base| base.page_ids.clone()),
             base_manifest_root: base.and_then(|base| base.manifest_root.clone()),

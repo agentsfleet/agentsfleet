@@ -38,6 +38,8 @@ fn plan(mode: &str, page_count: i32, page_ids: Vec<Uuid7>) -> Plan {
         format_version: 1,
         cipher: "aes_256_gcm".to_owned(),
         toolbox_digest: "3".repeat(64),
+        engine: None,
+        guest_agent_digest: None,
         page_count,
         page_ids,
         upload_budget_bytes: 0,

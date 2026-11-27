@@ -1,13 +1,16 @@
-//! Authenticate full root and matching files before adopting inputs or starting the model.
+//! Authenticate full root and land matching files through the sandbox's
+//! engine before adopting inputs or starting the model.
 
-use super::{NativeTurn, session::TurnSession};
-use crate::{Result, error, staging::Staged};
+use super::{NativeTurn, reading::TurnReading, session::TurnSession};
+use crate::recovery::source::{Landing, land};
+use crate::recovery::taken::environment;
+use crate::{Result, error};
+use af_core::id::Uuid7;
 use af_wire::run::{
     CheckpointOperationId, RunPayload, TurnCheckpointPinRelease, TurnCheckpointRead,
     TurnCheckpointRef, TurnCheckpointSaved, TurnWorkspace,
 };
 use afr_agent::TurnRecovery;
-use afr_guest_client::GuestAgent;
 use garde::Validate as _;
 use tokio_util::sync::CancellationToken;
 use zeroize::Zeroizing;
@@ -17,15 +20,14 @@ impl NativeTurn<'_> {
         &self,
         assignment: &RunPayload<'_>,
         workspace: TurnWorkspace,
-        destination: Option<(&Staged, &dyn GuestAgent)>,
+        landing: Option<Landing<'_>>,
         stop: &CancellationToken,
-        permit: Option<&afr_agent::FileRecoveryPermit>,
     ) -> Result<Option<TurnRecovery>> {
         let Some(descriptor) = &assignment.turn_resume else {
             return Ok(None);
         };
-        if descriptor.scope.workspace != workspace
-            || matches!(workspace, TurnWorkspace::Files { .. }) != destination.is_some()
+        if !same_toolbox(&descriptor.scope.workspace, &workspace)
+            || matches!(workspace, TurnWorkspace::Files { .. }) != landing.is_some()
         {
             return Err(error::config(
                 "ordinary restore has no matching actual workspace",
@@ -40,9 +42,19 @@ impl NativeTurn<'_> {
             checkpoint_id: saved.descriptor.checkpoint_id.clone(),
             pin_id: CheckpointOperationId(saved.pin.id.clone()),
         };
+        // The recorded workspace names the sandbox the files were taken in:
+        // the engine, not this check, refuses landing them in any other.
+        let workspace = saved.descriptor.scope.workspace.clone();
         let checked = async {
             validate(&saved, assignment, &workspace)?;
-            if let Some((staged, agent)) = destination {
+            if let (
+                Some(landing),
+                TurnWorkspace::Files {
+                    toolbox_digest,
+                    sandbox,
+                },
+            ) = (landing, &workspace)
+            {
                 let mut session = TurnSession::new(
                     self,
                     &saved.descriptor.scope,
@@ -50,16 +62,16 @@ impl NativeTurn<'_> {
                     saved.pin.clone(),
                     stop,
                 )?;
-                session
-                    .restore_files(
-                        &saved.chain,
-                        &saved.page_ids,
-                        &saved.descriptor.manifest_root,
-                        (staged.path().to_owned(), Staged::owner()),
-                        permit,
-                    )
-                    .await?;
-                staged.restore(agent).await?;
+                let reading = TurnReading {
+                    session: &mut session,
+                    chain: &saved.chain,
+                    pages: &saved.page_ids,
+                    digest: &saved.descriptor.manifest_root,
+                };
+                let checkpoint = Uuid7::parse(&saved.descriptor.checkpoint_id.0)?;
+                let taken = environment(toolbox_digest, sandbox);
+                let generation = saved.descriptor.generation;
+                land(reading, (checkpoint, generation), taken, landing).await?;
             } else {
                 require_empty_manifest(&saved)?;
             }
@@ -78,6 +90,23 @@ impl NativeTurn<'_> {
             return Err(failure);
         }
         self.adopt(assignment, *saved, workspace).await.map(Some)
+    }
+}
+
+/// Whether `recorded` and `actual` both hold files on one toolbox, or both
+/// none: the sandbox each names is the engine's to compare.
+fn same_toolbox(recorded: &TurnWorkspace, actual: &TurnWorkspace) -> bool {
+    match (recorded, actual) {
+        (TurnWorkspace::ApiOnly, TurnWorkspace::ApiOnly) => true,
+        (
+            TurnWorkspace::Files { toolbox_digest, .. },
+            TurnWorkspace::Files {
+                toolbox_digest: actual,
+                ..
+            },
+        ) => toolbox_digest == actual,
+        (TurnWorkspace::ApiOnly, TurnWorkspace::Files { .. })
+        | (TurnWorkspace::Files { .. }, TurnWorkspace::ApiOnly) => false,
     }
 }
 

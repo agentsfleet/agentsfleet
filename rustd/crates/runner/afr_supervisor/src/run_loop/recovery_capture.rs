@@ -20,7 +20,7 @@ use super::{
 };
 use crate::{
     Result, error,
-    recovery::{Capture, ChangeSource},
+    recovery::{Capture, ChangeSource, Taken},
 };
 
 /// How a boundary's pause ended.
@@ -37,7 +37,7 @@ pub(super) struct Publish<'a> {
     _reservation: Option<FileRecoveryPermit>,
     state: RecoveryState,
     files: Option<Box<dyn Quiesced + 'a>>,
-    toolbox: String,
+    taken: Taken,
     recovery: Option<&'a State>,
 }
 
@@ -78,7 +78,7 @@ impl<'a> BoundaryOwner<'a, '_> {
                     _reservation: reservation,
                     state: snapshot.state,
                     files: None,
-                    toolbox: api_toolbox(),
+                    taken: Taken::without_sandbox(api_toolbox()),
                     recovery: None,
                 })));
             }
@@ -98,11 +98,15 @@ impl<'a> BoundaryOwner<'a, '_> {
             Pinning::Skipped(reason) => return Ok(skipped(reason)),
             Pinning::Pinned(pin) => pin,
         };
-        let toolbox = sandbox.environment().root.toolbox().unwrap_or_default();
+        // The pin skipped a sandbox whose root is not our toolbox.
+        let Some(taken) = Taken::in_sandbox(sandbox.environment()) else {
+            release(pin, None).await;
+            return Ok(skipped(RecoverySkip::Unavailable));
+        };
         Ok(Pinned::Publish(Box::new(Publish {
             _reservation: reservation,
             state: snapshot.state,
-            toolbox: toolbox.to_owned(),
+            taken,
             files: Some(pin),
             recovery: recovery.get(),
         })))
@@ -158,14 +162,14 @@ impl<'a> BoundaryOwner<'a, '_> {
             _reservation,
             state,
             files,
-            toolbox,
+            taken,
             recovery,
         } = *publish;
         let Some(pin) = files else {
-            return self.publish_state(state, None, &toolbox, recovery).await;
+            return self.publish_state(state, None, &taken, recovery).await;
         };
         let saved = self
-            .publish_state(state, Some(&PinSource(&*pin)), &toolbox, recovery)
+            .publish_state(state, Some(&PinSource(&*pin)), &taken, recovery)
             .await;
         release(pin, committed(&saved).as_ref()).await;
         saved
@@ -175,12 +179,12 @@ impl<'a> BoundaryOwner<'a, '_> {
         &mut self,
         state: RecoveryState,
         source: Option<&dyn ChangeSource>,
-        toolbox: &str,
+        taken: &Taken,
         recovery: Option<&State>,
     ) -> Result<RecoverySave> {
         match state {
             RecoveryState::DurableTask(task) => {
-                self.publish_durable_task(task, source, toolbox, recovery)
+                self.publish_durable_task(task, source, taken, recovery)
                     .await
             }
             RecoveryState::Turn(turn) => self.publish_turn(turn, source).await,
@@ -228,7 +232,7 @@ impl<'a> BoundaryOwner<'a, '_> {
         &mut self,
         task: DurableTaskRecovery,
         source: Option<&dyn ChangeSource>,
-        toolbox: &str,
+        taken: &Taken,
         state: Option<&State>,
     ) -> Result<RecoverySave> {
         let scope = Uuid7::parse(&self.run.payload.event.workspace_id)?;
@@ -240,7 +244,7 @@ impl<'a> BoundaryOwner<'a, '_> {
             workspace: &scope,
             fence: self.run.payload.fencing_token,
             task: &task.task,
-            toolbox,
+            taken,
             mode: CheckpointMode::Incremental,
             base: state.and_then(|state| state.base.as_ref()),
             stop: &self.stop,

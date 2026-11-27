@@ -33,6 +33,9 @@ tokio = { workspace = true, features = ["fs", "io-util", "macros", "net", "proce
 tracing.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
+# The source a restore reads a saved tree from, named in the seam's
+# `Snapshots::restore_from`.
+af_chunk_store.workspace = true
 # The vsock handshake, retried while a guest boots, without a hand-written
 # loop.
 backon.workspace = true

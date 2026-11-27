@@ -40,7 +40,7 @@ async fn already_received_ciphertext_is_committed_without_a_second_physical_uplo
         workspace: &identity,
         fence: FENCE,
         task: &task,
-        toolbox: &toolbox(),
+        taken: &taken(),
         mode: CheckpointMode::Incremental,
         base: None,
         stop: &CancellationToken::new(),
@@ -76,7 +76,7 @@ async fn upload_response_cannot_replace_registered_ciphertext() -> crate::Result
             workspace: &identity,
             fence: FENCE,
             task: &task,
-            toolbox: &toolbox(),
+            taken: &taken(),
             mode: CheckpointMode::Incremental,
             base: None,
             stop: &CancellationToken::new(),
@@ -148,7 +148,6 @@ async fn history_download_requires_exact_object_scope_length_and_read_authority(
         let error = Restore {
             plane: &plane,
             transfers: &crate::recovery::Transfers::new()?,
-            permit: None,
             run: &identity,
             workspace: &identity,
             fence: FENCE,
@@ -156,7 +155,7 @@ async fn history_download_requires_exact_object_scope_length_and_read_authority(
             toolbox: &toolbox(),
             stop: &CancellationToken::new(),
         }
-        .run(None, std::future::ready(Ok(())))
+        .run(None)
         .await
         .unwrap_err();
         if fault == "length" {

@@ -1,20 +1,65 @@
-//! Authenticate the base, every chain link and the plan's own manifest
-//! before restoring any file.
+//! A durable task's checkpoint as its restore reads it: the retained base,
+//! every chain link and the plan's own pages, each checked against its root
+//! before any of it is applied, then each object under the task's pin.
 
-use super::Session;
-use crate::{Result, error};
 use af_chunk_store::Resolved;
 use af_core::id::Uuid7;
 use af_wire::durable_task::{CHECKPOINT_PAGE_BYTES, CheckpointEntry, CheckpointReadQuery};
-use std::collections::BTreeMap;
+use zeroize::Zeroizing;
+
+use super::{Custody, links_inside};
+use crate::recovery::Session;
+use crate::{Result, error};
+
+/// A durable task's restore custody, and what its tree's read found beside
+/// the tree.
+#[derive(Debug)]
+pub(in crate::recovery) struct TaskReading<'s, 'a> {
+    /// The task's restore pin and the calls made under it.
+    pub(in crate::recovery) session: &'s mut Session<'a>,
+    /// The plan's own history objects, once its tree is read.
+    pub(in crate::recovery) history: Vec<String>,
+    /// The retained base's paths, once its tree is read.
+    pub(in crate::recovery) base_paths: Vec<String>,
+}
+
+impl<'s, 'a> TaskReading<'s, 'a> {
+    /// A restore read under `session`'s pin, nothing read yet.
+    pub(in crate::recovery) const fn new(session: &'s mut Session<'a>) -> Self {
+        Self {
+            session,
+            history: Vec::new(),
+            base_paths: Vec::new(),
+        }
+    }
+}
+
+impl Custody for TaskReading<'_, '_> {
+    /// The plan's tree; custody is proved once more after, so a tree with no
+    /// chunk to read lands only under a live pin.
+    async fn tree(&mut self) -> Result<Resolved> {
+        let (tree, history, base_paths) = self.session.manifest().await?;
+        links_inside(&tree)?;
+        self.session.renew().await?;
+        self.history = history;
+        self.base_paths = base_paths;
+        Ok(tree)
+    }
+
+    async fn read(&mut self, object: &str) -> Result<Zeroizing<Vec<u8>>> {
+        let chunks = self.session.download_batch(&[object.to_owned()]).await?;
+        chunks
+            .first()
+            .map(|chunk| Zeroizing::new(chunk.expose().to_vec()))
+            .ok_or_else(|| error::config("checkpoint restore object is absent"))
+    }
+}
 
 impl Session<'_> {
     /// The tree the plan resolves to: its retained base, then every link of
     /// its chain, then its own pages, each checked against its root first;
     /// with the plan's own history objects and the base's paths.
-    pub(super) async fn manifest(
-        &mut self,
-    ) -> Result<(BTreeMap<String, CheckpointEntry>, Vec<String>, Vec<String>)> {
+    async fn manifest(&mut self) -> Result<(Resolved, Vec<String>, Vec<String>)> {
         let mut entries = Resolved::default();
         let mut bytes = 0_usize;
         let base = self.plan.base_page_ids.clone();
@@ -49,8 +94,8 @@ impl Session<'_> {
         let history = self
             .pages(&ids, &expected, &mut entries, &mut bytes)
             .await?;
-        let entries = entries.into_entries();
         entries
+            .entries()
             .values()
             .try_fold(0_u64, |sum, entry| {
                 sum.checked_add(match entry {
@@ -64,7 +109,7 @@ impl Session<'_> {
         Ok((entries, history, base_paths))
     }
 
-    pub(super) async fn pages(
+    pub(in crate::recovery) async fn pages(
         &mut self,
         ids: &[String],
         expected: &str,

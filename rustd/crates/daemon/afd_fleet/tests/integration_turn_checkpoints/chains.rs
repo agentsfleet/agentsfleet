@@ -43,6 +43,7 @@ async fn allocate(
 ) -> Checked<Pending> {
     let workspace = TurnWorkspace::Files {
         toolbox_digest: "a".repeat(64),
+        sandbox: super::sandbox(),
     };
     let history = root(&files.case, workspace.clone());
     let mut command = files.case.command();

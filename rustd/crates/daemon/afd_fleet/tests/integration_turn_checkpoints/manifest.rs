@@ -20,6 +20,7 @@ impl Pending {
     pub(super) async fn new(files: &Files, pages: &[Vec<CheckpointEntry>]) -> Checked<Self> {
         let workspace = TurnWorkspace::Files {
             toolbox_digest: "a".repeat(64),
+            sandbox: super::sandbox(),
         };
         Self::allocate(files, pages, workspace, None).await
     }

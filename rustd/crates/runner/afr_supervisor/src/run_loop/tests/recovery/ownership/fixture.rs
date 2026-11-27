@@ -130,6 +130,7 @@ pub(super) fn plan() -> Result<CheckpointPlan> {
         repository: "api-only".to_owned(),
         format_version: af_wire::durable_task::CHECKPOINT_FORMAT,
         toolbox_digest: api_toolbox(),
+        sandbox: Some(test_support::recorded()),
         page_ids: vec![PAGE.to_owned()],
         base_page_ids: vec![],
         base_manifest_root: None,

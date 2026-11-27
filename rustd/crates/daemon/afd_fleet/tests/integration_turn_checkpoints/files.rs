@@ -47,6 +47,7 @@ async fn ordinary_files_and_root_publish_under_real_private_sdk_custody() -> Che
 pub(super) async fn begin(files: &Files) -> Checked<(TurnCheckpointPlan, TurnPrivateRoot)> {
     let workspace = TurnWorkspace::Files {
         toolbox_digest: "a".repeat(64),
+        sandbox: super::sandbox(),
     };
     let history = root(&files.case, workspace.clone());
     let mut command = files.case.command();

@@ -3,6 +3,7 @@
 
 use std::time::Duration;
 
+use af_chunk_store::ChunkSource;
 use af_core::id::Uuid7;
 use afr_guest_client::GuestAgent;
 
@@ -159,6 +160,12 @@ impl Snapshots for FakeSandbox {
         state.disk = disk;
         state.running &= flaw == Flaw::RestoreKeepsAProcess;
         Ok(())
+    }
+
+    /// The fake keeps what it saved itself, so a source holds nothing it
+    /// reads: the restore is the one its own saves name.
+    async fn restore_from(&self, snapshot: &SnapshotRef, _source: &dyn ChunkSource) -> Result<()> {
+        self.restore(snapshot).await
     }
 
     async fn forget(&self, snapshot: &SnapshotRef) -> Result<()> {

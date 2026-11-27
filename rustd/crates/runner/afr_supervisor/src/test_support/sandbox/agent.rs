@@ -3,7 +3,7 @@
 use super::{AGENT_GONE, FREEZE, Parking, THAW};
 use af_guest_wire::protocol::PinWalked;
 use af_guest_wire::tree::Pins;
-use af_guest_wire::{FileContent, Imported, Listing, Sizes};
+use af_guest_wire::{DirEntry, EntryKind, FileContent, Imported, Listing, Sizes};
 use afr_guest_client::{GuestAgent, Process, ProcessId, Spawn};
 use bytes::Bytes;
 use cap_std::ambient_authority;
@@ -99,7 +99,7 @@ impl GuestAgent for FakeGuest {
             return Err(std::io::Error::other(AGENT_GONE).into());
         }
         Ok(Listing {
-            entries: Vec::new(),
+            entries: self.listed()?,
             truncated: false,
         })
     }
@@ -181,6 +181,23 @@ impl FakeGuest {
             let _reader_gone = steps.send(step);
         }
         Ok(())
+    }
+
+    /// The names at the top of the workspace it serves; none when it serves
+    /// none.
+    fn listed(&self) -> af_guest_wire::Result<Vec<DirEntry>> {
+        let Some(root) = &self.workspace else {
+            return Ok(Vec::new());
+        };
+        std::fs::read_dir(root)?
+            .map(|entry| {
+                Ok(DirEntry {
+                    name: entry?.file_name().to_string_lossy().into_owned(),
+                    kind: EntryKind::Other,
+                    size: 0,
+                })
+            })
+            .collect()
     }
 
     /// The directory it serves, or the refusal a guest agent with no file
