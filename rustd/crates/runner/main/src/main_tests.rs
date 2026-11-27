@@ -15,49 +15,25 @@ use tracing::Level;
 use tracing_subscriber::Registry;
 use tracing_subscriber::layer::{Context, Layer};
 
+use super::engine::EngineChoice;
 use super::probe::answer;
 use super::{Cli, Command, RunArgs, exited, log_filter};
 
-/// The engine starts the binary inside each sandbox by the sandbox crate's
-/// spelling of the sub-command, its descriptor flags and its sizes, so the
-/// two can never disagree.
+/// The engine starts the binary as each microVM's first process by the
+/// guest entry's own spelling of the sub-command and its flags, so the two
+/// can never disagree.
 #[test]
-fn the_sandbox_entry_is_the_sub_command_the_engine_starts() {
-    let inherited = afr_guest::Inherited {
-        tenant: afr_guest::TenantDescriptors {
-            tenant_procs: 5,
-            tenant_events: 6,
-        },
-        executor: 7,
-    };
+fn the_guest_entry_is_the_sub_command_the_engine_starts() {
     let sizes = afr_executor::Sizes {
         max_read_bytes: 1024 * 1024,
         ..afr_executor::Sizes::DEFAULT
     };
-    let entry = afr_guest::Entry::new(inherited, sizes);
-    let argv = [
-        "agentsfleet-runner",
-        afr_engine_bubblewrap::bubblewrap::SANDBOX_SUBCOMMAND,
-    ]
-    .map(std::ffi::OsString::from)
-    .into_iter()
-    .chain(entry.arguments());
+    let entry = afr_engine_firecracker::guest::GuestEntry::new(4096, sizes);
+    let argv = std::iter::once("agentsfleet-runner".into()).chain(entry.arguments());
 
     let parsed = Cli::try_parse_from(argv);
 
-    assert_eq!(parsed.unwrap().command, Command::Sandbox(entry));
-}
-
-/// A sandbox entry not told where its tenant leaf is refuses to start, so no
-/// tenant process ever runs beside the executor.
-#[test]
-fn a_sandbox_entry_without_its_tenant_leaf_does_not_parse() {
-    let parsed = Cli::try_parse_from([
-        "agentsfleet-runner",
-        afr_engine_bubblewrap::bubblewrap::SANDBOX_SUBCOMMAND,
-    ]);
-
-    assert!(parsed.err().is_some(), "the tenant flags are required");
+    assert_eq!(parsed.unwrap().command, Command::Guest(entry));
 }
 
 #[test]
@@ -84,76 +60,58 @@ fn every_entry_parses_and_nothing_else_does() {
     }
 }
 
-/// A debug build takes `run --unsandboxed`, and a plain `run` builds the
-/// sandbox; a release build has no such flag to parse.
+/// `run` builds a Firecracker microVM per run unless told otherwise, and
+/// `--engine firecracker` says so; the engine states itself as a hardware
+/// wall.
 #[test]
-fn run_builds_a_sandbox_unless_a_debug_build_is_told_not_to() {
-    let parse = |argv: &[&str]| Cli::try_parse_from(argv).map(|cli| cli.command);
-
-    assert_eq!(
-        parse(&["agentsfleet-runner", "run"]).unwrap(),
-        Command::Run(RunArgs::default())
-    );
-    let unsandboxed = parse(&["agentsfleet-runner", "run", "--unsandboxed"]);
-    #[cfg(all(debug_assertions, feature = "unsandboxed"))]
-    assert_eq!(
-        unsandboxed.unwrap(),
-        Command::Run(RunArgs {
-            unsandboxed: true,
-            ..RunArgs::default()
-        })
-    );
-    #[cfg(not(all(debug_assertions, feature = "unsandboxed")))]
-    assert!(unsandboxed.is_err(), "a release build has no such flag");
-}
-
-#[test]
-fn default_and_explicit_bubblewrap_select_the_shipping_engine() {
+fn run_selects_firecracker_by_default() {
     for args in [
         &["agentsfleet-runner", "run"][..],
-        &["agentsfleet-runner", "run", "--engine", "bubblewrap"][..],
+        &["agentsfleet-runner", "run", "--engine", "firecracker"][..],
     ] {
         let Command::Run(run) = Cli::try_parse_from(args).unwrap().command else {
             unreachable!("the run entry");
         };
-        assert_eq!(run.engine, super::engine::EngineChoice::Bubblewrap);
+        assert_eq!(run.engine, EngineChoice::Firecracker);
     }
-    for refused in ["unsandboxed", "unknown", ""] {
-        let error =
-            Cli::try_parse_from(["agentsfleet-runner", "run", "--engine", refused]).unwrap_err();
-        assert_eq!(error.kind(), clap::error::ErrorKind::InvalidValue);
-    }
-    #[cfg(all(debug_assertions, feature = "unsandboxed"))]
-    {
-        let error = Cli::try_parse_from([
-            "agentsfleet-runner",
-            "run",
-            "--engine",
-            "bubblewrap",
-            "--unsandboxed",
-        ])
-        .unwrap_err();
-        assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
-    }
-}
-
-/// `--engine firecracker` selects our microVM engine, which states itself as
-/// a hardware wall; it never names bubblewrap's facts.
-#[cfg(feature = "firecracker")]
-#[test]
-fn engine_firecracker_selects_the_microvm_engine() {
-    let Command::Run(run) =
-        Cli::try_parse_from(["agentsfleet-runner", "run", "--engine", "firecracker"])
-            .unwrap()
-            .command
-    else {
-        unreachable!("the run entry");
-    };
-
-    assert_eq!(run.engine, super::engine::EngineChoice::Firecracker);
-    let stated = run.engine.capabilities();
+    let stated = afr_engine_firecracker::FIRECRACKER_CAPABILITIES;
     assert_eq!(stated.engine, af_wire::runner::SandboxEngine::Firecracker);
     assert_eq!(stated.isolation, af_wire::runner::Isolation::HardwareVm);
+}
+
+/// bubblewrap is no engine: `--engine bubblewrap` is refused as an invalid
+/// value, and the choices are Firecracker, plus the unsandboxed engine in a
+/// debug build alone.
+#[test]
+fn test_bubblewrap_is_not_an_engine() {
+    for refused in ["bubblewrap", "unknown", ""] {
+        let error =
+            Cli::try_parse_from(["agentsfleet-runner", "run", "--engine", refused]).unwrap_err();
+        assert_eq!(
+            error.kind(),
+            clap::error::ErrorKind::InvalidValue,
+            "{refused}"
+        );
+    }
+    let choices: Vec<String> = <EngineChoice as clap::ValueEnum>::value_variants()
+        .iter()
+        .filter_map(clap::ValueEnum::to_possible_value)
+        .map(|value| value.get_name().to_owned())
+        .collect();
+    let unsandboxed = Cli::try_parse_from(["agentsfleet-runner", "run", "--engine", "unsandboxed"]);
+    #[cfg(all(debug_assertions, feature = "unsandboxed"))]
+    {
+        assert_eq!(choices, ["firecracker", "unsandboxed"]);
+        let Command::Run(run) = unsandboxed.unwrap().command else {
+            unreachable!("the run entry");
+        };
+        assert_eq!(run.engine, EngineChoice::Unsandboxed);
+    }
+    #[cfg(not(all(debug_assertions, feature = "unsandboxed")))]
+    {
+        assert_eq!(choices, ["firecracker"]);
+        assert!(unsandboxed.is_err(), "a release build has no such engine");
+    }
 }
 
 /// An unreadable level falls back rather than refusing: a typo in a debugging
@@ -261,7 +219,7 @@ fn a_quiet_log_level_quiets_the_journal_and_never_the_spans() {
     );
 }
 
-/// A host with every mechanism the bubblewrap engine needs, or with none.
+/// A host with every mechanism the Firecracker engine needs, or with none.
 fn host(capable: bool) -> HostProbe {
     HostProbe {
         landlock: capable,
@@ -270,8 +228,7 @@ fn host(capable: bool) -> HostProbe {
             .iter()
             .map(|&controller| controller.to_owned())
             .collect(),
-        bubblewrap: capable,
-        kvm: Kvm::Absent,
+        kvm: if capable { Kvm::Usable } else { Kvm::Absent },
         toolbox_filesystem: capable,
         workspace_direct_io: None,
         egress: false,
@@ -290,7 +247,7 @@ fn the_probe_answer_succeeds_only_where_a_sandbox_can_be_built() {
 
         let answered = answer(
             &host(capable),
-            &afr_engine_bubblewrap::BUBBLEWRAP_CAPABILITIES,
+            &afr_engine_firecracker::FIRECRACKER_CAPABILITIES,
             &mut out,
         );
 
@@ -326,7 +283,7 @@ fn a_probe_answer_that_cannot_be_written_fails() {
     assert_eq!(
         answer(
             &host(true),
-            &afr_engine_bubblewrap::BUBBLEWRAP_CAPABILITIES,
+            &afr_engine_firecracker::FIRECRACKER_CAPABILITIES,
             &mut Full
         ),
         std::process::ExitCode::FAILURE

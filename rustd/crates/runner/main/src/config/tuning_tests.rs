@@ -2,7 +2,6 @@
 //! unsafe value, or a key the runner does not read, refuses startup.
 
 use std::io::Write as _;
-use std::path::Path;
 use std::time::Duration;
 
 use af_core::env::MapEnv;
@@ -49,8 +48,12 @@ fn an_empty_profile_selects_todays_values() -> Checked {
     let selected = settings("")?;
     assert_eq!(selected.tuning, afr_supervisor::config::Tuning::DEFAULT);
     assert_eq!(
-        selected.engine,
-        afr_engine_bubblewrap::EngineTuning::DEFAULT
+        selected.firecracker.ready_timeout,
+        afr_engine::DEFAULT_READY_TIMEOUT
+    );
+    assert_eq!(
+        selected.firecracker.io_bytes_per_second,
+        afr_cgroup::DEFAULT_IO_BYTES_PER_SECOND
     );
     assert_eq!(selected.run_limits, afr_agent::RunLimits::DEFAULT);
     assert_eq!(selected.egress, af_egress::Limits::DEFAULT);
@@ -59,7 +62,7 @@ fn an_empty_profile_selects_todays_values() -> Checked {
         selected.inference,
         af_providers::settings::Timeouts::DEFAULT
     );
-    assert_eq!(selected.engine.sizes, afr_executor::Sizes::DEFAULT);
+    assert_eq!(selected.sizes, afr_executor::Sizes::DEFAULT);
     Ok(())
 }
 
@@ -71,8 +74,8 @@ fn sandbox_values_reach_the_limits_and_the_engine() -> Checked {
     )?;
     assert_eq!(selected.tuning.limits.memory_bytes, 512 * 1024 * 1024);
     assert_eq!(selected.tuning.limits.disk_bytes, 1024 * 1024 * 1024);
-    assert_eq!(selected.engine.io_bytes_per_second, 50 * 1024 * 1024);
-    assert_eq!(selected.engine.ready_timeout, Duration::from_secs(4));
+    assert_eq!(selected.firecracker.io_bytes_per_second, 50 * 1024 * 1024);
+    assert_eq!(selected.firecracker.ready_timeout, Duration::from_secs(4));
     Ok(())
 }
 
@@ -111,7 +114,8 @@ fn executor_sizes_reach_the_engine_and_the_tools() -> Checked {
     };
     // The engine starts every executor with what the tools word their
     // limits by.
-    assert_eq!(selected.engine.sizes, sizes);
+    assert_eq!(selected.sizes, sizes);
+    assert_eq!(selected.firecracker.sizes, sizes);
     assert_eq!(selected.run_limits.sizes, sizes);
     Ok(())
 }
@@ -121,33 +125,14 @@ fn executor_sizes_reach_the_engine_and_the_tools() -> Checked {
 #[tokio::test]
 async fn the_executor_uses_the_sizes_the_runner_sent() -> Checked {
     let selected = settings("[tools]\nmax_file_read_mib = 1\n")?;
-    let sizes = selected.engine.sizes;
-    // What the engine tells the sandbox entry, as the entry reads it back.
-    let inherited = afr_guest::Inherited {
-        tenant: afr_guest::TenantDescriptors {
-            tenant_procs: 3,
-            tenant_events: 4,
-        },
-        executor: 5,
+    let sizes = selected.firecracker.sizes;
+    // What the engine tells the guest entry, as the entry reads it back.
+    let told = afr_engine_firecracker::guest::GuestEntry::new(1, sizes).arguments();
+    let argv = std::iter::once("agentsfleet-runner".into()).chain(told);
+    let crate::Command::Guest(entry) = <crate::Cli as clap::Parser>::try_parse_from(argv)?.command
+    else {
+        return Err("the guest entry parses as itself".into());
     };
-    let told =
-        afr_engine_bubblewrap::bubblewrap::arguments(&afr_engine_bubblewrap::bubblewrap::Layout {
-            toolbox: Path::new("/t"),
-            workspace: Path::new("/w"),
-            tmp: Path::new("/tmp"),
-            entry: Path::new("/e"),
-            entry_args: &[],
-            inherited,
-            sizes,
-            shared_memory_bytes: 1,
-            log_level: None,
-            network: afr_engine_bubblewrap::bubblewrap::NetworkLayout::Isolated,
-        });
-    let entry_at = told
-        .iter()
-        .rposition(|part| part == afr_engine_bubblewrap::bubblewrap::SANDBOX_ENTRY)
-        .ok_or("the entry is named")?;
-    let entry = afr_guest::Entry::parse_from(told.into_iter().skip(entry_at))?;
     let scratch = tempfile::tempdir()?;
     let (socket, root) = (
         scratch.path().join("executor.sock"),

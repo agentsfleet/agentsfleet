@@ -1,12 +1,11 @@
 //! What `run` runs with on this host: the sandbox engine, the capability
 //! report heartbeats carry, and the agent loop every run's turn runs on.
 //!
-//! On Linux the engine is bubblewrap, built from the cgroup the service
-//! manager delegated, the toolbox release a deploy staged, and the runner
-//! binary itself as every sandbox's entry
+//! On Linux the engine is Firecracker, built from the cgroup the service
+//! manager delegated and the toolbox release a deploy staged
 //! (`docs/architecture/runner_execution.md` §Toolbox). A debug build can be
 //! told to build no sandbox at all, so a suite drives this binary end to end on
-//! a host without bubblewrap; a release build has no way to ask.
+//! a host without KVM; a release build has no way to ask.
 
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -63,32 +62,6 @@ impl Host {
         }
     }
 
-    /// The bubblewrap engine this host builds sandboxes with, booted over the
-    /// release a deploy staged (`afr_engine::boot` with `BubblewrapBackend`).
-    ///
-    /// # Errors
-    /// The reason it cannot, already logged, as the exit status.
-    #[cfg(target_os = "linux")]
-    pub(crate) fn production(
-        home: &StorageHome,
-        tuning: afr_engine_bubblewrap::EngineTuning,
-    ) -> Result<Self, ExitCode> {
-        use af_core::env::ProcessEnv;
-        use afr_engine::boot;
-        use afr_engine_bubblewrap::BubblewrapBackend;
-
-        let staged = Staged::read(home)?;
-        let entry = std::env::current_exe().map_err(|error| io_failed(&error))?;
-        let backend = BubblewrapBackend {
-            entry,
-            release: &staged.release,
-            home: &staged.toolbox,
-            env: &ProcessEnv,
-            tuning,
-        };
-        boot(backend, &staged.paths).map(Self::from).or_exit()
-    }
-
     /// Our Firecracker engine, booted over the release a deploy staged
     /// (`afr_engine::boot` with `FirecrackerBackend`), with `warm_pool`
     /// microVMs booted ahead of their runs: a host without a usable KVM
@@ -96,7 +69,7 @@ impl Host {
     ///
     /// # Errors
     /// The reason it cannot, already logged, as the exit status.
-    #[cfg(all(target_os = "linux", feature = "firecracker"))]
+    #[cfg(target_os = "linux")]
     pub(crate) fn firecracker(
         home: &StorageHome,
         tuning: afr_engine_firecracker::FirecrackerTuning,
@@ -119,30 +92,13 @@ impl Host {
     ///
     /// # Errors
     /// Always: the host has no KVM device, already logged, as the exit status.
-    #[cfg(all(not(target_os = "linux"), feature = "firecracker"))]
+    #[cfg(not(target_os = "linux"))]
     pub(crate) fn firecracker(
         _home: &StorageHome,
         _tuning: afr_engine_firecracker::FirecrackerTuning,
         _warm_pool: usize,
     ) -> Result<Self, ExitCode> {
         Err(cannot_sandbox(afr_engine_firecracker::MECHANISM_KVM))
-    }
-
-    /// No bubblewrap engine exists off Linux.
-    ///
-    /// # Errors
-    /// Always: the first mechanism the host's probe found missing, already
-    /// logged, as the exit status.
-    #[cfg(not(target_os = "linux"))]
-    pub(crate) fn production(
-        _home: &StorageHome,
-        _tuning: afr_engine_bubblewrap::EngineTuning,
-    ) -> Result<Self, ExitCode> {
-        let probe = afr_engine_bubblewrap::probe(&afr_engine_bubblewrap::ProbePaths::default());
-        Err(cannot_sandbox(
-            afr_engine_bubblewrap::BubblewrapRequirements::missing(&probe)
-                .unwrap_or(afr_engine::MECHANISM_BUBBLEWRAP),
-        ))
     }
 
     /// An engine that builds no sandbox: each run's tools run in a scratch
@@ -160,8 +116,7 @@ impl Host {
         let engine = afr_engine_unsandboxed::UnsandboxedEngine::new(home.sandboxes())
             .or_exit()?
             .with_sizes(sizes);
-        let probe = afr_engine_bubblewrap::probe(&afr_engine_bubblewrap::ProbePaths::default());
-        Ok(Self::new(engine, probe, None))
+        Ok(Self::new(engine, crate::probe::host(), None))
     }
 }
 

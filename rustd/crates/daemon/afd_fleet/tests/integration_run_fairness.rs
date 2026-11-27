@@ -29,7 +29,7 @@ async fn enqueue(fixtures: &Fixtures, fleet: &Uuid7, workspace: &Uuid7) {
 
 fn enrolment(fleet: &Uuid7) -> RegisterRequest<'static> {
     requests::enrolment_tagged(
-        SandboxTier::LandlockFull,
+        SandboxTier::Firecracker,
         NetworkPolicy::AllowListEgress,
         1,
         &requests::placement_tag(fleet),

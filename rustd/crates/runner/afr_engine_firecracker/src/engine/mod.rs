@@ -31,7 +31,7 @@ mod vm;
 pub use self::backend::FirecrackerBackend;
 
 /// The user and group a guest's executor and every tenant process run as,
-/// inside the guest: the toolbox's sandbox user, as bubblewrap maps it.
+/// inside the guest: the toolbox's sandbox user.
 pub(crate) const GUEST_USER: (u32, u32) = (1000, 1000);
 /// The event a sandbox's build is logged under, and the one it failed under;
 /// the supervisor, which knows what the run was for, logs the refusal itself.

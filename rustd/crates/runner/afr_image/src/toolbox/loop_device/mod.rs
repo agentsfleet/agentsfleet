@@ -140,39 +140,6 @@ pub(crate) struct Backing {
     pub(crate) size_limit: u64,
 }
 
-/// Whether a loop device may write its image.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Access {
-    /// The toolbox: every run reads it, none writes it.
-    ReadOnly,
-    /// A run's own workspace disk.
-    ReadWrite,
-}
-
-impl Access {
-    const fn flags(self) -> u32 {
-        match self {
-            Self::ReadOnly => LO_FLAGS_READ_ONLY,
-            Self::ReadWrite => 0,
-        }
-    }
-
-    /// Whether the device asks for direct I/O. The workspace disk does, so
-    /// its blocks are cached once, in the sandbox's own memory. The toolbox
-    /// does not: read past the host's cache, its cold first use measured
-    /// 1.1 to 3 times slower at p99, and a host caches its one image once.
-    const fn direct_io(self) -> bool {
-        matches!(self, Self::ReadWrite)
-    }
-
-    /// Whether the device itself is opened for writing. `LOOP_CONFIGURE`
-    /// makes a device read-only when the handle configuring it cannot write,
-    /// whatever the flags ask.
-    const fn writes(self) -> bool {
-        matches!(self, Self::ReadWrite)
-    }
-}
-
 /// A loop device attached to an image, held open until its mount takes it:
 /// with autoclear set, closing the last handle before then would detach it.
 #[derive(Debug)]
@@ -185,49 +152,28 @@ pub(crate) struct Attached {
     _device: File,
 }
 
-/// Attaches `image` to a free loop device from the descriptor itself, with
-/// page-sized blocks and, for a disk that writes, direct I/O, in the one
-/// call. The device detaches itself once its mount lets go of it. A kernel
-/// that refuses direct I/O for this file (`EINVAL`) gets the attach again
-/// without it: a buffered device, which [`Attached::caching`] says, not a
-/// failure.
-pub(crate) fn attach(image: &File, access: Access) -> Result<Attached> {
+/// Attaches `image` read-only to a free loop device from the descriptor
+/// itself, with page-sized blocks, in the one call: every run reads the
+/// toolbox and none writes it. It is cached by the host, which caches its one
+/// image once; read past the host's cache, its cold first use measured 1.1 to
+/// 3 times slower at p99. The device detaches itself once its mount lets go
+/// of it.
+pub(crate) fn attach(image: &File) -> Result<Attached> {
     let control = OpenOptions::new()
         .read(true)
         .write(true)
         .open(LOOP_CONTROL)?;
     let fd = u32::try_from(image.as_raw_fd()).map_err(io::Error::other)?;
-    let config = |direct| LoopConfig {
+    let config = LoopConfig {
         fd,
         block_size: BLOCK_BYTES,
         info: LoopInfo64 {
-            flags: access.flags() | LO_FLAGS_AUTOCLEAR | direct,
+            flags: LO_FLAGS_READ_ONLY | LO_FLAGS_AUTOCLEAR,
             ..LoopInfo64::ZERO
         },
         reserved: [0; 8],
     };
-    let (direct, buffered) = (config(LO_FLAGS_DIRECT_IO), config(0));
-    let attach = |config: &LoopConfig| until_free(|| configure_free(&control, config, access));
-    let attached = if access.direct_io() {
-        direct_or_buffered(attach, &direct, &buffered)
-    } else {
-        attach(&buffered)
-    };
-    Ok(attached?)
-}
-
-/// `attach` with `direct`, or with `buffered` when the kernel refuses direct
-/// I/O for this file (`EINVAL`): a buffered device, not a failure. Any other
-/// refusal is the answer.
-fn direct_or_buffered<C, T>(
-    attach: impl Fn(&C) -> io::Result<T>,
-    direct: &C,
-    buffered: &C,
-) -> io::Result<T> {
-    match attach(direct) {
-        Err(refused) if refused.raw_os_error() == Some(libc::EINVAL) => attach(buffered),
-        attached => attached,
-    }
+    Ok(until_free(|| configure_free(&control, &config))?)
 }
 
 /// How a device whose flags read `flags` caches its file.
@@ -305,13 +251,10 @@ fn waiting_out<T>(patience: Patience, call: impl FnMut() -> io::Result<T>) -> io
     .call()
 }
 
-/// Asks the kernel for a free loop device, opens it as `access` needs, and
-/// configures it with `config`.
-fn configure_free(
-    control: &File,
-    config: &LoopConfig,
-    access: Access,
-) -> Result<Attached, Attempt> {
+/// Asks the kernel for a free loop device, opens it for reading, and
+/// configures it with `config`. The kernel makes a device read-only when its
+/// configuring handle cannot write, whatever the flags ask.
+fn configure_free(control: &File, config: &LoopConfig) -> Result<Attached, Attempt> {
     // SAFETY: LOOP_CTL_GET_FREE takes no argument; it returns a device
     // number, or -1 with errno set.
     let number = unsafe { libc::ioctl(control.as_raw_fd(), LOOP_CTL_GET_FREE) };
@@ -319,13 +262,8 @@ fn configure_free(
         return Err(Attempt::Failed(io::Error::last_os_error()));
     }
     let node = PathBuf::from(format!("{LOOP_NODE_PREFIX}{number}"));
-    let device = waiting_out(NODE_PATIENCE, || {
-        OpenOptions::new()
-            .read(true)
-            .write(access.writes())
-            .open(&node)
-    })
-    .map_err(Attempt::Failed)?;
+    let device = waiting_out(NODE_PATIENCE, || OpenOptions::new().read(true).open(&node))
+        .map_err(Attempt::Failed)?;
     waiting_out(SETTLE_PATIENCE, || {
         // SAFETY: `config` is a `struct loop_config` laid out as the kernel
         // declares it (asserted above), alive for the call and only read.

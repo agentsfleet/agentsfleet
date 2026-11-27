@@ -3,140 +3,58 @@
 //! Pure — no clock, no rows, no datastore — so the whole matrix is a unit test
 //! and the heartbeat only orchestrates reads and writes around it.
 //!
-//! # The daemon asks for OUTCOMES, not for mechanisms
+//! # A tier names its engine
 //!
-//! Landlock, seccomp, the `cpu`/`memory`/`pids` cgroup controllers and a
-//! `bubblewrap` binary are each a Linux implementation detail, and asking a
-//! host for them by name would make the control plane bubblewrap-shaped: a
-//! runner backed by a Firecracker microVM, a full virtual machine, or a
-//! managed platform isolate delivers the same ISOLATION and would fail all four
-//! questions.
-//!
-//! So the vocabulary here is [`Guarantee`] — what a tenant is promised — and
-//! [`Guarantee::proven_by`] is the only function in this crate that knows what
-//! a Linux host reports. A substrate that delivers filesystem isolation by
-//! giving each run its own guest rootfs satisfies the same guarantee that
-//! Landlock does, and nothing above the evidence table has to learn a second
-//! vocabulary to say so.
-//!
-//! The report names its engine's isolation beside five Linux booleans, so the
-//! evidence table reads a virtual machine's wall as proof and a shared-kernel
-//! engine's mechanisms one by one. The coupling lives in that one table, with
-//! the mapping written down.
+//! Each tier that builds a sandbox names the engine that builds it, and the
+//! runner's report names the engine it runs. The verdict compares the two: a
+//! `firecracker` runner proves its tier by reporting `engine: firecracker`
+//! behind a hardware virtual machine, whose own kernel confines files, system
+//! calls and processes, whose size caps its resources, and whose network the
+//! host holds to the assigned posture. The daemon asks a host for no Linux
+//! mechanism by name.
 //!
 //! # A verdict is one value, not two fields that must agree
 //!
 //! A `bool` beside an optional reason can spell two states that must never
 //! exist: degraded with no reason, and not degraded WITH one. Here it is an
-//! enum, so
-//! [`Verdict::Healthy`] has nowhere to put a reason and [`Verdict::Degraded`]
-//! cannot omit one — `dispatch/write_rust.md` §Functional design, "two `Option`
-//! fields where exactly one is ever set is an enum".
+//! enum, so [`Verdict::Healthy`] has nowhere to put a reason and
+//! [`Verdict::Degraded`] cannot omit one.
 //!
 //! The reason strings are the operator-facing vocabulary: they land on the
-//! runner row verbatim and each names one missing mechanism, which maps to a
-//! step in the runner bootstrap playbook. Change their bytes only on purpose:
-//! an operator greps for them.
+//! runner row verbatim, and an operator greps for them. Change their bytes
+//! only on purpose.
 
-use af_wire::runner::{AssignedPolicy, CapabilityReport, Isolation, NetworkPolicy, SandboxTier};
+use af_wire::runner::{
+    AssignedPolicy, CapabilityReport, Isolation, NetworkPolicy, SandboxEngine, SandboxTier,
+};
 
 /// The host has never reported what it can enforce.
 pub const REASON_NO_CAPABILITY_REPORT: &str = "no capability report";
-/// Filesystem isolation is unavailable on the host.
-pub const REASON_LANDLOCK_UNAVAILABLE: &str = "landlock unavailable";
-/// System-call filtering is unavailable on the host.
-pub const REASON_SECCOMP_UNAVAILABLE: &str = "seccomp unavailable";
-/// The delegated cgroup subtree is missing a controller the cage needs.
-pub const REASON_CGROUP_CONTROLLERS_MISSING: &str = "cgroup controllers not delegated";
-/// The sandbox launcher is absent.
-pub const REASON_BUBBLEWRAP_MISSING: &str = "bubblewrap missing";
-/// Kernel-enforced egress allowlisting is unavailable.
-pub const REASON_EGRESS_ENFORCEMENT_UNAVAILABLE: &str = "egress enforcement unavailable";
-/// An isolating network posture was assigned to a tier that builds no cage.
+/// An isolating network posture was assigned to a tier that builds no sandbox.
 pub const REASON_NETWORK_NEEDS_CAGE: &str = "network isolation needs a sandbox tier";
-/// The runner's engine confines nothing, so no assigned guarantee can hold.
-pub const REASON_ENGINE_UNCONFINED: &str = "the runner's engine confines nothing";
+/// The runner reports an engine, or a wall, other than the one its tier
+/// names: a debug engine that confines nothing among them.
+pub const REASON_ENGINE_NOT_THE_TIERS: &str = "the runner's engine is not its tier's";
 
-/// Controllers a cage-building tier needs in the delegated subtree.
-///
-/// A subset of the runner's own requirement, `REQUIRED_CONTROLLERS` in
-/// `afr_engine/src/probe/mod.rs`: cpu, io, memory and pids.
-/// Evidence for [`Guarantee::ResourceLimits`] on a Linux host, and nothing
-/// beyond that — a substrate that caps a run by giving it a vCPU and a memory
-/// ceiling proves the same guarantee without a cgroup anywhere.
-const REQUIRED_CONTROLLERS: [&str; 3] = ["cpu", "memory", "pids"];
-
-/// What a runner may take work under, stated as an outcome.
-///
-/// The unit an assignment is expressed in and a verdict refuses in. Each names
-/// something a tenant's code cannot do, or cannot exceed, while a run runs —
-/// never how a host arranges it.
+/// The engine a tier names and the wall that engine must report.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Guarantee {
-    /// A run sees only the filesystem it was given.
-    FilesystemIsolation,
-    /// A run cannot make system calls outside the permitted set.
-    SyscallFiltering,
-    /// A run cannot exceed its processor, memory or process budget.
-    ResourceLimits,
-    /// A run's processes cannot escape into the host's.
-    ProcessContainment,
-    /// A run reaches only the destinations its policy permits.
-    EgressControl,
+struct Wall {
+    /// The engine that builds the tier's sandboxes.
+    engine: SandboxEngine,
+    /// The isolation that engine puts between a sandbox and the host.
+    isolation: Isolation,
 }
 
-impl Guarantee {
-    /// What an operator is told when this guarantee is not proven.
-    ///
-    /// Stable byte-for-byte, and deliberately so: an operator greps for these
-    /// and a runbook names them. They read as mechanisms
-    /// because today's only substrate is a Linux host — the day a second one
-    /// reports, these become the guarantee's own words and the mapping is one
-    /// edit in this function.
-    #[must_use]
-    pub const fn reason(self) -> &'static str {
-        match self {
-            Self::FilesystemIsolation => REASON_LANDLOCK_UNAVAILABLE,
-            Self::SyscallFiltering => REASON_SECCOMP_UNAVAILABLE,
-            Self::ResourceLimits => REASON_CGROUP_CONTROLLERS_MISSING,
-            Self::ProcessContainment => REASON_BUBBLEWRAP_MISSING,
-            Self::EgressControl => REASON_EGRESS_ENFORCEMENT_UNAVAILABLE,
-        }
-    }
-
-    /// Whether `report` is evidence that this host delivers this guarantee.
-    ///
-    /// **The one substrate-aware function in this crate.** A virtual machine
-    /// proves the cage itself: its own kernel confines files, system calls
-    /// and processes, and its size caps the resources. Egress is enforced on
-    /// the host either way, so it is always read from the host's report. A
-    /// shared-kernel engine proves each guarantee by its Linux mechanism.
-    #[must_use]
-    pub fn proven_by(self, report: &CapabilityReport<'_>) -> bool {
-        if report.isolation == Isolation::HardwareVm && self != Self::EgressControl {
-            return true;
-        }
-        match self {
-            Self::FilesystemIsolation => report.landlock,
-            Self::SyscallFiltering => report.seccomp,
-            Self::ResourceLimits => has_required_controllers(&report.cgroup_controllers),
-            Self::ProcessContainment => report.bubblewrap,
-            Self::EgressControl => report.egress_enforcement,
-        }
+/// The wall `tier` demands, or none for a tier that builds no sandbox.
+const fn wall_of(tier: SandboxTier) -> Option<Wall> {
+    match tier {
+        SandboxTier::Firecracker => Some(Wall {
+            engine: SandboxEngine::Firecracker,
+            isolation: Isolation::HardwareVm,
+        }),
+        SandboxTier::DevNone => None,
     }
 }
-
-/// The guarantees a cage-building isolation class demands, in refusal order.
-///
-/// The ORDER is the documented part — an operator fixing one mechanism sees the
-/// next one rather than a reshuffled answer — so it is a table rather than a
-/// sequence of `if` statements that a reader has to reconstruct.
-const CAGE_GUARANTEES: [Guarantee; 4] = [
-    Guarantee::FilesystemIsolation,
-    Guarantee::SyscallFiltering,
-    Guarantee::ResourceLimits,
-    Guarantee::ProcessContainment,
-];
 
 /// Whether a runner may take work, and why not when it may not.
 ///
@@ -180,113 +98,32 @@ impl Verdict {
     }
 }
 
-/// Whether an assigned tier builds a cage at all.
+/// Resolves the assignment against what the host reported it runs.
 ///
-/// # Why this is an enum and not four booleans
-///
-/// Four `bool`s spell sixteen states. Exactly TWO are reachable — a tier needs
-/// every guarantee or none — so fourteen of them would exist only to be
-/// impossible. Clippy notices that shape (`struct_excessive_bools`); the fix is
-/// not to silence it but to say what is actually true, which is that a tier either
-/// builds a cage or does not (`dispatch/write_rust.md` §Functional design,
-/// "make illegal states unrepresentable").
-///
-/// `dev_none` builds no cage, so it demands no guarantee. BOTH cage tiers
-/// demand the full set — filesystem isolation included for `container_nested`,
-/// because the in-child hardening applies Landlock fail-closed on every
-/// sandboxed tier, so a nested host without it would abort every run.
-/// Demanding it here surfaces that as a visible degraded row instead of a
-/// silent refusal loop.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum TierNeeds {
-    /// The tier builds no cage, so there is nothing for the host to prove.
-    NoCage,
-    /// The tier builds a cage, which needs every guarantee below it.
-    Cage,
-}
-
-impl TierNeeds {
-    /// Whether this tier demands anything at all.
-    const fn any(self) -> bool {
-        matches!(self, Self::Cage)
-    }
-
-    /// What `tier` demands.
-    const fn of(tier: SandboxTier) -> Self {
-        match tier {
-            SandboxTier::LandlockFull | SandboxTier::ContainerNested => Self::Cage,
-            SandboxTier::DevNone => Self::NoCage,
-        }
-    }
-}
-
-/// Whether `policy` needs enforced egress control.
-const fn enforces_egress(policy: NetworkPolicy) -> bool {
-    matches!(policy, NetworkPolicy::AllowListEgress)
-}
-
-/// Whether `policy` leaves the child on the host's own network namespace.
-const fn shares_host_net(policy: NetworkPolicy) -> bool {
-    matches!(policy, NetworkPolicy::AllowAll)
-}
-
-/// Every guarantee `policy` demands, in the order they are refused in.
-///
-/// The assignment's whole meaning, as a list: a cage tier demands the four that
-/// build one, and an allowlisted egress posture demands control over where a
-/// run can reach, whichever tier it runs under.
-fn demanded(policy: &AssignedPolicy<'_>) -> impl Iterator<Item = Guarantee> {
-    let cage = TierNeeds::of(policy.sandbox_tier).any();
-    CAGE_GUARANTEES
-        .into_iter()
-        .filter(move |_cage_guarantee| cage)
-        .chain(enforces_egress(policy.network_policy).then_some(Guarantee::EgressControl))
-}
-
-/// Resolves the assignment against what the host reported it can deliver.
-///
-/// A missing report degrades on its own; otherwise the first unmet guarantee,
-/// in a fixed order, names the reason.
+/// A tier that builds no sandbox demands nothing of any host, and of a host
+/// that has never reported, but it cannot hold a network posture other than
+/// `allow_all`: the child shares the host's network namespace. A tier that
+/// names an engine needs a report naming that engine behind its wall.
 #[must_use]
 pub fn reconcile(
     policy: &AssignedPolicy<'_>,
     achievable: Option<&CapabilityReport<'_>>,
 ) -> Verdict {
-    // A posture other than `allow_all` is enforced BY the cage (network
-    // namespace unshare, veth), so a cage-less tier structurally cannot deliver
-    // it however the host is built. Degrade rather than render "no egress" over
-    // a child that inherits the host namespace.
-    if !shares_host_net(policy.network_policy) && !TierNeeds::of(policy.sandbox_tier).any() {
-        return Verdict::degraded(REASON_NETWORK_NEEDS_CAGE);
-    }
-
-    let mut demanded = demanded(policy).peekable();
-    if demanded.peek().is_none() {
-        // An assignment that demands nothing is satisfied by any host, and by a
-        // host that has never reported. Checked before the report so a
-        // `dev_none` runner is not held degraded waiting for a probe whose
-        // answer could not change the verdict.
-        return Verdict::Healthy;
-    }
-
+    let Some(wall) = wall_of(policy.sandbox_tier) else {
+        return if policy.network_policy == NetworkPolicy::AllowAll {
+            Verdict::Healthy
+        } else {
+            Verdict::degraded(REASON_NETWORK_NEEDS_CAGE)
+        };
+    };
     let Some(report) = achievable else {
         return Verdict::degraded(REASON_NO_CAPABILITY_REPORT);
     };
-    // Whatever mechanisms the host has, an engine that confines nothing
-    // delivers none of them to a run.
-    if report.isolation == Isolation::Unconfined {
-        return Verdict::degraded(REASON_ENGINE_UNCONFINED);
+    if report.engine == wall.engine && report.isolation == wall.isolation {
+        Verdict::Healthy
+    } else {
+        Verdict::degraded(REASON_ENGINE_NOT_THE_TIERS)
     }
-    demanded
-        .find(|guarantee| !guarantee.proven_by(report))
-        .map_or(Verdict::Healthy, |unmet| Verdict::degraded(unmet.reason()))
-}
-
-/// Whether every controller a cage needs is in the delegated subtree.
-fn has_required_controllers(present: &[std::borrow::Cow<'_, str>]) -> bool {
-    REQUIRED_CONTROLLERS
-        .iter()
-        .all(|required| present.iter().any(|found| found == required))
 }
 
 #[cfg(test)]

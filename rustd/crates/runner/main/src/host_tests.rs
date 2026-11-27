@@ -41,12 +41,11 @@ async fn test_booted_host_retains_resources_while_its_engine_serves() {
     use std::sync::atomic::{AtomicBool, Ordering};
 
     use afr_engine::{Booted, Limits, SandboxSpec, Started, fresh_sandbox_id};
-    use afr_engine_bubblewrap::ProbePaths;
     use afr_engine_unsandboxed::UnsandboxedEngine;
 
     let dir = tempfile::tempdir_in("/tmp").unwrap();
     let released = Arc::new(AtomicBool::new(false));
-    let probe = afr_engine_bubblewrap::probe(&ProbePaths::default());
+    let probe = crate::probe::host();
     let host = super::Host::from(Booted {
         started: Started {
             engine: UnsandboxedEngine::new(dir.path().to_owned()).unwrap(),
@@ -139,12 +138,12 @@ fn test_an_io_failure_is_logged_as_the_system_tells_it() {
 fn test_the_admitted_engine_is_logged_with_its_bound() {
     use std::num::NonZeroU64;
 
-    use af_wire::runner::{Kvm, SandboxEngine};
+    use af_wire::runner::{Isolation, Kvm, SandboxEngine};
     use afr_engine::{Capabilities, MemoryBound};
-    use afr_engine_bubblewrap::BUBBLEWRAP_CAPABILITIES;
+    use afr_engine_firecracker::FIRECRACKER_CAPABILITIES;
 
     const GIB: u64 = 1024 * 1024 * 1024;
-    let mut probe = afr_engine_bubblewrap::probe(&afr_engine_bubblewrap::ProbePaths::default());
+    let mut probe = crate::probe::host();
     probe.kvm = Kvm::Usable;
     let Some(sandbox_bytes) = NonZeroU64::new(2 * GIB + 16 * 1024 * 1024) else {
         unreachable!("a non-zero reservation")
@@ -153,16 +152,17 @@ fn test_the_admitted_engine_is_logged_with_its_bound() {
     let microvms = Lines::default();
     let journal = tracing_subscriber::registry().with(microvms.clone());
     tracing::subscriber::with_default(journal, || {
-        let microvm = Capabilities {
-            engine: SandboxEngine::Firecracker,
-            ..BUBBLEWRAP_CAPABILITIES
-        };
-        booted(microvm, Some(bound), &probe);
+        booted(FIRECRACKER_CAPABILITIES, Some(bound), &probe);
     });
     let processes = Lines::default();
     let journal = tracing_subscriber::registry().with(processes.clone());
     tracing::subscriber::with_default(journal, || {
-        booted(BUBBLEWRAP_CAPABILITIES, None, &probe);
+        let unconfined = Capabilities {
+            engine: SandboxEngine::Unsandboxed,
+            isolation: Isolation::Unconfined,
+            ..FIRECRACKER_CAPABILITIES
+        };
+        booted(unconfined, None, &probe);
     });
 
     let line = microvms.only(EVENT_ENGINE_BOOTED);
@@ -172,7 +172,7 @@ fn test_the_admitted_engine_is_logged_with_its_bound() {
     assert_eq!(line.get("sandboxes_max").map(String::as_str), Some("55"));
     assert_eq!(line.get("worker_count"), Some(&workers));
     let line = processes.only(EVENT_ENGINE_BOOTED);
-    assert_eq!(line.get("engine").map(String::as_str), Some("bubblewrap"));
+    assert_eq!(line.get("engine").map(String::as_str), Some("unsandboxed"));
     assert_eq!(line.get("sandboxes_max"), None, "no memory bound, no field");
 }
 

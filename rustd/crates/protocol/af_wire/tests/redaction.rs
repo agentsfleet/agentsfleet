@@ -87,7 +87,7 @@ fn should_not_leak_the_runner_token_through_debug() {
         assigned_policy: AssignedPolicy {
             durable_tasks_enabled: true,
             decision_model_id: None,
-            sandbox_tier: SandboxTier::LandlockFull,
+            sandbox_tier: SandboxTier::Firecracker,
             network_policy: EgressPolicy::AllowAll,
             registry_allowlist: vec![],
             worker_count: 1,

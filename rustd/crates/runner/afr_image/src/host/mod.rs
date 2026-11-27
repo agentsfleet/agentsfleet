@@ -1,9 +1,8 @@
 //! The host programs the engine runs, and the one way it runs them.
 //!
-//! Two steps have no library a runner should link: launching bubblewrap, and
-//! formatting an ext4 image. Attaching an image to a loop device and mounting
-//! it run in-process (`crate::toolbox::loop_device`), so no `mount` program
-//! starts for a run.
+//! One step has no library a runner should link: formatting an ext4 image.
+//! Attaching the toolbox to a loop device and mounting it run in-process
+//! (`crate::toolbox::loop_device`), so no `mount` program starts for a run.
 
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
@@ -12,10 +11,7 @@ use std::process::Stdio;
 use af_core::error_code::{Coded as _, Logged};
 
 use crate::error::{Result, program as failed};
-use crate::workspace_disk::{Mount, loop_mount};
 
-/// Where Debian and Ubuntu install bubblewrap.
-pub const BWRAP_PATH: &str = "/usr/bin/bwrap";
 /// Where Debian and Ubuntu install `mke2fs`.
 pub const MKE2FS_PATH: &str = "/usr/sbin/mke2fs";
 
@@ -37,15 +33,11 @@ const TYPE_FLAG: &str = "-t";
 /// for a small disk and the kernel would refuse to mount that.
 pub(crate) const BLOCK_BYTES: u32 = 4096;
 
-/// Where each host program lives, and the step that mounts a workspace disk.
+/// Where each host program lives.
 #[derive(Debug, Clone)]
 pub struct HostTools {
-    /// The bubblewrap launcher.
-    pub bwrap: PathBuf,
     /// The ext4 formatter.
     pub mke2fs: PathBuf,
-    /// Attaches a workspace image to a loop device and mounts it, in-process.
-    pub mount: Mount,
 }
 
 impl HostTools {
@@ -58,9 +50,7 @@ impl HostTools {
 impl Default for HostTools {
     fn default() -> Self {
         Self {
-            bwrap: BWRAP_PATH.into(),
             mke2fs: MKE2FS_PATH.into(),
-            mount: loop_mount,
         }
     }
 }

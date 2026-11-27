@@ -27,7 +27,7 @@ async function buildNative(binary: string): Promise<void> {
   await run(["cargo", BUILD, "--locked", "--bin", binary, "--target-dir", TARGET_DIR], RUST_ROOT);
   const staged = resolve(OUTPUT_DIR, binary);
   await cp(resolve(TARGET_DIR, "debug", binary), staged);
-  // Bubblewrap starts the read-only bound runner as the sandbox user.
+  // Readable and executable by every user that starts a staged binary.
   await chmod(staged, EXECUTABLE_MODE);
 }
 

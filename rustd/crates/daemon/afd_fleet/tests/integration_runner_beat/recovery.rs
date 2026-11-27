@@ -14,7 +14,7 @@ use af_wire::runner::{CapabilityReport, HeartbeatRequest, HeldFleets, NetworkPol
 use afd_db::config::DbRole;
 use afd_db::test_util::mint_id;
 use afd_runner::heartbeat::holds::prove;
-use afd_runner::reconcile::REASON_LANDLOCK_UNAVAILABLE;
+use afd_runner::reconcile::REASON_ENGINE_NOT_THE_TIERS;
 use afd_runner::{Beat, NO_REPORT};
 use jiff::Timestamp;
 
@@ -44,12 +44,13 @@ async fn beats_holding(fixtures: &Fixtures, runner: &Uuid7, fleet: &str, now: Ti
         .expect("a release read that fails does not fail the beat")
 }
 
-/// A host that loses a mechanism is degraded on the next beat, and named.
+/// A host whose engine stops being its tier's is degraded on the next beat,
+/// and named.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_a_lost_guarantee_degrades_the_row_on_the_next_beat() {
     let fixtures = Fixtures::create().await;
-    let request = enrolment(SandboxTier::LandlockFull, NetworkPolicy::AllowAll, 1);
+    let request = enrolment(SandboxTier::Firecracker, NetworkPolicy::AllowAll, 1);
     let enrolled = fixtures
         .runners()
         .register(
@@ -68,7 +69,8 @@ async fn test_a_lost_guarantee_degrades_the_row_on_the_next_beat() {
             CapabilityReport {
                 durable_tasks_v1: false,
                 build_id: None,
-                landlock: false,
+                engine: af_wire::runner::SandboxEngine::Unsandboxed,
+                isolation: af_wire::runner::Isolation::Unconfined,
                 ..capable()
             },
         ),
@@ -93,7 +95,7 @@ async fn test_a_lost_guarantee_degrades_the_row_on_the_next_beat() {
 
     assert_eq!(
         fixtures.text(Row::Runner(&runner), "degraded_reason").await,
-        Some(REASON_LANDLOCK_UNAVAILABLE.to_owned()),
+        Some(REASON_ENGINE_NOT_THE_TIERS.to_owned()),
         "the reason is on the row an operator inspects"
     );
     fixtures.cleanup().await;
@@ -107,7 +109,7 @@ async fn test_a_stored_report_repairs_a_stale_verdict() {
     let enrolled = fixtures
         .runners()
         .register(
-            &enrolment(SandboxTier::LandlockFull, NetworkPolicy::AllowAll, 1),
+            &enrolment(SandboxTier::Firecracker, NetworkPolicy::AllowAll, 1),
             "fixture:platform-operator",
             fixtures.enrolled_at(),
         )

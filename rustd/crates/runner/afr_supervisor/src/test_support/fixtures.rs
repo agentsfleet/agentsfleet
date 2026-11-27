@@ -69,7 +69,7 @@ pub(crate) fn healthy() -> crate::test_util::Healthy {
         assigned: af_wire::runner::AssignedPolicy {
             durable_tasks_enabled: true,
             decision_model_id: None,
-            sandbox_tier: af_wire::runner::SandboxTier::LandlockFull,
+            sandbox_tier: af_wire::runner::SandboxTier::Firecracker,
             network_policy: af_wire::runner::NetworkPolicy::DenyAllEgress,
             registry_allowlist: Vec::new(),
             worker_count: 1,

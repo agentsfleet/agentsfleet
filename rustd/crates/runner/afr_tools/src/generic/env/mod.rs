@@ -1,6 +1,6 @@
 //! The run's sandbox as `guffbolt`'s environment: every process and file
 //! call a generic tool makes goes to the executor inside the run's
-//! bubblewrap sandbox, and none starts a process on the host.
+//! sandbox, and none starts a process on the host.
 //!
 //! The executor's own types and refusals are translated one to one, so a
 //! tool reads what it read when it called the executor itself: the same

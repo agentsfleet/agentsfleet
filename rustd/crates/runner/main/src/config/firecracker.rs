@@ -8,6 +8,8 @@ use afr_engine_firecracker::{Binaries, FIRST_JAIL_ID, FirecrackerTuning, MEMORY_
 use garde::Validate;
 use serde::Deserialize;
 
+use super::tuning::SandboxTuning;
+
 /// The last first jail user and group the range still fits under: one id per
 /// worker follows it, and `(uid_t) -1` means "no change" to every identity
 /// call, so the range stops below it.
@@ -66,11 +68,11 @@ impl Default for FirecrackerSection {
 
 impl FirecrackerSection {
     /// How the engine starts and paces every microVM: these programs, paced
-    /// as `sandbox` paces every engine's sandboxes, each granted `limits`.
+    /// and granted as `sandbox` says, each executor serving `sizes`.
     pub(super) fn tuning(
         &self,
-        sandbox: afr_engine_bubblewrap::EngineTuning,
-        limits: afr_engine::Limits,
+        sandbox: &SandboxTuning,
+        sizes: afr_executor::Sizes,
     ) -> FirecrackerTuning {
         FirecrackerTuning {
             binaries: Binaries {
@@ -80,10 +82,10 @@ impl FirecrackerSection {
                 initrd: self.initrd.clone(),
             },
             first_jail_id: self.first_jail_id,
-            ready_timeout: sandbox.ready_timeout,
-            io_bytes_per_second: sandbox.io_bytes_per_second,
-            sizes: sandbox.sizes,
-            limits,
+            ready_timeout: sandbox.ready_timeout(),
+            io_bytes_per_second: sandbox.io_bytes_per_second(),
+            sizes,
+            limits: sandbox.limits(),
             memory_overcommit: self.memory_overcommit,
         }
     }

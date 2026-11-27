@@ -154,7 +154,6 @@ fn test_every_runner_producer_runs_its_body() {
         FailureClass::ResourceKill,
         FailureClass::RunnerCrash,
         FailureClass::TransportLoss,
-        FailureClass::LandlockDeny,
         FailureClass::RunExpired,
         FailureClass::RenewalTerminate,
         FailureClass::FrameTooLarge,

@@ -45,6 +45,9 @@ landlock.workspace = true
 # identity.
 libc.workspace = true
 seccompiler.workspace = true
+# The hosts file an inner environment is given next, staged under a name no
+# other file has.
+tempfile.workspace = true
 
 [dev-dependencies]
 # Confines a child process and retries its socket until it answers.

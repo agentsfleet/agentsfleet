@@ -105,7 +105,7 @@ fn a_socket_is_bound_with_no_runtime_and_served_once_one_runs() {
     ended.1.expect("the server ended").expect("it ran").unwrap();
 }
 
-/// The bubblewrap engine's link: one end of a socket pair each, taken with
+/// A socket-pair link: one end of a socket pair each, taken with
 /// no runtime as the sandbox entry takes its end, then served once one runs.
 #[test]
 fn test_a_socket_pair_is_taken_with_no_runtime_and_served_once_one_runs() {

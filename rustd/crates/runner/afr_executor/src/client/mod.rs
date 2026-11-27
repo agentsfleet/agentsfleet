@@ -37,10 +37,11 @@ use crate::api::{
 };
 use crate::error::{self, Result};
 use crate::protocol::{
-    KillParams, METHOD_DELETE_FILE, METHOD_KILL, METHOD_LIST_DIR, METHOD_READ_FILE,
-    METHOD_RECOVERY_IDLE, METHOD_RENEW, METHOD_SEARCH, METHOD_SPAWN, METHOD_WRITE,
-    METHOD_WRITE_FILE, PathParams, ReadParams, ReadResult, RecoveryParams, RecoveryProof,
-    RenewParams, RenewedWorkspace, SpawnParams, WriteFileParams, WriteParams, decoded, request,
+    HostsParams, KillParams, METHOD_DELETE_FILE, METHOD_HOSTS, METHOD_KILL, METHOD_LIST_DIR,
+    METHOD_READ_FILE, METHOD_RECOVERY_IDLE, METHOD_RENEW, METHOD_SEARCH, METHOD_SPAWN,
+    METHOD_WRITE, METHOD_WRITE_FILE, PathParams, ReadParams, ReadResult, RecoveryParams,
+    RecoveryProof, RenewParams, RenewedWorkspace, SpawnParams, WriteFileParams, WriteParams,
+    decoded, request,
 };
 use crate::sizes::Sizes;
 
@@ -163,6 +164,20 @@ impl Client {
     ) -> Result<T> {
         let raw: Box<RawValue> = self.ask(method, params, Reply::Value).await?;
         Ok(decoded(&raw)?)
+    }
+
+    /// Replaces the hosts file every process inside the sandbox's inner
+    /// environment resolves names through by `file`, whole; answers once
+    /// every lookup there reads it. The frame is the only bound on `file`.
+    ///
+    /// # Errors
+    /// The executor builds no inner environment, or the file could not be put
+    /// in place, and the old one stays.
+    pub async fn hosts(&self, file: &str) -> Result<()> {
+        let params = HostsParams {
+            file: Cow::Borrowed(file),
+        };
+        self.order(METHOD_HOSTS, &params).await
     }
 
     /// A call answered with nothing but that it was done.

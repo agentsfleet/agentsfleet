@@ -1,8 +1,8 @@
 //! One cgroup v2 per run: its limits, its two leaves, and the kill that ends
 //! its whole tree.
 //!
-//! The run's cgroup holds the limits and no process. Bubblewrap and the
-//! executor run in its `sandbox` leaf; every process the executor starts runs
+//! The run's cgroup holds the limits and no process. The engine's own
+//! processes run in its `sandbox` leaf; every process the executor starts runs
 //! in its `tenant` leaf, whose memory limit sits [`SANDBOX_MEMORY_RESERVE_BYTES`]
 //! below the run's, so the kernel's out-of-memory killer chooses among
 //! tenant processes and never the sandbox's own — systemd's `Delegate=` shape,
@@ -63,7 +63,7 @@ const UNPOPULATED: &str = "populated 0";
 const STILL_POPULATED: &str = "a process outlived the kill past the drain bound";
 /// What a cgroup's memory limit did, its `oom_kill` count among it.
 pub const MEMORY_EVENTS: &str = "memory.events";
-/// The leaf bubblewrap and the executor run in.
+/// The leaf the engine's own processes run in.
 pub const SANDBOX_LEAF: &str = "sandbox";
 /// The leaf every process the executor starts runs in.
 pub const TENANT_LEAF: &str = "tenant";
@@ -87,7 +87,7 @@ const DRAIN_TRIES: usize = 1_000;
 /// Workspace-disk throughput, each way, in bytes per second.
 pub const DEFAULT_IO_BYTES_PER_SECOND: u64 = 200 * 1024 * 1024;
 /// Memory the sandbox's own processes keep when the tenant's are at their
-/// limit: room for the executor's resident set and bubblewrap's.
+/// limit: room for the engine's own resident set.
 ///
 /// Kept: without it the out-of-memory killer may pick the executor and end the sandbox.
 pub const SANDBOX_MEMORY_RESERVE_BYTES: u64 = 64 * 1024 * 1024;
@@ -185,7 +185,7 @@ impl RunCgroup {
     }
 
     /// The file a process writes its identifier to in order to join the
-    /// sandbox leaf: bubblewrap's, and so the executor's.
+    /// sandbox leaf: the engine's own.
     #[must_use]
     pub fn procs(&self) -> PathBuf {
         self.dir.join(SANDBOX_LEAF).join(CGROUP_PROCS)

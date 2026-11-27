@@ -159,24 +159,15 @@ pub enum Destinations<'a> {
 }
 
 impl HostScope {
-    /// Joins `netns` to the host through a slot of its own, admitting only
-    /// `allowlist`'s addresses.
+    /// Joins `netns` to the host through a slot of its own, admitting
+    /// `destinations`: a listed plan its set alone, so an operator registry
+    /// at a private address stays reachable; a public plan every address
+    /// once each reserved range — private, loopback, link-local and
+    /// carrier-grade among them — is dropped.
     ///
     /// # Errors
     /// No slot is free, or the kernel refused a step; what the build made is
     /// removed before the refusal returns.
-    pub fn join(netns: BorrowedFd<'_>, allowlist: &Allowlist) -> Result<Self> {
-        Scope::build(&Host, netns, allowlist).map(Self)
-    }
-
-    /// Joins `netns` to the host through a slot of its own, admitting
-    /// `destinations`: a listed plan its set alone, as a bubblewrap scope
-    /// does, so an operator registry at a private address stays reachable;
-    /// a public plan every address once each reserved range — private,
-    /// loopback, link-local and carrier-grade among them — is dropped.
-    ///
-    /// # Errors
-    /// As [`HostScope::join`].
     pub fn guarded(netns: BorrowedFd<'_>, destinations: Destinations<'_>) -> Result<Self> {
         let empty;
         let (allowlist, reach) = match destinations {

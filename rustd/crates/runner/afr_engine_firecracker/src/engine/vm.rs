@@ -8,8 +8,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use af_core::id::Uuid7;
 use afr_engine::error::egress_refused;
 use afr_engine::{
-    EgressPlan, EgressRefusal, Enforcer, Environment, Generation, Granted, Killed, Network,
-    ParkMode, Parked, Quiescence, Result, Sandbox, SandboxState, Snapshots, enforce,
+    Allowlist, EgressPlan, EgressRefusal, Enforcer, Environment, Generation, Granted, Killed,
+    Network, ParkMode, Parked, Quiescence, Result, Sandbox, SandboxState, Snapshots, enforce,
 };
 use afr_executor::{Client, Ending, Executor, Spawn};
 
@@ -170,10 +170,10 @@ impl Sandbox for Vm {
 
 #[async_trait::async_trait]
 impl Enforcer for Vm {
-    /// A new allowlist refills the tap's set in one transaction; a plan
-    /// reaching what the guest was booted to reach, with no set, changes
-    /// nothing. A plan for another kind of network is refused: the tap was
-    /// chosen at boot.
+    /// A new allowlist refills the tap's set in one transaction, then
+    /// replaces the guest's hosts file with its names; a plan reaching what
+    /// the guest was booted to reach, with no set, changes nothing. A plan for
+    /// another kind of network is refused: the tap was chosen at boot.
     async fn apply(&mut self, plan: EgressPlan<'_>) -> Result<()> {
         match (
             &self.kept.plan.reach,
@@ -182,6 +182,7 @@ impl Enforcer for Vm {
         ) {
             (Reach::Allowed(_), Network::Allowed(allowlist), Some(scope)) => {
                 scope.refill(allowlist)?;
+                resolve(&self.client, allowlist).await?;
             }
             (Reach::Public, Network::Host, _) | (Reach::Isolated, Network::Isolated, _) => {}
             _other => return Err(egress_refused(EgressRefusal::NoScope)),
@@ -247,8 +248,19 @@ impl Parked for Stopped {
     }
 }
 
+/// Has the guest resolve `allowlist`'s names and no others: its hosts file
+/// is replaced whole, and every lookup inside reads the new one, before this
+/// returns, as the tap's set holds the addresses.
+async fn resolve(client: &Client, allowlist: &Allowlist) -> Result<()> {
+    Ok(client.hosts(&allowlist.hosts_file()).await?)
+}
+
 /// Removes a sandbox's directory, image included, leaving what will not go
 /// for the boot sweep.
 fn remove(kept: &Kept) {
     let _left_for_the_sweep = fs::remove_dir_all(kept.layout.dir());
 }
+
+#[cfg(test)]
+#[path = "vm_tests.rs"]
+mod tests;

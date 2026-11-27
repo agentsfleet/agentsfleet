@@ -5,6 +5,7 @@
 //!   executor (outside) ─► entry(cwd), on the forking thread ─► fork
 //!                          child: the entry's steps ─► exec, inside
 //!   renew ─► every process inside ends ─► workspace emptied ─► built again
+//!   hosts ─► the hosts file every process inside reads, replaced whole
 //! ```
 //!
 //! An engine whose executor is the sandbox's root service hands one in;
@@ -39,6 +40,15 @@ pub trait InnerEnvironment: Send + Sync + fmt::Debug {
     /// # Errors
     /// The old environment would not end, or the new one would not build.
     fn renew(&self) -> io::Result<()>;
+
+    /// Replaces the hosts file every process inside resolves names through,
+    /// and the one the next environment is built with, by `file`, whole and
+    /// at once: no lookup reads a part of either. Blocks, as
+    /// [`InnerEnvironment::renew`] does.
+    ///
+    /// # Errors
+    /// The file could not be written or put in place; the old one stays.
+    fn hosts(&self, file: &str) -> io::Result<()>;
 }
 
 /// Has the process `command` starts enter `inner`, when there is one, before

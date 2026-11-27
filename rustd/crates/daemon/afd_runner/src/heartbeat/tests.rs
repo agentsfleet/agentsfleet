@@ -8,7 +8,6 @@
 use af_core::error_code;
 use af_core::id::Uuid7;
 use af_core::test_util::trace::Capture;
-use af_validate::TEXT_MAX_CHARS;
 use af_wire::runner::HeartbeatRequest;
 use serde_json::json;
 
@@ -19,18 +18,14 @@ use crate::error::{rejected, runner_vanished};
 /// The runner every logged line names.
 const RUNNER: &str = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb010";
 
-/// A beat body as a runner sends it, reporting `controllers`.
-fn beat_body(controllers: &[String]) -> String {
+/// A beat body as a runner sends it, reporting room for `sandboxes_max`.
+fn beat_body(sandboxes_max: u64) -> String {
     json!({
         "capability_report": {
-            "landlock": true,
-            "seccomp": true,
-            "cgroup_controllers": controllers,
-            "bubblewrap": true,
-            "egress_enforcement": true,
-            "engine": "bubblewrap",
-            "isolation": "shared_kernel",
-            "kvm": "absent",
+            "engine": "firecracker",
+            "isolation": "hardware_vm",
+            "kvm": "usable",
+            "sandboxes_max": sandboxes_max,
         },
         "selftest": null,
         "holds": [],
@@ -41,8 +36,8 @@ fn beat_body(controllers: &[String]) -> String {
 }
 
 /// Whether the beat parsed AND its report would be reconciled.
-fn reported(controllers: &[String]) -> bool {
-    let body = beat_body(controllers);
+fn reported(sandboxes_max: u64) -> bool {
+    let body = beat_body(sandboxes_max);
     let beat: HeartbeatRequest<'_> =
         serde_json::from_str(&body).expect("an out-of-bounds report still parses as a beat");
     bounded_report(&beat).is_some()
@@ -50,11 +45,10 @@ fn reported(controllers: &[String]) -> bool {
 
 #[test]
 fn test_capability_report_out_of_bounds_is_ignored() {
-    let named = |count: usize| vec!["cpu".to_owned(); count];
-    assert!(reported(&named(2)));
-    // An empty name: the beat parses and lands, the report is not one.
-    assert!(!reported(&[String::new()]));
-    assert!(!reported(&["c".repeat(TEXT_MAX_CHARS + 1)]));
+    assert!(reported(2));
+    // Room for no sandbox: the beat parses and lands, the report is not one.
+    assert!(!reported(0));
+    assert!(!reported(u64::from(i32::MAX.unsigned_abs()) + 1));
 }
 
 #[test]

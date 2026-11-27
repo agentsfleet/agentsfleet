@@ -108,7 +108,6 @@ const fn class_label(class: FailureClass) -> &'static str {
         FailureClass::ResourceKill => "resource_kill",
         FailureClass::RunnerCrash => "runner_crash",
         FailureClass::TransportLoss => "transport_loss",
-        FailureClass::LandlockDeny => "landlock_deny",
         FailureClass::RunExpired => "run_expired",
         FailureClass::RenewalTerminate => "renewal_terminate",
         FailureClass::FrameTooLarge => "frame_too_large",

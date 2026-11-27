@@ -1,10 +1,12 @@
 //! What this host can enforce, as the heartbeat states it.
 //!
-//! The capability report carries the wire's mechanisms — the daemon checks
-//! them against the host's assigned tier and degrades a host that falls short.
-//! A self-test carries those same facts as named checks, plus two the report
-//! has no field for: whether `/dev/kvm` lets a microVM engine run here, and
-//! whether the kernel can mount the toolbox, without which no sandbox builds.
+//! The capability report names the engine and the wall it builds — the
+//! daemon checks them against the host's assigned tier and degrades a host
+//! whose engine is not its tier's. A self-test carries the host's mechanisms
+//! as named checks: whether the kernel confines files and system calls,
+//! whether the cgroup controllers are delegated, whether `/dev/kvm` lets a
+//! microVM engine run here, and whether the kernel can mount the toolbox,
+//! without which no sandbox builds.
 
 use std::borrow::Cow;
 
@@ -12,10 +14,8 @@ use af_core::spelling::to_spelling;
 use af_wire::runner::{
     CapabilityReport, NetworkPolicy, SandboxTier, SelftestCheck, SelftestReport,
 };
-use af_wire::runner::{Isolation, Kvm, SandboxEngine};
-use afr_engine::{
-    Capabilities, HostProbe, MECHANISM_BUBBLEWRAP, MECHANISM_LANDLOCK, MECHANISM_SECCOMP,
-};
+use af_wire::runner::{Isolation, Kvm};
+use afr_engine::{Capabilities, HostProbe, MECHANISM_LANDLOCK, MECHANISM_SECCOMP};
 use serde::Serialize;
 
 const CHECK_CGROUP: &str = "cgroup_controllers";
@@ -28,8 +28,6 @@ const LANDLOCK_OFF: &str =
     "Landlock is not enabled in this kernel; file system access cannot be confined.";
 const SECCOMP_ON: &str = "Seccomp is available, so system calls can be filtered.";
 const SECCOMP_OFF: &str = "Seccomp is not available; system calls cannot be filtered.";
-const BUBBLEWRAP_ON: &str = "The bubblewrap launcher is installed and runs.";
-const BUBBLEWRAP_OFF: &str = "The bubblewrap launcher is missing or does not run.";
 /// Each names every controller in `afr_engine::REQUIRED_CONTROLLERS`, which a
 /// test holds them to.
 const CGROUP_ON: &str = "The cpu, io, memory and pids controllers are delegated to this runner.";
@@ -44,31 +42,18 @@ const DIRECT_IO_ON: &str =
 const DIRECT_IO_OFF: &str = "The state file system refuses direct I/O, so a workspace disk falls \
      back to buffered and is cached twice.";
 
-/// The capability report a heartbeat carries.
-///
-/// Egress enforcement is what the boot probe measured: a host that built and
-/// removed an egress scope can hold a sandbox to its allowlist, and the
-/// daemon reads an `allow_list_egress` runner degraded on any other.
-/// `sandboxes_max` is the engine's memory bound, absent when it reserves no
-/// memory.
+/// The capability report a heartbeat carries: the engine, its wall and what
+/// `/dev/kvm` allows. `sandboxes_max` is the engine's memory bound, absent
+/// when it reserves no memory.
 #[must_use]
 pub fn capability_report<'a>(
-    probe: &'a HostProbe,
+    probe: &HostProbe,
     engine: &Capabilities,
     sandboxes_max: Option<u32>,
 ) -> CapabilityReport<'a> {
     CapabilityReport {
         durable_tasks_v1: true,
         build_id: af_core::build::SOURCE_ID.map(Cow::Borrowed),
-        landlock: probe.landlock,
-        seccomp: probe.seccomp,
-        cgroup_controllers: probe
-            .cgroup_controllers
-            .iter()
-            .map(|controller| Cow::Borrowed(controller.as_str()))
-            .collect(),
-        bubblewrap: probe.bubblewrap,
-        egress_enforcement: probe.egress,
         engine: engine.engine,
         isolation: engine.isolation,
         kvm: probe.kvm,
@@ -114,8 +99,7 @@ pub fn probe_answer<'a>(probe: &'a HostProbe, engine: &Capabilities) -> ProbeAns
 }
 
 /// Every fact the probe found that `engine` relies on, as a named check: the
-/// launcher only for bubblewrap and the KVM device only for an engine behind
-/// a virtual machine, so a host is never judged on what its engine does not
+/// KVM device only for an engine behind a virtual machine, so a host is never judged on what its engine does not
 /// use. Direct I/O only when the probe was given a state directory to try it
 /// on.
 fn checks<'a>(probe: &HostProbe, engine: &Capabilities) -> Vec<SelftestCheck<'a>> {
@@ -134,12 +118,6 @@ fn checks<'a>(probe: &HostProbe, engine: &Capabilities) -> Vec<SelftestCheck<'a>
             verdict(probe.seccomp, SECCOMP_ON, SECCOMP_OFF),
         ),
     ];
-    checks.extend((engine.engine == SandboxEngine::Bubblewrap).then(|| {
-        check(
-            MECHANISM_BUBBLEWRAP,
-            verdict(probe.bubblewrap, BUBBLEWRAP_ON, BUBBLEWRAP_OFF),
-        )
-    }));
     checks.push(check(
         CHECK_CGROUP,
         verdict(probe.has_required_controllers(), CGROUP_ON, CGROUP_OFF),

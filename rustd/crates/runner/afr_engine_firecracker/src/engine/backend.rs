@@ -41,7 +41,6 @@ impl Backend for FirecrackerBackend<'_> {
                 && afr_guest::landlock_listed(Path::new(afr_guest::LSM_PATH)),
             seccomp: afr_guest::seccomp_offered(Path::new(afr_guest::SECCOMP_ACTIONS_PATH)),
             cgroup_controllers: afr_cgroup::delegated_controllers(&paths.cgroup_root),
-            bubblewrap: false,
             kvm: crate::probe(Path::new(crate::KVM_PATH)),
             toolbox_filesystem: afr_image::toolbox_filesystem(Path::new(
                 afr_image::FILESYSTEMS_PATH,

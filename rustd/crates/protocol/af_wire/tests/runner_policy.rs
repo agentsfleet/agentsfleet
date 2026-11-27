@@ -2,7 +2,9 @@
 
 #![expect(clippy::expect_used, reason = "test preconditions must fail loudly")]
 
-use af_wire::runner::AssignedPolicy;
+use af_wire::runner::{
+    AssignedPolicy, CapabilityReport, Isolation, Kvm, SandboxEngine, SandboxTier,
+};
 
 fn policy(enabled: &serde_json::Value) -> serde_json::Value {
     serde_json::json!({
@@ -50,4 +52,47 @@ fn non_boolean_settings_are_rejected_instead_of_coerced() {
         assert!(error.is_data());
         assert!(error.to_string().contains("boolean"));
     }
+}
+
+/// Each tier is spelled for its engine and reads back as itself; a tier named
+/// for a host mechanism is no tier at all.
+#[test]
+fn test_a_tier_names_its_engine() -> serde_json::Result<()> {
+    for (tier, spelled) in [
+        (SandboxTier::Firecracker, "\"firecracker\""),
+        (SandboxTier::DevNone, "\"dev_none\""),
+    ] {
+        assert_eq!(serde_json::to_string(&tier)?, spelled);
+        assert_eq!(serde_json::from_str::<SandboxTier>(spelled)?, tier);
+    }
+    let retired = serde_json::from_str::<SandboxTier>("\"landlock_full\"")
+        .expect_err("a mechanism-named tier is refused");
+    assert!(retired.is_data());
+    Ok(())
+}
+
+/// A report carrying a host mechanism is refused as an unknown field; the
+/// engine report itself round-trips.
+#[test]
+fn test_a_report_naming_a_linux_mechanism_is_refused() -> serde_json::Result<()> {
+    let report = CapabilityReport {
+        durable_tasks_v1: true,
+        build_id: None,
+        engine: SandboxEngine::Firecracker,
+        isolation: Isolation::HardwareVm,
+        kvm: Kvm::Usable,
+        sandboxes_max: Some(4),
+    };
+    let mut wire = serde_json::to_value(&report)?;
+    let text = wire.to_string();
+    assert_eq!(serde_json::from_str::<CapabilityReport<'_>>(&text)?, report);
+
+    if let Some(fields) = wire.as_object_mut() {
+        fields.insert("landlock".to_owned(), serde_json::json!(true));
+    }
+    let text = wire.to_string();
+    let refused = serde_json::from_str::<CapabilityReport<'_>>(&text)
+        .expect_err("a report naming a Linux mechanism is refused");
+    assert!(refused.to_string().contains("unknown field `landlock`"));
+    Ok(())
 }

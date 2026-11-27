@@ -13,7 +13,6 @@ const CLASSES: &[FailureClass] = &[
     FailureClass::RenewalTerminate,
     FailureClass::FrameTooLarge,
     FailureClass::PolicyDeny,
-    FailureClass::LandlockDeny,
     FailureClass::OomKill,
     FailureClass::ResourceKill,
     FailureClass::TimeoutKill,

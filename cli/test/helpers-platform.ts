@@ -8,11 +8,11 @@ export const RUNNER_ID = "0199a801-1000-7000-8000-000000000001";
 export const WORKSPACE_ID = "0199a801-1000-7000-8000-000000000002";
 export const INSTANT = "2026-11-10T00:00:00Z";
 export const POLICY = {
-  sandbox_tier: "landlock_full", network_policy: "deny_all_egress", registry_allowlist: [],
+  sandbox_tier: "firecracker", network_policy: "deny_all_egress", registry_allowlist: [],
   worker_count: 1, extra_binds: [], durable_tasks_enabled: true,
 };
 export const RUNNER = {
-  id: RUNNER_ID, host_id: "build-host", sandbox_tier: "landlock_full", status: "active", liveness: "online",
+  id: RUNNER_ID, host_id: "build-host", sandbox_tier: "firecracker", status: "active", liveness: "online",
   labels: [], last_seen_at: INSTANT, created_at: INSTANT, assigned_policy: POLICY,
   achievable: null, degraded: false, degraded_reason: null, host: {},
 };

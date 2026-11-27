@@ -23,8 +23,8 @@ use executor::FakeExecutor;
 
 /// What the fake engine states: every cap enforced, parking by pause.
 pub(crate) const CAPABILITIES: Capabilities = Capabilities {
-    engine: SandboxEngine::Bubblewrap,
-    isolation: Isolation::SharedKernel,
+    engine: SandboxEngine::Firecracker,
+    isolation: Isolation::HardwareVm,
     parks: &[ParkMode::Pause],
     snapshots: false,
     resources: ResourceFacts::ENFORCED,

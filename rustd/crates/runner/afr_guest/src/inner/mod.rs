@@ -11,6 +11,8 @@
 //!             no_new_privs, Landlock, seccomp (`unshare` refused) ─► exec
 //!   renew  ─► SIGKILL init: the kernel ends every process inside, and init
 //!             is reaped only once they all are ─► /workspace emptied ─► build
+//!   hosts  ─► as user 0: a new hosts file staged, its bind swapped in beneath
+//!             the old one, which goes; the swap reaches init's namespace
 //! ```
 //!
 //! Ending init is what ends the environment, so no tenant process outlives
@@ -36,6 +38,7 @@ use crate::harden::{PROC_SELF_STATUS, file_system_rules, program, single_threade
 mod enter;
 mod files;
 mod init;
+mod names;
 
 use self::enter::Entering;
 use self::files::{FilesAs, clear};
@@ -50,6 +53,10 @@ const DETAIL_RENEWING: &str = "the inner environment is being built again";
 pub struct Namespaced {
     user: (Uid, Gid),
     workspace: PathBuf,
+    /// The hosts file every process inside reads, and the directory each new
+    /// one is staged in.
+    hosts: PathBuf,
+    staging: PathBuf,
     /// The seccomp program every tenant process installs, compiled once.
     seccomp: Arc<BpfProgram>,
     /// The environment's init, by its process descriptor; none while a
@@ -61,12 +68,13 @@ impl Namespaced {
     /// Builds the first inner environment for tenant processes running as
     /// `user`, a user and group identifier, over `workspace`, and has this
     /// process act on files as `user` from now on: every thread made after
-    /// inherits that.
+    /// inherits that. Its hosts file is the mount on `hosts`, and each new
+    /// one is staged in `staging`, which no tenant process writes.
     ///
     /// # Errors
     /// A second thread already exists, so the file identity would miss it;
     /// the identity would not change; or the environment would not build.
-    pub fn build(user: (u32, u32), workspace: &Path) -> Result<Self> {
+    pub fn build(user: (u32, u32), workspace: &Path, hosts: &Path, staging: &Path) -> Result<Self> {
         single_threaded(&fs::read_to_string(PROC_SELF_STATUS)?)?;
         let user = (Uid::from_raw(user.0), Gid::from_raw(user.1));
         rustix::thread::set_thread_groups(&[])?;
@@ -74,6 +82,8 @@ impl Namespaced {
         let built = Self {
             user,
             workspace: workspace.to_owned(),
+            hosts: hosts.to_owned(),
+            staging: staging.to_owned(),
             seccomp: Arc::new(program()?),
             init: Mutex::new(None),
         };
@@ -117,6 +127,12 @@ impl InnerEnvironment for Namespaced {
         let fresh = init::start().map_err(io::Error::other)?;
         *self.held() = Some(fresh);
         Ok(())
+    }
+
+    fn hosts(&self, file: &str) -> io::Result<()> {
+        FilesAs::root(self.user, || {
+            names::replace(&self.staging, &self.hosts, file)
+        })
     }
 }
 

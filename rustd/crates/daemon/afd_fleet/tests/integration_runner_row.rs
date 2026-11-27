@@ -34,7 +34,7 @@ use crate::rows::Row;
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_enrolment_stores_only_the_digest() {
     let fixtures = Fixtures::create().await;
-    let request = enrolment(SandboxTier::LandlockFull, NetworkPolicy::AllowAll, 4);
+    let request = enrolment(SandboxTier::Firecracker, NetworkPolicy::AllowAll, 4);
 
     let enrolled = fixtures
         .runners()
@@ -84,7 +84,7 @@ async fn test_enrolment_stores_the_clamped_assignment() {
     // Far past the ceiling: a fat-fingered value must not fork unbounded
     // children on a host, which is what the shared bound exists for.
     let request = enrolment(
-        SandboxTier::ContainerNested,
+        SandboxTier::Firecracker,
         NetworkPolicy::AllowListEgress,
         9_999,
     );
@@ -109,7 +109,7 @@ async fn test_enrolment_stores_the_clamped_assignment() {
     );
     assert_eq!(
         fixtures.text(Row::Runner(&runner), "sandbox_tier").await,
-        Some("container_nested".to_owned())
+        Some("firecracker".to_owned())
     );
     assert_eq!(
         fixtures.text(Row::Runner(&runner), "network_policy").await,
@@ -138,7 +138,7 @@ async fn test_enrolment_stores_the_clamped_assignment() {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_enrolment_opens_degraded_with_its_audit_row() {
     let fixtures = Fixtures::create().await;
-    let request = enrolment(SandboxTier::LandlockFull, NetworkPolicy::AllowAll, 1);
+    let request = enrolment(SandboxTier::Firecracker, NetworkPolicy::AllowAll, 1);
 
     let enrolled = fixtures
         .runners()

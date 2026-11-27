@@ -13,7 +13,7 @@ fn test_decode_resolves_a_fully_assigned_row() {
     let columns = AssignmentColumns {
         durable_tasks_enabled: af_wire::test_util::DURABLE_TASKS_DEFAULT_ENABLED,
         decision_model_id: None,
-        sandbox_tier: "landlock_full".to_owned(),
+        sandbox_tier: "firecracker".to_owned(),
         network_policy: "allow_all".to_owned(),
         registry_allowlist_json: r#"["registry.npmjs.org","pypi.org"]"#.to_owned(),
         worker_count: 4,
@@ -24,7 +24,7 @@ fn test_decode_resolves_a_fully_assigned_row() {
         .decode()
         .expect("every column is present and readable");
 
-    assert_eq!(decoded.sandbox_tier, SandboxTier::LandlockFull);
+    assert_eq!(decoded.sandbox_tier, SandboxTier::Firecracker);
     assert_eq!(decoded.network_policy, NetworkPolicy::AllowAll);
     assert_eq!(
         decoded.registry_allowlist,
@@ -42,7 +42,7 @@ fn test_decode_refuses_every_unreadable_column() {
     let sound = AssignmentColumns {
         durable_tasks_enabled: af_wire::test_util::DURABLE_TASKS_DEFAULT_ENABLED,
         decision_model_id: None,
-        sandbox_tier: "landlock_full".to_owned(),
+        sandbox_tier: "firecracker".to_owned(),
         network_policy: "allow_all".to_owned(),
         registry_allowlist_json: "[]".to_owned(),
         worker_count: 1,

@@ -57,7 +57,6 @@ fn test_default_tools_are_where_debian_puts_them() {
     let tools = HostTools::default();
 
     assert_eq!(tools.mke2fs, Path::new(super::MKE2FS_PATH));
-    assert_eq!(tools.bwrap, Path::new(crate::host::BWRAP_PATH));
 }
 
 /// The owner a run's workspace disk is formatted for.

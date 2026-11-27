@@ -15,18 +15,9 @@ const fn report() -> CapabilityReport<'static> {
     CapabilityReport {
         durable_tasks_v1: false,
         build_id: None,
-        landlock: false,
-        seccomp: false,
-        cgroup_controllers: Vec::new(),
-        bubblewrap: false,
-        egress_enforcement: false,
-
-        engine: af_wire::runner::SandboxEngine::Bubblewrap,
-
-        isolation: af_wire::runner::Isolation::SharedKernel,
-
-        kvm: af_wire::runner::Kvm::Absent,
-
+        engine: af_wire::runner::SandboxEngine::Firecracker,
+        isolation: af_wire::runner::Isolation::HardwareVm,
+        kvm: af_wire::runner::Kvm::Usable,
         sandboxes_max: None,
     }
 }

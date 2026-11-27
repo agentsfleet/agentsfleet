@@ -55,7 +55,7 @@ pub(super) async fn run(address: SocketAddr, root: &Path) -> Checked {
         afr_tools::Catalog::new(Vec::new()),
         af_providers::Connector::with_client(client),
     );
-    let probe = afr_engine_bubblewrap::probe(&afr_engine_bubblewrap::ProbePaths::default());
+    let probe = stated_host();
     let stop = CancellationToken::new();
     let signal = stop.clone();
     let handler = tokio::spawn(async move {
@@ -74,4 +74,18 @@ pub(super) async fn run(address: SocketAddr, root: &Path) -> Checked {
     handler.abort();
     let _joined = handler.await;
     Ok(result?)
+}
+
+/// The host the debug engine runs on, as a stated probe: the engine confines
+/// nothing, so no fact the host could report changes what it builds.
+fn stated_host() -> afr_engine::HostProbe {
+    afr_engine::HostProbe {
+        landlock: true,
+        seccomp: true,
+        cgroup_controllers: afr_engine::REQUIRED_CONTROLLERS.map(str::to_owned).to_vec(),
+        kvm: af_wire::runner::Kvm::Absent,
+        toolbox_filesystem: true,
+        workspace_direct_io: None,
+        egress: false,
+    }
 }

@@ -164,7 +164,6 @@ const FAILURE_PRESENTATION: Record<string, TurnFailurePresentation> = {
   resource_kill: { label: "Hit a resource limit", guidance: null },
   runner_crash: { label: "The runner crashed", guidance: null },
   transport_loss: { label: "The response was interrupted", guidance: null },
-  landlock_deny: { label: "Blocked by the sandbox policy", guidance: null },
   run_expired: { label: "The run's run expired", guidance: null },
   renewal_terminate: { label: "Stopped by run renewal policy", guidance: null },
   frame_too_large: { label: "Too large for a run to carry", guidance: null },

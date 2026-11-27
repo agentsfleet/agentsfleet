@@ -23,8 +23,7 @@ use af_wire::runner::{NetworkPolicy, SandboxTier};
 #[must_use]
 pub const fn tier_wire(tier: SandboxTier) -> &'static str {
     match tier {
-        SandboxTier::LandlockFull => "landlock_full",
-        SandboxTier::ContainerNested => "container_nested",
+        SandboxTier::Firecracker => "firecracker",
         SandboxTier::DevNone => "dev_none",
     }
 }
@@ -80,11 +79,7 @@ mod tests {
     /// serde-driven read direction honest about each other.
     #[test]
     fn test_tier_spellings_round_trip() {
-        for tier in [
-            SandboxTier::LandlockFull,
-            SandboxTier::ContainerNested,
-            SandboxTier::DevNone,
-        ] {
+        for tier in [SandboxTier::Firecracker, SandboxTier::DevNone] {
             assert_eq!(parse_wire::<SandboxTier>(tier_wire(tier)), Some(tier));
         }
         assert_eq!(parse_wire::<SandboxTier>("quantum_cage"), None);

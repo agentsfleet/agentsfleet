@@ -2,6 +2,7 @@
 
 use std::fmt;
 use std::sync::Arc;
+use std::time::Duration;
 
 use af_core::id::Uuid7;
 use afr_executor::Executor;
@@ -27,6 +28,9 @@ pub const DEFAULT_CPU_MILLIS: u32 = 2_000;
 pub const DEFAULT_PIDS: u32 = 512;
 /// Size of the run's workspace disk; a write past it answers `ENOSPC`.
 pub const DEFAULT_DISK_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+/// How long a new sandbox may take to answer before its run is refused, by
+/// default: long enough that it ends only a sandbox that will never answer.
+pub const DEFAULT_READY_TIMEOUT: Duration = Duration::from_secs(10);
 /// The share of a sandbox's memory its `/dev/shm` may fill: one part in this
 /// many. Shared memory is a `tmpfs`, so its pages stay charged to the tenant
 /// after the process that wrote them dies; uncapped, one full `/dev/shm`

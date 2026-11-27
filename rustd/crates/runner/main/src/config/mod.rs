@@ -6,7 +6,6 @@ use af_core::env::EnvSource;
 use garde::Validate;
 use serde::Deserialize;
 
-#[cfg(feature = "firecracker")]
 mod firecracker;
 mod tuning;
 
@@ -41,7 +40,6 @@ struct Profile {
     daemon: DaemonTuning,
     #[garde(dive)]
     telemetry: TelemetryTuning,
-    #[cfg(feature = "firecracker")]
     #[garde(dive)]
     firecracker: firecracker::FirecrackerSection,
 }
@@ -52,13 +50,12 @@ pub(super) struct Settings {
     pub(super) supervisor: afr_supervisor::config::RuntimePolicy,
     /// The supervisor's daemon link, decision calls and sandbox limits.
     pub(super) tuning: afr_supervisor::config::Tuning,
-    /// How the engine starts and paces every sandbox.
-    pub(super) engine: afr_engine_bubblewrap::EngineTuning,
+    /// What every sandbox's executor serves with and its client keeps the
+    /// link to.
+    pub(super) sizes: afr_executor::Sizes,
     /// What our Firecracker engine boots every microVM with.
-    #[cfg(feature = "firecracker")]
     pub(super) firecracker: afr_engine_firecracker::FirecrackerTuning,
     /// The microVMs our Firecracker engine boots ahead of their runs.
-    #[cfg(feature = "firecracker")]
     pub(super) warm_pool: usize,
     /// What the agent loop holds every run to.
     pub(super) run_limits: afr_agent::RunLimits,
@@ -72,7 +69,6 @@ pub(super) fn read(env: &impl EnvSource) -> Result<Settings, ExitCode> {
     let profile = load(env).map_err(|error| super::refused(&error))?;
     let inference = af_providers::settings::Timeouts::new(&checked(profile.inference)?);
     let sizes = tuning::sizes(&profile.tools, profile.executor);
-    let engine = profile.sandbox.engine(sizes);
     Ok(Settings {
         inference: profile.provider.counting(inference),
         provider_retries: af_providers::settings::RetryPolicy::new(&checked(
@@ -80,10 +76,8 @@ pub(super) fn read(env: &impl EnvSource) -> Result<Settings, ExitCode> {
         )?),
         supervisor: afr_supervisor::config::RuntimePolicy::new(&checked(profile.supervisor)?),
         tuning: tuning::supervisor(&profile.sandbox, &profile.provider, &profile.daemon),
-        engine,
-        #[cfg(feature = "firecracker")]
-        firecracker: profile.firecracker.tuning(engine, profile.sandbox.limits()),
-        #[cfg(feature = "firecracker")]
+        sizes,
+        firecracker: profile.firecracker.tuning(&profile.sandbox, sizes),
         warm_pool: profile.firecracker.warm_pool(),
         run_limits: profile.tools.run_limits(sizes),
         egress: profile.egress.limits(),

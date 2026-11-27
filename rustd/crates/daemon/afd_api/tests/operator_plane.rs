@@ -284,7 +284,7 @@ async fn assert_runner_patch_policy(writer: &axum::Router) {
         Method::PATCH,
         &format!("/v1/admin/runners/{RUNNER}"),
         Some(TENANT_KEY),
-        r#"{"assigned_policy":{"sandbox_tier":"landlock_full","network_policy":"allow_list_egress","registry_allowlist":[],"worker_count":1,"extra_binds":[{"path":"/etc","mode":"read_write","note":"unsafe"}],"durable_tasks_enabled":true}}"#,
+        r#"{"assigned_policy":{"sandbox_tier":"firecracker","network_policy":"allow_list_egress","registry_allowlist":[],"worker_count":1,"extra_binds":[{"path":"/etc","mode":"read_write","note":"unsafe"}],"durable_tasks_enabled":true}}"#,
     )
     .await;
     assert_eq!(unsafe_policy.status(), StatusCode::BAD_REQUEST);

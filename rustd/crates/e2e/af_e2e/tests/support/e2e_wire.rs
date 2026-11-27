@@ -53,14 +53,9 @@ pub(crate) const OUTPUT_TOKENS: u32 = 4_000;
 pub(crate) fn capable_beat() -> Value {
     json!({
         "capability_report": {
-            "landlock": true,
-            "seccomp": true,
-            "cgroup_controllers": ["cpu", "memory", "pids"],
-            "bubblewrap": true,
-            "egress_enforcement": true,
-            "engine": "bubblewrap",
-            "isolation": "shared_kernel",
-            "kvm": "absent",
+            "engine": "firecracker",
+            "isolation": "hardware_vm",
+            "kvm": "usable",
         },
         "selftest": null,
         "holds": [],

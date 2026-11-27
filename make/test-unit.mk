@@ -77,10 +77,10 @@ test-coverage-all:  ## Run coverage gates across app, website, agentsfleet, and 
 KERNEL_LANE_RUNNER ?= sudo -E
 # AFR_TOOLBOX_IMAGE reuses an image; unset, the lane builds one from the manifest.
 # ENGINE names the engine the lane builds and holds to the conformance suite.
-ENGINE ?= bubblewrap
+ENGINE ?= firecracker
 KERNEL_LANE_HOST = $(shell cd $(RUSTD_DIR) && rustc -vV | sed -n 's/^host: //p' | tr 'a-z-' 'A-Z_')
 
-test-runner-kernel:  ## Hold the runner's ENGINE (default bubblewrap) to the conformance suite on a real Linux kernel, then its own trials; fails, never skips
+test-runner-kernel:  ## Hold the runner's ENGINE (default firecracker) to the conformance suite on a real Linux kernel, then its own trials; fails, never skips
 	@$(KERNEL_LANE_RUNNER) bash playbooks/operations/acceptance/test_toolbox_first_use.sh
 	@image="$${AFR_TOOLBOX_IMAGE:-}"; \
 	  if [ -z "$$image" ]; then image="$$($(KERNEL_LANE_RUNNER) bash scripts/toolbox/build.sh "$(TOOLBOX_DIR)")" || exit $$?; fi; \

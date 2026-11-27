@@ -75,22 +75,9 @@ pub(crate) fn capable() -> CapabilityReport<'static> {
     CapabilityReport {
         durable_tasks_v1: false,
         build_id: None,
-        landlock: true,
-        seccomp: true,
-        cgroup_controllers: vec![
-            Cow::Borrowed("cpu"),
-            Cow::Borrowed("memory"),
-            Cow::Borrowed("pids"),
-        ],
-        bubblewrap: true,
-        egress_enforcement: true,
-
-        engine: af_wire::runner::SandboxEngine::Bubblewrap,
-
-        isolation: af_wire::runner::Isolation::SharedKernel,
-
-        kvm: af_wire::runner::Kvm::Absent,
-
+        engine: af_wire::runner::SandboxEngine::Firecracker,
+        isolation: af_wire::runner::Isolation::HardwareVm,
+        kvm: af_wire::runner::Kvm::Usable,
         sandboxes_max: None,
     }
 }

@@ -9,8 +9,6 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 pub enum SandboxEngine {
-    /// A hardened process tree on the runner host's kernel.
-    Bubblewrap,
     /// A Firecracker microVM with its own kernel.
     Firecracker,
     /// The runner's own processes on the host's file system, with a scratch
@@ -26,9 +24,6 @@ pub enum SandboxEngine {
 pub enum Isolation {
     /// None: the code runs as the runner's own processes.
     Unconfined,
-    /// Kernel confinement on the host's kernel: namespaces, Landlock,
-    /// seccomp and a cgroup.
-    SharedKernel,
     /// A virtual machine with its own kernel, behind the processor's
     /// virtualization.
     HardwareVm,

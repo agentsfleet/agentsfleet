@@ -58,9 +58,3 @@ pub(crate) fn toolbox_refused(refusal: ToolboxRefusal, detail: impl Into<String>
     }
     .into()
 }
-
-/// Refuses what a host cannot give a sandbox, in the seam's words.
-#[cfg(not(target_os = "linux"))]
-pub(crate) fn unconfined(detail: &'static str) -> Error {
-    afr_engine::error::unconfined(detail).into()
-}

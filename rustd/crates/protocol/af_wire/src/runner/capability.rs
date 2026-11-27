@@ -5,25 +5,14 @@ use std::borrow::Cow;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-use af_validate::TEXT_MAX_CHARS;
-
 use super::{Isolation, Kvm, SandboxEngine};
 
 /// What this host can actually enforce.
 //
-// Probed at startup and refreshed per beat. Each Linux field is one
-// enforcement mechanism a degraded reason can name; the engine fields say what
-// builds the sandboxes, so the daemon reads a virtual machine's wall as proof
-// without asking for Linux mechanisms it does not use.
-///
-// The flags stay separate booleans rather than collapsing into a bitset or an
-// enum: each names a distinct mechanism a degraded reason quotes back to an
-// operator, and the shape is the peer's, not this crate's to choose.
+// Probed at startup and refreshed per beat. The engine fields say what builds
+// the sandboxes and the wall it puts around them, so the daemon reads the
+// engine as proof of its tier and never asks for a host mechanism.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[expect(
-    clippy::struct_excessive_bools,
-    reason = "wire shape fixed by the peer; each flag is a separately reported mechanism"
-)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct CapabilityReport<'a> {
@@ -35,24 +24,6 @@ pub struct CapabilityReport<'a> {
     #[serde(borrow, default)]
     #[garde(inner(length(bytes, min = 64, max = 64)))]
     pub build_id: Option<Cow<'a, str>>,
-    /// Filesystem isolation is available.
-    #[garde(skip)]
-    pub landlock: bool,
-    /// System-call filtering is available.
-    #[garde(skip)]
-    pub seccomp: bool,
-    /// Controllers present in the delegated cgroup's subtree control.
-    // Past the text ceiling, or empty, the whole report reads as "nothing
-    // reported this beat".
-    #[serde(borrow)]
-    #[garde(inner(length(chars, min = 1, max = TEXT_MAX_CHARS)))]
-    pub cgroup_controllers: Vec<Cow<'a, str>>,
-    /// The sandbox launcher is available.
-    #[garde(skip)]
-    pub bubblewrap: bool,
-    /// Whether the operating system can restrict outgoing network access to allowed hosts.
-    #[garde(skip)]
-    pub egress_enforcement: bool,
     /// The engine that builds this runner's sandboxes.
     #[garde(skip)]
     pub engine: SandboxEngine,

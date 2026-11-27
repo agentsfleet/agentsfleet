@@ -19001,22 +19001,13 @@
       },
       "CapabilityReport": {
         "type": "object",
-        "description": "What this host can actually enforce.\n",
+        "description": "What this host can actually enforce.",
         "required": [
-          "landlock",
-          "seccomp",
-          "cgroup_controllers",
-          "bubblewrap",
-          "egress_enforcement",
           "engine",
           "isolation",
           "kvm"
         ],
         "properties": {
-          "bubblewrap": {
-            "type": "boolean",
-            "description": "The sandbox launcher is available."
-          },
           "build_id": {
             "type": [
               "string",
@@ -19024,20 +19015,9 @@
             ],
             "description": "Source digest compiled into the reporting runner; absent for an unbound build."
           },
-          "cgroup_controllers": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Controllers present in the delegated cgroup's subtree control."
-          },
           "durable_tasks_v1": {
             "type": "boolean",
             "description": "This build supports fenced task work and workspace handoff."
-          },
-          "egress_enforcement": {
-            "type": "boolean",
-            "description": "Whether the operating system can restrict outgoing network access to allowed hosts."
           },
           "engine": {
             "$ref": "#/components/schemas/SandboxEngine",
@@ -19051,10 +19031,6 @@
             "$ref": "#/components/schemas/Kvm",
             "description": "What the host's virtualization device offers."
           },
-          "landlock": {
-            "type": "boolean",
-            "description": "Filesystem isolation is available."
-          },
           "sandboxes_max": {
             "type": [
               "integer",
@@ -19064,10 +19040,6 @@
             "description": "How many sandboxes the host's memory holds at once; absent where the\nengine reserves no memory per sandbox.",
             "maximum": 2147483647,
             "minimum": 1
-          },
-          "seccomp": {
-            "type": "boolean",
-            "description": "System-call filtering is available."
           }
         },
         "additionalProperties": false
@@ -24585,7 +24557,6 @@
         "description": "The wall between a sandbox's code and the runner host.",
         "enum": [
           "unconfined",
-          "shared_kernel",
           "hardware_vm"
         ]
       },
@@ -27329,17 +27300,15 @@
         "type": "string",
         "description": "The engine that builds a runner's sandboxes.",
         "enum": [
-          "bubblewrap",
           "firecracker",
           "unsandboxed"
         ]
       },
       "SandboxTier": {
         "type": "string",
-        "description": "The isolation strength assigned to a runner.",
+        "description": "The isolation strength assigned to a runner, named for the engine that\ndelivers it.",
         "enum": [
-          "landlock_full",
-          "container_nested",
+          "firecracker",
           "dev_none"
         ]
       },

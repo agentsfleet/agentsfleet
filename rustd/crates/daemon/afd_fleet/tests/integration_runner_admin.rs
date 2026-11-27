@@ -149,7 +149,7 @@ fn reassignment(worker_count: u32) -> AssignedPolicy<'static> {
     AssignedPolicy {
         decision_model_id: None,
         durable_tasks_enabled: af_wire::test_util::DURABLE_TASKS_DEFAULT_ENABLED,
-        sandbox_tier: SandboxTier::LandlockFull,
+        sandbox_tier: SandboxTier::Firecracker,
         network_policy: NetworkPolicy::AllowListEgress,
         registry_allowlist: vec![Cow::Borrowed("registry.npmjs.org")],
         worker_count,
@@ -263,22 +263,9 @@ async fn store_full_capability(fixtures: &Fixtures, runner: &Uuid7) {
     let capability = serde_json::to_string(&CapabilityReport {
         durable_tasks_v1: false,
         build_id: None,
-        landlock: true,
-        seccomp: true,
-        cgroup_controllers: vec![
-            Cow::Borrowed("cpu"),
-            Cow::Borrowed("memory"),
-            Cow::Borrowed("pids"),
-        ],
-        bubblewrap: true,
-        egress_enforcement: true,
-
-        engine: af_wire::runner::SandboxEngine::Bubblewrap,
-
-        isolation: af_wire::runner::Isolation::SharedKernel,
-
-        kvm: af_wire::runner::Kvm::Absent,
-
+        engine: af_wire::runner::SandboxEngine::Firecracker,
+        isolation: af_wire::runner::Isolation::HardwareVm,
+        kvm: af_wire::runner::Kvm::Usable,
         sandboxes_max: None,
     })
     .expect("the capability fixture serializes");

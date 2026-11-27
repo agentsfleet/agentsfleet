@@ -36,8 +36,8 @@ fn test_admit_refuses_a_limit_the_engine_cannot_enforce() {
 #[test]
 fn test_a_grant_is_never_less_than_the_ask() {
     let enforced = ResourceFacts::ENFORCED
-        .grant(SandboxEngine::Bubblewrap, ASKED)
-        .expect("bubblewrap enforces every cap");
+        .grant(SandboxEngine::Firecracker, ASKED)
+        .expect("an engine enforcing every cap grants the ask");
     let walled = ResourceFacts {
         pids: Cap::Walled,
         ..ResourceFacts::ENFORCED

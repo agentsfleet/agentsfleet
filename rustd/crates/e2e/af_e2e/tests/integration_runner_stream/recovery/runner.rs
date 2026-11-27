@@ -146,7 +146,6 @@ fn probe() -> afr_engine::HostProbe {
         landlock: true,
         seccomp: true,
         cgroup_controllers: afr_engine::REQUIRED_CONTROLLERS.map(str::to_owned).to_vec(),
-        bubblewrap: true,
         kvm: af_wire::runner::Kvm::Absent,
         toolbox_filesystem: true,
         workspace_direct_io: None,

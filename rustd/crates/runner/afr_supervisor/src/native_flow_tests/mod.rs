@@ -166,7 +166,6 @@ fn probe() -> afr_engine::HostProbe {
         landlock: true,
         seccomp: true,
         cgroup_controllers: vec!["cpu".to_owned()],
-        bubblewrap: true,
         kvm: af_wire::runner::Kvm::Absent,
         toolbox_filesystem: true,
         workspace_direct_io: None,

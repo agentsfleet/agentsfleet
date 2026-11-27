@@ -1,5 +1,5 @@
-//! The debug engine: no sandbox, for the lanes that run where bubblewrap
-//! cannot.
+//! The debug engine: no sandbox, for the lanes that run where no microVM
+//! can.
 //!
 //! [`UnsandboxedEngine`] serves the real executor in-process, over a real
 //! socket, in a scratch directory, so the supervisor and the daemon are

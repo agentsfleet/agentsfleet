@@ -112,7 +112,7 @@ mod tests {
         SelftestReport {
             checks,
             all_ok,
-            sandbox_tier: Cow::Borrowed("landlock_full"),
+            sandbox_tier: Cow::Borrowed("firecracker"),
             network_policy: Cow::Borrowed("allow_all"),
         }
     }

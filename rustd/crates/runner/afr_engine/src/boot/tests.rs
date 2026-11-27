@@ -97,7 +97,6 @@ impl Backend for TestBackend {
                 .split_whitespace()
                 .map(str::to_owned)
                 .collect(),
-            bubblewrap: false,
             kvm: Kvm::Absent,
             toolbox_filesystem: false,
             workspace_direct_io: None,
@@ -164,7 +163,7 @@ fn test_boot_uses_backend_policy_and_drops_engine_before_resources() {
     let host = boot(backend, &paths).unwrap();
     assert_eq!(*events.lock().unwrap(), ["validate", "start"]);
     // Ordinary files retain the write command. This backend accepts these
-    // facts without applying bubblewrap's capability policy.
+    // facts without applying an engine's capability policy.
     assert_eq!(
         host.probe.cgroup_controllers,
         ["+cpu", "+io", "+memory", "+pids"]

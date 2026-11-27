@@ -23,7 +23,7 @@ fn healthy() -> Healthy {
         assigned: AssignedPolicy {
             durable_tasks_enabled: af_wire::test_util::DURABLE_TASKS_DEFAULT_ENABLED,
             decision_model_id: None,
-            sandbox_tier: SandboxTier::LandlockFull,
+            sandbox_tier: SandboxTier::Firecracker,
             network_policy: NetworkPolicy::DenyAllEgress,
             registry_allowlist: Vec::new(),
             worker_count: 1,

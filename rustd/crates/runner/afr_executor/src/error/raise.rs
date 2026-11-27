@@ -82,7 +82,7 @@ pub(crate) fn file_calls_unsupported() -> Error {
     ErrorKind::FileCallsUnsupported.into()
 }
 
-/// A renewal to an executor that builds no inner environment.
+/// A renewal or a hosts file to an executor that builds no inner environment.
 pub(crate) fn no_inner_environment() -> Error {
     ErrorKind::NoInnerEnvironment.into()
 }

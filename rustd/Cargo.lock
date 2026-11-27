@@ -155,7 +155,6 @@ dependencies = [
  "afd_vault",
  "afr_agent",
  "afr_engine",
- "afr_engine_bubblewrap",
  "afr_engine_unsandboxed",
  "afr_executor",
  "afr_supervisor",
@@ -1432,28 +1431,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "afr_engine_bubblewrap"
-version = "0.90.0"
-dependencies = [
- "af_core",
- "af_wire",
- "afr_cgroup",
- "afr_engine",
- "afr_executor",
- "afr_firewall",
- "afr_guest",
- "afr_image",
- "async-trait",
- "futures-util",
- "rustix 1.1.6",
- "tempfile",
- "thiserror 2.0.21",
- "tokio",
- "tokio-util",
- "tracing",
-]
-
-[[package]]
 name = "afr_engine_firecracker"
 version = "0.90.0"
 dependencies = [
@@ -1716,7 +1693,6 @@ version = "0.90.0"
 dependencies = [
  "af_config",
  "af_core",
- "af_crypto",
  "af_egress",
  "af_observability",
  "af_otlp",
@@ -1725,7 +1701,6 @@ dependencies = [
  "afr_agent",
  "afr_cgroup",
  "afr_engine",
- "afr_engine_bubblewrap",
  "afr_engine_firecracker",
  "afr_engine_unsandboxed",
  "afr_executor",
@@ -1742,14 +1717,11 @@ dependencies = [
  "bytes",
  "clap",
  "digest-io",
- "futures-util",
  "garde",
  "guffbolt",
  "guffbolt-ai",
  "hex",
- "hyper",
  "jiff 1.0.3",
- "libc",
  "libtest-mimic",
  "rustix 1.1.6",
  "serde",

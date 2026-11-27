@@ -59,7 +59,7 @@ impl Owner {
 /// A runner `tenant` registered, carrying `tag`, that has reported capable.
 async fn tenant_runner(fixtures: &Fixtures, tenant: &Uuid7, tag: &str) -> Uuid7 {
     let request = enrolment_tagged(
-        SandboxTier::LandlockFull,
+        SandboxTier::Firecracker,
         NetworkPolicy::AllowListEgress,
         2,
         tag,
@@ -82,7 +82,7 @@ async fn tenant_runner(fixtures: &Fixtures, tenant: &Uuid7, tag: &str) -> Uuid7 
 /// A platform runner carrying `tag`, that has reported capable.
 async fn platform_runner(fixtures: &Fixtures, tag: &str) -> Uuid7 {
     let request = enrolment_tagged(
-        SandboxTier::LandlockFull,
+        SandboxTier::Firecracker,
         NetworkPolicy::AllowListEgress,
         2,
         tag,

@@ -46,7 +46,7 @@ const fn report_with(checks: Vec<SelftestCheck<'static>>) -> SelftestReport<'sta
     SelftestReport {
         checks,
         all_ok: true,
-        sandbox_tier: Cow::Borrowed("landlock_full"),
+        sandbox_tier: Cow::Borrowed("firecracker"),
         network_policy: Cow::Borrowed("allow_list_egress"),
     }
 }

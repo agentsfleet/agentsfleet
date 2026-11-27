@@ -17,8 +17,6 @@ export const RunnerPolicySchema = Schema.Struct({
 });
 const status = Schema.Enum(RunnerState);
 const capability = Schema.Struct({
-  landlock: Schema.Boolean, seccomp: Schema.Boolean, bubblewrap: Schema.Boolean,
-  cgroup_controllers: Schema.Array(Schema.String), egress_enforcement: Schema.Boolean,
   engine: Schema.Enum(SandboxEngine), isolation: Schema.Enum(Isolation), kvm: Schema.Enum(Kvm),
   sandboxes_max: Schema.optionalKey(count),
 });

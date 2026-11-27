@@ -113,7 +113,7 @@ fn healthy() -> crate::test_util::Healthy {
         assigned: AssignedPolicy {
             durable_tasks_enabled: true,
             decision_model_id: Some(ID.into()),
-            sandbox_tier: SandboxTier::LandlockFull,
+            sandbox_tier: SandboxTier::Firecracker,
             network_policy: NetworkPolicy::AllowAll,
             registry_allowlist: vec![],
             worker_count: 1,

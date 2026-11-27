@@ -18,7 +18,7 @@ async fn disabling_new_durable_work_keeps_software_capability_and_ordinary_worke
             json(&serde_json::json!({
                 "status": "ok", "assigned_policy": {
                     "durable_tasks_enabled": enabled,
-                    "sandbox_tier": "landlock_full", "network_policy": "allow_all",
+                    "sandbox_tier": "firecracker", "network_policy": "allow_all",
                     "registry_allowlist": [], "worker_count": 1, "extra_binds": [],
                 },
                 "degraded": false, "degraded_reason": null, "selftest_requested": false,

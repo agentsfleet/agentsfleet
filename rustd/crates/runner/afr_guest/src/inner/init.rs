@@ -4,7 +4,7 @@
 //!
 //! ```text
 //!   this thread: unshare(PID) ─► fork ─► restore its next children to ours
-//!   init:        unshare(MOUNT) ─► / private ─► /proc of the new namespace
+//!   init:        unshare(MOUNT) ─► / downstream ─► /proc of the new namespace
 //!                ─► ready ─► close every descriptor it inherited ─► reap forever
 //! ```
 
@@ -76,14 +76,16 @@ fn run(ready: &io::PipeWriter) -> ! {
 }
 
 /// A mount namespace of its own whose `/proc` shows the new process
-/// namespace alone, nothing it mounts reaching the executor's.
+/// namespace alone, nothing it mounts reaching the executor's: downstream of
+/// the executor's, so a mount the executor swaps in, a new hosts file,
+/// reaches it.
 fn isolate() -> rustix::io::Result<()> {
     // SAFETY: this process has one thread, so it shares its file-system
     // state with no other.
     unsafe { rustix::thread::unshare_unsafe(UnshareFlags::NEWNS) }?;
     mount_change(
         c"/",
-        MountPropagationFlags::REC | MountPropagationFlags::PRIVATE,
+        MountPropagationFlags::REC | MountPropagationFlags::DOWNSTREAM,
     )?;
     let quiet = MountFlags::NOSUID | MountFlags::NODEV | MountFlags::NOEXEC;
     mount(c"proc", c"/proc", c"proc", quiet, None)

@@ -69,7 +69,7 @@ async fn enrol<const N: usize>(fixtures: &Fixtures, tag: &str) -> [Uuid7; N] {
     let mut runners = Vec::with_capacity(N);
     for _ in 0..N {
         let request = enrolment_tagged(
-            SandboxTier::LandlockFull,
+            SandboxTier::Firecracker,
             NetworkPolicy::AllowListEgress,
             1,
             tag,

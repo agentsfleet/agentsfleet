@@ -2,7 +2,7 @@
 //! one run through the real agent loop and settles it, and with a collector
 //! configured it exports that run's trace under this host's identity.
 //!
-//! The binary runs `--unsandboxed`, which only a debug build accepts, so this
+//! The binary runs `--engine unsandboxed`, which only a debug build accepts, so this
 //! suite is debug-only; the sandbox itself is the kernel lane's to prove. The
 //! run names a model under a domain that never resolves, so its turn reaches
 //! the real provider and fails there, and the report is a run that ended, not
@@ -56,7 +56,7 @@ struct Ran {
     report: Value,
 }
 
-/// Starts `run --unsandboxed` against `daemon` with `extra` in its
+/// Starts `run --engine unsandboxed` against `daemon` with `extra` in its
 /// environment, waits for its report, then stops it with SIGTERM.
 fn run_one_run(
     runtime: &tokio::runtime::Runtime,
@@ -88,9 +88,9 @@ fn storage_home() -> tempfile::TempDir {
         .expect("a storage home")
 }
 
-/// Starts `run --unsandboxed` against the daemon at `url`, its stderr piped.
+/// Starts `run --engine unsandboxed` against the daemon at `url`, its stderr piped.
 fn start(daemon: &FakeDaemon, home: &std::path::Path, extra: &[(&str, &str)]) -> Child {
-    Runner::new(&["run", "--unsandboxed"])
+    Runner::new(&["run", "--engine", "unsandboxed"])
         .daemon(&daemon.url)
         .envs(&[
             (

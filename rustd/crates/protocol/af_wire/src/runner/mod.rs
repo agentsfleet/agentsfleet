@@ -33,7 +33,8 @@ pub use self::rules::{
 use self::rules::{bind_path, registry_entry};
 pub use self::selftest::{SelftestCheck, SelftestReport};
 
-/// The isolation strength assigned to a runner.
+/// The isolation strength assigned to a runner, named for the engine that
+/// delivers it.
 //
 // Only tiers with real enforcement are members: a tier that cannot be applied
 // must not be assignable.
@@ -41,10 +42,8 @@ pub use self::selftest::{SelftestCheck, SelftestReport};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SandboxTier {
-    /// Full kernel-enforced filesystem isolation.
-    LandlockFull,
-    /// Nested container isolation.
-    ContainerNested,
+    /// Each run in a Firecracker microVM with its own kernel.
+    Firecracker,
     /// No isolation. Development only.
     DevNone,
 }

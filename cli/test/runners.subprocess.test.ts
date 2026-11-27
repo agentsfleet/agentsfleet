@@ -11,7 +11,7 @@ import { composeEnv, runFleetctl } from "./acceptance/fixtures/cli.js";
 const RUNNER_ID = "019f0000-0000-7000-8000-000000000246";
 const TOKEN = `agt_r${"c".repeat(64)}`;
 const POLICY = {
-  sandbox_tier: "landlock_full", network_policy: "deny_all_egress", registry_allowlist: [],
+  sandbox_tier: "firecracker", network_policy: "deny_all_egress", registry_allowlist: [],
   worker_count: 1, extra_binds: [], durable_tasks_enabled: false,
 };
 

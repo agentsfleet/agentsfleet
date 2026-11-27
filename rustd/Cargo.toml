@@ -53,7 +53,6 @@ members = [
     "crates/runner/afr_agent",
     "crates/runner/afr_cgroup",
     "crates/runner/afr_engine",
-    "crates/runner/afr_engine_bubblewrap",
     "crates/runner/afr_engine_firecracker",
     "crates/runner/afr_engine_unsandboxed",
     "crates/runner/afr_executor",
@@ -195,10 +194,8 @@ afr_cgroup = { path = "crates/runner/afr_cgroup" }
 afr_firewall = { path = "crates/runner/afr_firewall" }
 afr_image = { path = "crates/runner/afr_image" }
 afr_guest = { path = "crates/runner/afr_guest" }
-# The engines, which only the runner binary and the e2e crate name: the
-# hardened bubblewrap engine, our Firecracker microVM engine, and the debug
-# engine that confines nothing.
-afr_engine_bubblewrap = { path = "crates/runner/afr_engine_bubblewrap" }
+# The engines, which only the runner binary and the e2e crate name: our
+# Firecracker microVM engine, and the debug engine that confines nothing.
 afr_engine_firecracker = { path = "crates/runner/afr_engine_firecracker" }
 afr_engine_unsandboxed = { path = "crates/runner/afr_engine_unsandboxed" }
 # The trusted runner half: pool, renew, report, recovery, verbs, downlink.

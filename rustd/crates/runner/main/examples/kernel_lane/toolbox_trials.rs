@@ -1,23 +1,33 @@
-//! The toolbox's trials: its build reproduces, a run sees it read-only and
-//! holds it while it lives, and a warm start beats a cold one.
+//! The toolbox's own trials, whichever engine runs on it: its build
+//! reproduces, and its image fits its size cap.
 
+use std::fs;
 use std::path::Path;
 use std::process::Command;
-use std::sync::Arc;
-use std::time::{Duration, Instant};
 
-use afr_engine::{Engine, Limits, NetworkKind, WarmSlots};
-use afr_engine_bubblewrap::{BubblewrapEngine, probe};
-use afr_image::Toolbox;
 use libtest_mimic::Failed;
 
-use crate::lane::{Lane, id_of, spec, toolbox_source};
-use crate::run::{expect, run as run_in, runtime, shell};
+use crate::lane::{Lane, toolbox_source};
+use crate::run::expect;
+use crate::trials::Body;
 
-/// Starts measured each way for the start-budget trial.
-const STARTS: usize = 5;
+/// ARM64 retains its previously qualified limit until this change is measured there.
+/// AMD64 is bounded by the fresh 162,004,992-byte package-manager baseline.
+#[cfg(target_arch = "aarch64")]
+const IMAGE_CAP_BYTES: u64 = 195_624_960;
+#[cfg(target_arch = "x86_64")]
+const IMAGE_CAP_BYTES: u64 = 162_004_991;
+/// An architecture without a measured baseline cannot pass this proof.
+#[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
+const IMAGE_CAP_BYTES: u64 = 0;
 
-pub(crate) fn reproducible(lane: &Lane) -> Result<(), Failed> {
+/// Every toolbox trial, by the name the lane reports it under.
+pub(crate) const TRIALS: &[(&str, Body)] = &[
+    ("test_toolbox_build_is_reproducible", reproducible),
+    ("test_toolbox_image_fits_its_size_cap", fits_size_cap),
+];
+
+fn reproducible(lane: &Lane) -> Result<(), Failed> {
     let out = tempfile::tempdir()?;
     let script = toolbox_source()
         .ok_or("the lane names no toolbox source")?
@@ -41,78 +51,11 @@ pub(crate) fn reproducible(lane: &Lane) -> Result<(), Failed> {
     )
 }
 
-/// `/usr` is the toolbox, read-only; a sandbox holds the toolbox it runs on
-/// until it is destroyed, so retention never unmounts one under a run. The
-/// trial counts holds on a toolbox handle of its own, since trials run at once.
-pub(crate) fn toolbox_read_only(lane: &Lane) -> Result<(), Failed> {
-    let mut config = lane.config.clone();
-    let shared = &lane.config.toolbox;
-    config.toolbox = Arc::new(Toolbox::at(
-        shared.root().to_owned(),
-        shared.digest().to_owned(),
-    ));
-    let toolbox = Arc::clone(&config.toolbox);
-    let (said, unheld, held) = runtime().block_on(async {
-        let engine = BubblewrapEngine::new(config, &probe(&lane.config.probe_paths()))?;
-        let unheld = Arc::strong_count(&toolbox);
-        let sandbox_id = id_of("toolbox");
-        let request = spec(&sandbox_id, Limits::default());
-        let sandbox = engine.prepare(request).await?;
-        let held = Arc::strong_count(&toolbox);
-        let script =
-            "git --version && (touch /usr/x 2>/dev/null && echo usr-leaked || echo usr-denied)";
-        let outcome = run_in(sandbox.executor(), shell(script)).await;
-        sandbox.destroy().await?;
-        let after = Arc::strong_count(&toolbox);
-        expect(
-            after == unheld,
-            format!("destroyed, the sandbox let go: {after} != {unheld}"),
-        )?;
-        Ok::<_, Failed>((outcome?.output, unheld, held))
-    })?;
+fn fits_size_cap(lane: &Lane) -> Result<(), Failed> {
+    let length = fs::metadata(lane.image.path())?.len();
+    eprintln!("toolbox image: {length} bytes; cap: {IMAGE_CAP_BYTES} bytes");
     expect(
-        held == unheld + 1,
-        format!("the sandbox holds its toolbox: {held} != {unheld} + 1"),
-    )?;
-    expect(
-        said.contains("git version") && said.contains("usr-denied"),
-        format!("git runs, /usr is read-only, got {said:?}"),
+        length <= IMAGE_CAP_BYTES,
+        format!("toolbox image is {length} bytes; cap is {IMAGE_CAP_BYTES}"),
     )
-}
-
-pub(crate) fn warm_beats_cold(lane: &Lane) -> Result<(), Failed> {
-    runtime().block_on(async {
-        let engine: Arc<dyn Engine> = Arc::new(lane.engine());
-        let cold = starts(&*engine, "cold").await?;
-        let slots = WarmSlots::start(Arc::clone(&engine), 1, Limits::default());
-        slots.network_assigned(NetworkKind::Isolated);
-        let warm = starts(&slots, "warm").await?;
-        slots.shutdown().await;
-        println!("run-accept to executor-ready, p50 of {STARTS}: cold {cold:?}, warm {warm:?}");
-        expect(
-            warm < cold,
-            format!("warm {warm:?} must beat cold {cold:?}"),
-        )
-    })
-}
-
-/// The median time `engine` takes to hand back a ready sandbox.
-async fn starts(engine: &dyn Engine, kind: &str) -> Result<Duration, Failed> {
-    let mut taken = Vec::with_capacity(STARTS);
-    for number in 0..STARTS {
-        // A warm slot refills in the background between runs, as on a host.
-        tokio::time::sleep(Duration::from_millis(500)).await;
-        let run_id = format!("{kind}-{number}");
-        let started = Instant::now();
-        let sandbox = engine
-            .prepare(spec(&id_of(&run_id), Limits::default()))
-            .await?;
-        taken.push(started.elapsed());
-        sandbox.destroy().await?;
-    }
-    taken.sort();
-    taken
-        .get(STARTS / 2)
-        .copied()
-        .ok_or_else(|| Failed::from("no starts measured"))
 }

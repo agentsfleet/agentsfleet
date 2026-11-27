@@ -72,7 +72,7 @@ impl FakeDaemon {
             assigned: AssignedPolicy {
                 durable_tasks_enabled: af_wire::test_util::DURABLE_TASKS_DEFAULT_ENABLED,
                 decision_model_id: None,
-                sandbox_tier: SandboxTier::LandlockFull,
+                sandbox_tier: SandboxTier::Firecracker,
                 network_policy,
                 registry_allowlist: registry.iter().copied().map(Into::into).collect(),
                 worker_count: 1,

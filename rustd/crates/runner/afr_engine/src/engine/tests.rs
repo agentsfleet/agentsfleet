@@ -15,7 +15,7 @@ use crate::network::{Allowlist, Network};
 fn test_a_spec_is_isolated_until_told_otherwise() {
     let id = Uuid7::parse("0198f0c2-7a3e-7c1d-9b2e-4f6a8c0d1e2f").expect("a v7 identifier");
     let granted = ResourceFacts::ENFORCED
-        .grant(SandboxEngine::Bubblewrap, Limits::DEFAULT)
+        .grant(SandboxEngine::Firecracker, Limits::DEFAULT)
         .expect("every cap enforced");
     let allowlist = Allowlist::new(Vec::new()).expect("an empty allowlist is an allowlist");
     let isolated = SandboxSpec::new(&id, granted);

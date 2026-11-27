@@ -16,8 +16,6 @@ mod raise;
 mod toolbox;
 
 pub use self::raise::program;
-#[cfg(not(target_os = "linux"))]
-pub(crate) use self::raise::unconfined;
 pub(crate) use self::raise::{toolbox_refused, toolbox_unreadable};
 pub use self::toolbox::ToolboxRefusal;
 

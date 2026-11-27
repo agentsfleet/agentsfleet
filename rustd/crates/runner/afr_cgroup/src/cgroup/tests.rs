@@ -57,7 +57,7 @@ fn test_a_run_cgroup_splits_into_a_sandbox_leaf_and_a_smaller_tenant_leaf() {
         read(&dir, "cgroup.subtree_control"),
         "+cpu +io +memory +pids"
     );
-    assert!(dir.join("sandbox").is_dir(), "bubblewrap's leaf");
+    assert!(dir.join("sandbox").is_dir(), "the engine's leaf");
     let tenant = dir.join("tenant");
     assert_eq!(
         read(&tenant, "memory.max"),

@@ -3,17 +3,15 @@
 //! Three entries, each only composing library crates:
 //!
 //! - `run` supervises this host's runs, as the systemd unit: each run's
-//!   turn runs on the agent loop, its tools in a bubblewrap sandbox of its own
-//!   (`host`). It exports its spans and its own metric families to the runner
-//!   collector when `OTEL_EXPORTER_OTLP_ENDPOINT` names one, and holds no
-//!   credential to do it.
-//! - `probe` prints what this host's kernel can enforce, as a heartbeat would
-//!   carry it.
-//! - `sandbox` is started by the engine inside each sandbox: it hardens itself
-//!   before any thread exists, then serves the executor. The binary is bound
-//!   read-only into every sandbox, so there is no second artifact to ship.
+//!   turn runs on the agent loop, its tools in a Firecracker microVM of its
+//!   own (`host`). It exports its spans and its own metric families to the
+//!   runner collector when `OTEL_EXPORTER_OTLP_ENDPOINT` names one, and holds
+//!   no credential to do it.
+//! - `probe` prints what this host can enforce, as a heartbeat would carry
+//!   it.
 //! - `guest` is a Firecracker microVM's first process: it mounts the guest's
-//!   drives, then serves the executor on vsock.
+//!   drives, then serves the executor on vsock. The binary is the guest's
+//!   `/init`, so there is no second artifact to ship.
 
 #![deny(clippy::self_named_module_files)]
 
@@ -37,14 +35,14 @@ use tracing_subscriber::fmt::MakeWriter;
 use tracing_subscriber::layer::SubscriberExt as _;
 use tracing_subscriber::util::SubscriberInitExt as _;
 
-use self::host::{Host, OrExit as _};
+use self::host::OrExit as _;
 
 /// Where a record goes when nobody chose.
 const DEFAULT_LEVEL: LevelFilter = LevelFilter::INFO;
 /// Logged when a second SIGINT or SIGTERM ends a drain the first one began.
 const EVENT_STOP_FORCED: &str = "runner_stop_forced";
 /// Why the guest entry refuses off Linux: only a Linux guest kernel starts it.
-#[cfg(all(feature = "firecracker", not(target_os = "linux")))]
+#[cfg(not(target_os = "linux"))]
 const GUEST_OFF_LINUX: &str = "the guest entry runs only as a Linux microVM's first process";
 
 /// The runner's command line.
@@ -61,15 +59,10 @@ struct Cli {
 enum Command {
     /// Supervise this host's runs.
     Run(RunArgs),
-    /// Print what this host's kernel can enforce.
+    /// Print what this host can enforce.
     Probe,
-    /// Harden this process and serve the executor; started inside each sandbox,
-    /// told the descriptors it inherited, the tenant leaf's and its link's,
-    /// and the sizes its executor serves with.
-    Sandbox(afr_guest::Entry),
     /// Mount a microVM's file systems and serve its executor on vsock; the
     /// guest kernel starts this binary so, as its first process.
-    #[cfg(feature = "firecracker")]
     Guest(afr_engine_firecracker::guest::GuestEntry),
 }
 
@@ -79,42 +72,27 @@ struct RunArgs {
     /// Sandbox engine used for every run on this host.
     #[arg(long, value_enum, default_value_t)]
     engine: engine::EngineChoice,
-    /// Build no sandbox: every run's tools run unconfined in a scratch
-    /// directory under the storage home. A debug build alone has the flag, so
-    /// a suite can drive this binary end to end on a host without bubblewrap.
-    #[cfg(all(debug_assertions, feature = "unsandboxed"))]
-    #[arg(long, hide = true, conflicts_with = "engine")]
-    unsandboxed: bool,
 }
 
 fn main() -> ExitCode {
     match Cli::parse().command {
-        // First and alone: hardening refuses once a second thread exists, so
-        // nothing may start one before it.
-        Command::Sandbox(entry) => sandbox(entry),
-        #[cfg(feature = "firecracker")]
         Command::Guest(entry) => guest(entry),
         Command::Probe => probe::probe(),
         Command::Run(args) => run(args),
     }
 }
 
-/// Hardens and serves; any refusal goes to stderr, which the engine reads.
-fn sandbox(entry: afr_guest::Entry) -> ExitCode {
-    exited(afr_guest::serve_sandboxed(entry))
-}
-
 /// Mounts and serves as a microVM's first process; any refusal goes to the
 /// guest's console, and the guest ends with it.
-#[cfg(all(feature = "firecracker", target_os = "linux"))]
+#[cfg(target_os = "linux")]
 fn guest(entry: afr_engine_firecracker::guest::GuestEntry) -> ExitCode {
     exited(afr_engine_firecracker::guest::serve_vm(entry))
 }
 
 /// Only a Linux guest kernel starts the guest entry.
-#[cfg(all(feature = "firecracker", not(target_os = "linux")))]
+#[cfg(not(target_os = "linux"))]
 fn guest(_entry: afr_engine_firecracker::guest::GuestEntry) -> ExitCode {
-    refused(&GUEST_OFF_LINUX)
+    exited(Err::<(), _>(GUEST_OFF_LINUX))
 }
 
 /// SUCCESS for an entry that ended cleanly, otherwise its refusal.
@@ -127,8 +105,8 @@ fn exited(ended: Result<(), impl std::fmt::Display>) -> ExitCode {
 
 /// Writes a refusal to stderr and fails.
 ///
-/// Stderr rather than a subscriber: inside a sandbox no subscriber may start a
-/// thread before hardening, and the engine quotes this stream when it refuses.
+/// Stderr rather than a subscriber: a guest's refusal goes to its console,
+/// which the engine quotes when it refuses.
 #[expect(
     clippy::print_stderr,
     reason = "stderr is the refusal the engine and the operator read"
@@ -210,7 +188,7 @@ fn supervise(args: RunArgs, settings: &config::Settings) -> Result<ExitCode, Exi
         .with_tuning(settings.tuning);
     // `resources` outlives the runtime and the engine it is moved into: every
     // sandbox is gone before its toolbox is unmounted.
-    let host = args.host(&home, settings)?;
+    let host = args.engine.boot(&home, settings)?;
     host.announce();
     let _resources = host.resources;
     let (engine, probe, warm_pool) = (host.engine, host.probe, host.warm_pool);
@@ -220,21 +198,6 @@ fn supervise(args: RunArgs, settings: &config::Settings) -> Result<ExitCode, Exi
         .block_on(serve(&config, home, engine, agent, probe, warm_pool))
         .map(|()| ExitCode::SUCCESS)
         .or_exit()
-}
-
-impl RunArgs {
-    /// The host `run` runs on: no sandbox when a debug build is told so,
-    /// bubblewrap otherwise.
-    ///
-    /// # Errors
-    /// The failure, already logged, as the exit status.
-    fn host(self, home: &StorageHome, settings: &config::Settings) -> Result<Host, ExitCode> {
-        #[cfg(all(debug_assertions, feature = "unsandboxed"))]
-        if self.unsandboxed {
-            return Host::unsandboxed(home, settings.engine.sizes);
-        }
-        self.engine.boot(home, settings)
-    }
 }
 
 /// Serves runs, `warm_pool` sandboxes started ahead, until a signal or the daemon says stop.

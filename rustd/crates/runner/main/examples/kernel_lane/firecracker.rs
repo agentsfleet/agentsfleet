@@ -1,5 +1,5 @@
-//! The Firecracker lane: what it needs beyond bubblewrap's, the engine it
-//! builds over the toolbox the lane verified, and the trials only a microVM
+//! The Firecracker lane: what it needs beyond the host's own prerequisites,
+//! how it boots over the toolbox the lane verified, and the trials only a microVM
 //! answers — a crash leaves nothing, a stop keeps only the disk, a restore
 //! needs no reboot, and one guest never reaches another.
 
@@ -8,17 +8,14 @@ use std::os::unix::fs::MetadataExt as _;
 use std::os::unix::process::CommandExt as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use af_core::env::{EnvSource as _, ProcessEnv};
 use af_wire::runner::Kvm;
 use afr_engine::conformance::{ERRNO, NO_ANSWER, connect};
-use afr_engine::{Engine as _, Limits, Network, ParkMode, Sandbox, SandboxSpec};
-use afr_engine_bubblewrap::BubblewrapConfig;
-use afr_engine_firecracker::{
-    Binaries, FirecrackerConfig, FirecrackerEngine, FirecrackerTuning, KVM_PATH,
-};
+use afr_engine::{Allowlist, Engine as _, Limits, Network, ParkMode, Sandbox, SandboxSpec};
+use afr_engine_firecracker::{Binaries, FirecrackerEngine, FirecrackerTuning, KVM_PATH};
+use afr_firewall::far::{FAR_LISTED, FAR_UNLISTED};
 use bytes::Bytes;
 use libtest_mimic::Failed;
 
@@ -30,8 +27,6 @@ use crate::trials::Body;
 /// file system a Firecracker lane boots, which the toolbox build makes.
 const GUEST_KERNEL_VARIABLE: &str = "AFR_GUEST_KERNEL";
 const GUEST_INITRD_VARIABLE: &str = "AFR_GUEST_INITRD";
-/// Where, under the lane's state, each microVM's directory is made.
-const MICROVMS_DIR: &str = "microvms";
 /// How long a build runs before the trial stops it, as a runner killed
 /// mid-build stops at whatever step it reached.
 const MID_BUILD: Duration = Duration::from_millis(150);
@@ -50,6 +45,14 @@ const BACKGROUND_ALIVE: &str =
 /// that survived a restore would have to have been carried into it.
 const SURVIVOR: &str = "if cat /proc/[0-9]*/cmdline 2>/dev/null | tr '\\0' ' ' | \
      grep -q '[s]leep 600'; then echo alive; else echo gone; fi";
+/// The names a stopped sandbox is built to reach, then re-planned to; the
+/// guest resolves each through its hosts file alone.
+const FIRST_NAME: &str = "first.far.test";
+const MOVED_NAME: &str = "moved.far.test";
+/// What the guest resolves each name to, an address per line, nothing for
+/// a name it does not know.
+const RESOLVE: &str = "getent hosts first.far.test moved.far.test | cut -d' ' -f1";
+
 /// The vsock dial a guest makes at its own executor's port, at `$1`.
 const VSOCK_DIAL: &str = "python3 -c 'import socket,sys; s=socket.socket(socket.AF_VSOCK, \
      socket.SOCK_STREAM); s.settimeout(2); \
@@ -88,34 +91,23 @@ pub(crate) fn gaps() -> Vec<String> {
     gaps
 }
 
-/// What the lane's Firecracker engine boots from: the guest artifacts the
-/// lane was given and the monitor and jailer where a host installs them, over
-/// the toolbox the lane verified, its microVMs beside bubblewrap's runs.
-pub(crate) fn config(
-    state: &Path,
-    cgroup_root: &Path,
-    config: &BubblewrapConfig,
-) -> FirecrackerConfig {
+/// How the lane's Firecracker engine boots: the guest artifacts the lane was
+/// given and the monitor and jailer where a host installs them, paced as a
+/// runner's file paces them by default.
+pub(crate) fn tuning() -> FirecrackerTuning {
     let artifact = |variable| PathBuf::from(ProcessEnv.get(variable).unwrap_or_default());
-    let paced = afr_engine_bubblewrap::EngineTuning::DEFAULT;
-    FirecrackerConfig {
-        tuning: FirecrackerTuning {
-            binaries: Binaries {
-                kernel: artifact(GUEST_KERNEL_VARIABLE),
-                initrd: artifact(GUEST_INITRD_VARIABLE),
-                ..Binaries::default()
-            },
-            first_jail_id: afr_engine_firecracker::FIRST_JAIL_ID,
-            ready_timeout: paced.ready_timeout,
-            io_bytes_per_second: paced.io_bytes_per_second,
-            sizes: paced.sizes,
-            limits: Limits::default(),
-            memory_overcommit: afr_engine_firecracker::MEMORY_OVERCOMMIT,
+    FirecrackerTuning {
+        binaries: Binaries {
+            kernel: artifact(GUEST_KERNEL_VARIABLE),
+            initrd: artifact(GUEST_INITRD_VARIABLE),
+            ..Binaries::default()
         },
-        toolbox: Arc::clone(&config.toolbox),
-        cgroup_root: cgroup_root.to_owned(),
-        state_dir: state.join(MICROVMS_DIR),
-        tools: config.tools.clone(),
+        first_jail_id: afr_engine_firecracker::FIRST_JAIL_ID,
+        ready_timeout: afr_engine::DEFAULT_READY_TIMEOUT,
+        io_bytes_per_second: afr_cgroup::DEFAULT_IO_BYTES_PER_SECOND,
+        sizes: afr_executor::Sizes::DEFAULT,
+        limits: Limits::default(),
+        memory_overcommit: afr_engine_firecracker::MEMORY_OVERCOMMIT,
     }
 }
 
@@ -168,13 +160,16 @@ fn killed_mid_build(lane: &Lane) -> Result<(), Failed> {
 }
 
 /// A stopped sandbox runs no monitor; resumed, it reads its file back, no
-/// process from before the stop remains, and its plan reads back in force.
+/// process from before the stop remains, and its plan reads back in force:
+/// re-planned to another allowlist, it resolves the new name and not the old.
 fn stopped_resumes(lane: &Lane) -> Result<(), Failed> {
     let id = id_of("stopped");
+    let first = Allowlist::new(vec![(FIRST_NAME.to_owned(), FAR_LISTED)])?;
+    let moved = Allowlist::new(vec![(MOVED_NAME.to_owned(), FAR_UNLISTED)])?;
     runtime().block_on(async {
         let engine = lane.microvms()?;
         let sandbox = engine
-            .prepare(request(&engine, &id, Network::Isolated)?)
+            .prepare(request(&engine, &id, Network::Allowed(&first))?)
             .await?;
         let script = format!("echo kept > /workspace/kept && {START_BACKGROUND}");
         run(sandbox.executor(), shell(&script)).await?;
@@ -184,11 +179,17 @@ fn stopped_resumes(lane: &Lane) -> Result<(), Failed> {
         let mut sandbox = parked.resume().await?;
         let script = format!("cat /workspace/kept; {BACKGROUND_ALIVE}");
         let said = run(sandbox.executor(), shell(&script)).await?.output;
-        sandbox.egress(plan(2, Network::Isolated)).await?;
+        sandbox.egress(plan(2, Network::Allowed(&moved))).await?;
+        let resolved = run(sandbox.executor(), shell(RESOLVE)).await?.output;
         sandbox.destroy().await?;
         expect(
             said == "kept\ngone\n",
             format!("the disk, not the processes, got {said:?}"),
+        )?;
+        let wanted = format!("{FAR_UNLISTED}\n");
+        expect(
+            resolved == wanted,
+            format!("the new name alone resolves, got {resolved:?}"),
         )
     })
 }

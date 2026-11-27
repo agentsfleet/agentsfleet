@@ -10,9 +10,9 @@ use std::path::Path;
 use std::time::Duration;
 
 use super::{
-    ATTACH_RETRIES, Access, Attempt, LO_FLAGS_DIRECT_IO, LO_FLAGS_READ_ONLY, LoopConfig,
-    LoopInfo64, NODE_PATIENCE, Patience, SETTLE_PATIENCE, caching, configure_free,
-    direct_or_buffered, node_in, status, until_free, waiting_out,
+    ATTACH_RETRIES, Attempt, LO_FLAGS_DIRECT_IO, LO_FLAGS_READ_ONLY, LoopConfig, LoopInfo64,
+    NODE_PATIENCE, Patience, SETTLE_PATIENCE, caching, configure_free, node_in, status, until_free,
+    waiting_out,
 };
 use crate::host::BLOCK_BYTES;
 use crate::workspace_disk::Caching;
@@ -161,48 +161,6 @@ fn test_disk_reports_buffered_fallback() {
     );
 }
 
-/// Only the toolbox is attached read-only; a run's disk takes writes.
-#[test]
-fn test_only_the_toolbox_is_attached_read_only() {
-    assert_eq!(Access::ReadOnly.flags(), LO_FLAGS_READ_ONLY);
-    assert_eq!(Access::ReadWrite.flags(), 0);
-    // The kernel makes a device read-only when its configuring handle
-    // cannot write, so only the workspace disk's device opens for writing.
-    assert!(!Access::ReadOnly.writes() && Access::ReadWrite.writes());
-    // Only the workspace disk reads past the host's cache.
-    assert!(!Access::ReadOnly.direct_io() && Access::ReadWrite.direct_io());
-}
-
-/// Direct I/O first, and the buffered attach only when the kernel refuses
-/// direct I/O for this file: any other refusal is the answer as it stands.
-#[test]
-fn should_fall_back_to_buffered_only_when_direct_io_is_refused() {
-    let buffered = Cell::new(false);
-    let attach = |direct_answer: fn() -> io::Result<()>| {
-        direct_or_buffered(
-            |&direct: &bool| {
-                if direct {
-                    direct_answer()
-                } else {
-                    buffered.set(true);
-                    Ok(())
-                }
-            },
-            &true,
-            &false,
-        )
-    };
-
-    attach(|| Err(io::Error::from_raw_os_error(libc::EINVAL))).unwrap();
-    assert!(
-        buffered.replace(false),
-        "refused direct I/O, attached buffered"
-    );
-    attach(|| Err(io::Error::from_raw_os_error(libc::EBUSY))).unwrap_err();
-    attach(|| Ok(())).unwrap();
-    assert!(!buffered.get(), "nothing else falls back");
-}
-
 /// A descriptor that is no loop device fails the control call and the status
 /// call alike, as a failure and never a device taken.
 #[test]
@@ -215,7 +173,7 @@ fn should_fail_on_a_descriptor_that_is_no_loop_device() {
         reserved: [0; 8],
     };
 
-    let refused = configure_free(&null, &config, Access::ReadOnly);
+    let refused = configure_free(&null, &config);
 
     assert!(matches!(refused, Err(Attempt::Failed(_))));
     status(&null).unwrap_err();

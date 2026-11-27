@@ -1,4 +1,4 @@
-//! The binary's three entries, run as the binary itself.
+//! The binary's entries, run as the binary itself.
 #![expect(
     clippy::expect_used,
     clippy::indexing_slicing,
@@ -22,9 +22,12 @@ fn entry(word: &str) -> Output {
         .expect("the runner binary starts")
 }
 
-/// `probe` prints the capability report and every check its engine relies on,
-/// and succeeds only where the host can build a sandbox. Bubblewrap needs no
-/// KVM device, so none is judged.
+/// The checks Firecracker's boot admission refuses a host on.
+const ADMITTING: [&str; 3] = ["cgroup_controllers", "kvm", "toolbox_filesystem"];
+
+/// `probe` prints the capability report and every check Firecracker relies
+/// on, the KVM device among them, and succeeds only where its boot would
+/// admit the host.
 #[test]
 fn probe_answers_with_the_report_and_every_check() {
     let probed = entry("probe");
@@ -34,15 +37,18 @@ fn probe_answers_with_the_report_and_every_check() {
     let checks = answer["checks"].as_array().expect("probe names its checks");
     assert_eq!(checks.len(), 5, "{answer}");
     assert!(
-        checks.iter().all(|check| check["name"] != "kvm"),
+        checks.iter().any(|check| check["name"] == "kvm"),
         "{answer}"
     );
     assert_eq!(
-        answer["capability_report"]["engine"], "bubblewrap",
+        answer["capability_report"]["engine"], "firecracker",
         "{answer}"
     );
-    let all_mechanisms = checks.iter().all(|check| check["ok"] == true);
-    assert_eq!(probed.status.success(), all_mechanisms, "{answer}");
+    let admitted = checks
+        .iter()
+        .filter(|check| ADMITTING.iter().any(|name| check["name"] == *name))
+        .all(|check| check["ok"] == true);
+    assert_eq!(probed.status.success(), admitted, "{answer}");
 }
 
 /// Without its environment, `run` fails at boot and names why.
@@ -73,50 +79,6 @@ fn run_stops_at_boot_on_a_host_it_cannot_run_on() {
         home.path().join("sandboxes").is_dir(),
         "the storage home was opened, its directories made"
     );
-}
-
-/// Past any descriptor a test process holds, so none of the three below is
-/// open in the child by chance.
-const NEVER_OPENED: i32 = 1_000_000;
-
-/// The descriptor flags the engine passes, so `sandbox` parses and runs
-/// rather than stopping at a usage error. Outside a sandbox none of the three
-/// was inherited, so adoption refuses before anything is hardened.
-const INHERITED: afr_guest::Inherited = afr_guest::Inherited {
-    tenant: afr_guest::TenantDescriptors {
-        tenant_procs: NEVER_OPENED + 1,
-        tenant_events: NEVER_OPENED + 2,
-    },
-    executor: NEVER_OPENED,
-};
-
-/// What adoption says of a descriptor the engine did not hand over.
-const NOT_INHERITED: &str = "was not inherited from the engine";
-
-/// The exit code of an entry that ran and refused, as opposed to clap's 2 for
-/// a command line it would not parse.
-const REFUSED: i32 = 1;
-
-/// `sandbox` as the engine starts it, with `extra` in its environment.
-fn sandbox(extra: &[(&str, &str)]) -> Output {
-    Command::new(BINARY)
-        .arg(afr_engine_bubblewrap::bubblewrap::SANDBOX_SUBCOMMAND)
-        .args(INHERITED.arguments())
-        .env_remove(af_core::env::LOG_LEVEL_VAR)
-        .envs(extra.iter().copied())
-        .output()
-        .expect("the runner binary starts")
-}
-
-/// Outside a sandbox the entry inherited no link to serve, so adoption
-/// refuses it before anything is hardened, naming the missing descriptor.
-#[test]
-fn sandbox_refuses_outside_a_sandbox() {
-    let served = sandbox(&[]);
-
-    let stderr = String::from_utf8_lossy(&served.stderr);
-    assert_eq!(served.status.code(), Some(REFUSED), "{stderr}");
-    assert!(stderr.contains(NOT_INHERITED), "{stderr}");
 }
 
 /// A collector that refuses every connection, promptly.
@@ -207,33 +169,4 @@ fn run_refuses_a_credential_naming_the_knob() {
             "refused before boot opened the storage home"
         );
     }
-}
-
-/// `sandbox` with the endpoint set behaves exactly as without it, and never
-/// reaches the export decision: `run` logs one of two export lines whichever
-/// way it decides, and `sandbox` logs neither.
-///
-/// What this binary-level test can prove outside a sandbox. The entry adopts
-/// the descriptors it inherited before it hardens, and outside a sandbox that
-/// adoption refuses first, so both runs stop there. That the
-/// sequence hardens once bound is `afr_guest`'s own proof
-/// (`tests/confine.rs`, a child process confining itself); this one proves the
-/// entry never builds the export that would start a thread before it.
-#[test]
-fn test_sandbox_entry_never_builds_an_export() {
-    let plain = sandbox(&[]);
-    let exporting = sandbox(&[(OTEL_ENDPOINT_KNOB, REFUSING_COLLECTOR)]);
-
-    assert_eq!(plain.status.code(), Some(REFUSED));
-    assert_eq!(exporting.status.code(), Some(REFUSED));
-    assert_eq!(
-        String::from_utf8_lossy(&plain.stderr),
-        String::from_utf8_lossy(&exporting.stderr),
-        "the endpoint changes nothing the sandbox entry does"
-    );
-    let stderr = String::from_utf8_lossy(&exporting.stderr);
-    assert!(
-        !stderr.contains(EXPORT_STARTED) && !stderr.contains(EXPORT_DISABLED),
-        "the sandbox entry never reached the export decision: {stderr}"
-    );
 }

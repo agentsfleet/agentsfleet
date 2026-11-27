@@ -67,8 +67,6 @@ pub enum FailureClass {
     RunnerCrash,
     /// The connection to the child was lost.
     TransportLoss,
-    /// Filesystem isolation refused an access.
-    LandlockDeny,
     /// The run expired before the run finished.
     RunExpired,
     /// Renewal was refused and the child was terminated.

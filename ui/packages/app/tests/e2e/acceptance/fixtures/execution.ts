@@ -58,18 +58,15 @@ export const FAILURE_CLASS = {
   resourceKill: "resource_kill",
   runnerCrash: "runner_crash",
   transportLoss: "transport_loss",
-  landlockDeny: "landlock_deny",
   runExpired: "run_expired",
   renewalTerminate: "renewal_terminate",
 } as const;
 
-// The product decided these: a startup check, a policy refusal and the sandbox
-// the platform assigned. Each one is a defect or a configuration the journey
-// must not paper over.
+// The product decided these: a startup check and a policy refusal. Each one
+// is a defect or a configuration the journey must not paper over.
 export const PRODUCT_FAILURE_CLASSES: readonly string[] = [
   FAILURE_CLASS.startupPosture,
   FAILURE_CLASS.policyDeny,
-  FAILURE_CLASS.landlockDeny,
 ];
 
 // The host, the provider path or the clock decided these. A runner that

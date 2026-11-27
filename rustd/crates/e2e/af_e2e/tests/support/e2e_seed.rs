@@ -118,7 +118,7 @@ pub(crate) fn enrolment() -> RegisterRequest<'static> {
         assigned_policy: AssignedPolicy {
             durable_tasks_enabled: af_wire::test_util::DURABLE_TASKS_DEFAULT_ENABLED,
             decision_model_id: None,
-            sandbox_tier: SandboxTier::LandlockFull,
+            sandbox_tier: SandboxTier::Firecracker,
             network_policy: NetworkPolicy::AllowListEgress,
             registry_allowlist: vec![Cow::Borrowed("registry.npmjs.org")],
             worker_count: 1,

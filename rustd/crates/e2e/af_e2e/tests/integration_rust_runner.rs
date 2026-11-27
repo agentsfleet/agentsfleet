@@ -222,7 +222,7 @@ pub(crate) async fn allow_all_egress(scene: &crate::e2e::Scenario) {
     let policy = AssignedPolicy {
         durable_tasks_enabled: af_wire::test_util::DURABLE_TASKS_DEFAULT_ENABLED,
         decision_model_id: None,
-        sandbox_tier: SandboxTier::LandlockFull,
+        sandbox_tier: SandboxTier::Firecracker,
         network_policy: NetworkPolicy::AllowAll,
         registry_allowlist: Vec::new(),
         worker_count: 1,
@@ -302,7 +302,6 @@ fn capable() -> afr_engine::HostProbe {
         landlock: true,
         seccomp: true,
         cgroup_controllers: afr_engine::REQUIRED_CONTROLLERS.map(str::to_owned).to_vec(),
-        bubblewrap: true,
         kvm: af_wire::runner::Kvm::Absent,
         toolbox_filesystem: true,
         workspace_direct_io: None,

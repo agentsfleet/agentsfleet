@@ -14,7 +14,6 @@ use rustix::mount::MountFlags;
 use sha2::{Digest as _, Sha256};
 
 use super::adopt;
-use super::loop_device::Access;
 use super::{Manifest, Toolbox, loop_device};
 use crate::error::{Result, ToolboxRefusal, toolbox_refused};
 use crate::workspace_disk::Caching;
@@ -82,7 +81,7 @@ impl Toolbox {
             return Ok((toolbox, None));
         }
         fs::create_dir_all(&toolbox.root)?;
-        let attached = loop_device::attach(&file, Access::ReadOnly)?;
+        let attached = loop_device::attach(&file)?;
         let flags = MountFlags::RDONLY | MountFlags::NOSUID | MountFlags::NODEV;
         rustix::mount::mount(&attached.node, &toolbox.root, EROFS, flags, None)?;
         Ok((toolbox, Some(attached.caching)))

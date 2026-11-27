@@ -1,8 +1,6 @@
 //! Seed funded fleets and capable runners with matching placement tags.
 //! All work is admitted through the production ledger before measurement.
 
-use std::borrow::Cow;
-
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use af_wire::runner::{
@@ -56,9 +54,6 @@ pub const SEEDED_AT: Timestamp = Timestamp::constant(SEEDED_AT_SECOND, 0);
 
 /// [`SEEDED_AT`] in seconds since the epoch: 2026-01-01T00:00:00Z.
 const SEEDED_AT_SECOND: i64 = 1_767_225_600;
-
-/// The cgroup controllers a seeded runner reports it can confine with.
-const CGROUP_CONTROLLERS: [&str; 3] = ["cpu", "memory", "pids"];
 
 /// Concurrent workers a seeded runner declares.
 ///
@@ -276,7 +271,7 @@ pub(in crate::lane::runs) async fn runner_identity(
         assigned_policy: AssignedPolicy {
             durable_tasks_enabled: af_wire::test_util::DURABLE_TASKS_DEFAULT_ENABLED,
             decision_model_id: None,
-            sandbox_tier: SandboxTier::LandlockFull,
+            sandbox_tier: SandboxTier::Firecracker,
             network_policy: NetworkPolicy::AllowListEgress,
             registry_allowlist: Vec::new(),
             worker_count: workers,
@@ -312,18 +307,9 @@ fn capable() -> CapabilityReport<'static> {
     CapabilityReport {
         durable_tasks_v1: false,
         build_id: None,
-        landlock: true,
-        seccomp: true,
-        cgroup_controllers: CGROUP_CONTROLLERS.map(Cow::Borrowed).to_vec(),
-        bubblewrap: true,
-        egress_enforcement: true,
-
-        engine: af_wire::runner::SandboxEngine::Bubblewrap,
-
-        isolation: af_wire::runner::Isolation::SharedKernel,
-
-        kvm: af_wire::runner::Kvm::Absent,
-
+        engine: af_wire::runner::SandboxEngine::Firecracker,
+        isolation: af_wire::runner::Isolation::HardwareVm,
+        kvm: af_wire::runner::Kvm::Usable,
         sandboxes_max: None,
     }
 }

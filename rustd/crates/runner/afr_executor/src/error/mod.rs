@@ -149,8 +149,8 @@ pub(crate) enum ErrorKind {
     #[error("this executor serves no file calls")]
     FileCallsUnsupported,
 
-    /// A renewal reached an executor that builds no inner environment: its
-    /// tenant processes run where it does.
+    /// A renewal or a hosts file reached an executor that builds no inner
+    /// environment: its tenant processes run where it does.
     #[error("this executor builds no inner environment")]
     NoInnerEnvironment,
 

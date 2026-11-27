@@ -50,6 +50,9 @@ pub(crate) const METHOD_RECOVERY_IDLE: &str = "fs/recovery_idle";
 /// `env/renew`: end the inner environment, empty the workspace, build it
 /// again.
 pub(crate) const METHOD_RENEW: &str = "env/renew";
+/// `env/hosts`: replace the hosts file every process inside the inner
+/// environment resolves names through.
+pub(crate) const METHOD_HOSTS: &str = "env/hosts";
 /// The notification carrying a chunk of a process's output.
 pub(crate) const NOTIFY_OUTPUT: &str = "process/output";
 /// The notification carrying a process's end; always its last.
@@ -165,6 +168,14 @@ pub(crate) struct RecoveryParams {
 #[serde(deny_unknown_fields)]
 pub(crate) struct RenewParams {
     pub(crate) workspace: RenewedWorkspace,
+}
+
+/// `env/hosts` parameters: the hosts file, whole. The frame is its only
+/// bound.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct HostsParams<'a> {
+    pub(crate) file: Cow<'a, str>,
 }
 
 /// What a renewal leaves of the workspace: nothing, for a restore to import

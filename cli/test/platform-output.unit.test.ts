@@ -17,7 +17,6 @@ test("shows each runner's reported engine in the table while preserving the API 
   expect(terminal.stdout).toContain("\x1b[38;5;210moffline\x1b[0m");
   expect(terminal.stdout).toContain("ENGINE");
   expect(terminal.stdout).toContain("unknown");
-  expect(terminal.stdout).not.toContain("Bubblewrap");
   const json = await fixture.run(["runners", "list", "--json"]);
   expect(json.code).toBe(0);
   expect(JSON.parse(json.stdout)).toEqual(page);
@@ -25,19 +24,18 @@ test("shows each runner's reported engine in the table while preserving the API 
 
 test("renders a runner's identity, policy and checks for an interactive terminal", async () => {
   fixture.respond = () => Response.json({...RUNNER_DETAIL, selftest: {
-    all_ok: true, sandbox_tier: "landlock_full", network_policy: "deny_all_egress",
-    checks: [{name: "bubblewrap", ok: true, detail: "Available"}],
+    all_ok: true, sandbox_tier: "firecracker", network_policy: "deny_all_egress",
+    checks: [{name: "kvm", ok: true, detail: "Available"}],
   }});
   const result = await fixture.run(["runners", "show", RUNNER_ID], "", true);
   expect(result.code).toBe(0); expect(result.stdout).toContain("build-host");
-  expect(result.stdout).toContain("Isolation tier"); expect(result.stdout).toContain("landlock_full");
+  expect(result.stdout).toContain("Isolation tier"); expect(result.stdout).toContain("firecracker");
   expect(result.stdout).toContain("Engine"); expect(result.stdout).toContain("unknown");
-  expect(result.stdout).toContain("bubblewrap: Available"); expect(result.stderr).toBe("");
+  expect(result.stdout).toContain("kvm: Available"); expect(result.stderr).toBe("");
 });
 
 test("platform runners show prints the reported engine", async () => {
   const achievable = {
-    landlock: false, seccomp: false, bubblewrap: false, cgroup_controllers: ["cpu"], egress_enforcement: true,
     engine: "firecracker", isolation: "hardware_vm", kvm: "usable", sandboxes_max: 55,
   };
   fixture.respond = () => Response.json({...RUNNER_DETAIL, achievable});
@@ -47,7 +45,6 @@ test("platform runners show prints the reported engine", async () => {
   expect(reported.code).toBe(0); expect(silent.code).toBe(0);
   expect(stripVTControlCharacters(reported.stdout)).toMatch(/Engine\s+·\s+firecracker/u);
   expect(stripVTControlCharacters(silent.stdout)).toMatch(/Engine\s+·\s+unknown/u);
-  expect(`${reported.stdout}${silent.stdout}`).not.toContain("Bubblewrap");
 });
 
 test("renders each runner's processors, memory and free disk", async () => {
@@ -100,11 +97,11 @@ test.each([
   {patch: {selftest_completed_at: "2026-11-10T00:00:00.100000001Z", selftest_requested_at: "2026-11-10T00:00:00.100000002Z"}, expected: "Pending"},
   {patch: {selftest_completed_at: "2026-11-10T00:00:00.1Z", selftest_requested_at: "2026-11-10T00:00:00.100Z"}, expected: "Passed"},
   {patch: {selftest_completed_at: null}, expected: "Stale (previous assignment)"},
-  {patch: {selftest_completed_at: INSTANT, assigned_policy: {...RUNNER_DETAIL.assigned_policy, sandbox_tier: "container_nested"}}, expected: "Stale (previous assignment)"},
+  {patch: {selftest_completed_at: INSTANT, assigned_policy: {...RUNNER_DETAIL.assigned_policy, sandbox_tier: "dev_none"}}, expected: "Stale (previous assignment)"},
   {patch: {selftest_completed_at: INSTANT, assigned_policy: {...RUNNER_DETAIL.assigned_policy, network_policy: "allow_all"}}, expected: "Stale (previous assignment)"},
-  {patch: {selftest_completed_at: INSTANT, selftest: {checks: [], all_ok: false, sandbox_tier: "landlock_full", network_policy: "deny_all_egress"}}, expected: "Failed"},
+  {patch: {selftest_completed_at: INSTANT, selftest: {checks: [], all_ok: false, sandbox_tier: "firecracker", network_policy: "deny_all_egress"}}, expected: "Failed"},
 ])("labels the recorded self-test as $expected", async ({patch, expected}) => {
-  const report = {checks: [], all_ok: true, sandbox_tier: "landlock_full", network_policy: "deny_all_egress"};
+  const report = {checks: [], all_ok: true, sandbox_tier: "firecracker", network_policy: "deny_all_egress"};
   fixture.respond = () => Response.json({...RUNNER_DETAIL, selftest: expected === "Not reported" || (expected === "Pending" && !("selftest_completed_at" in patch)) ? null : report, ...patch});
   const result = await fixture.run(["runners", "show", RUNNER_ID], "", true);
   expect(result.code).toBe(0); expect(result.stdout).toContain(expected);

@@ -63,7 +63,7 @@ impl Fixtures {
             .bind(&runner)
             .bind(runner.as_str())
             .bind(tenant)
-            .bind(tier_wire(SandboxTier::LandlockFull))
+            .bind(tier_wire(SandboxTier::Firecracker))
             .bind(afd_state::sql::RUNNER_STATUS_ACTIVE)
             .bind(policy_wire(NetworkPolicy::AllowAll))
             .bind(afd_runner::sql::NEVER_SEEN.to_sqlx())

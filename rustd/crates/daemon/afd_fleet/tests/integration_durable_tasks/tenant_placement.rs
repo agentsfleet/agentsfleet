@@ -15,7 +15,7 @@ use crate::seed::{MODEL, PROVIDER, select_fleet};
 async fn tenant_runner(case: &Case) -> Uuid7 {
     let fixtures = &case.held.fixtures;
     let request = enrolment_tagged(
-        SandboxTier::LandlockFull,
+        SandboxTier::Firecracker,
         NetworkPolicy::AllowListEgress,
         2,
         &placement_tag(&case.held.fleet),

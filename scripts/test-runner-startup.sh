@@ -201,7 +201,7 @@ run_case() {
   systemctl reset-failed "$UNIT"
 }
 
-for choice in default bubblewrap; do
+for choice in default firecracker; do
   for mode in disabled enabled partial restart; do
     run_case "$mode" "$choice" 'release_unstaged'
   done
@@ -211,16 +211,14 @@ for choice in default bubblewrap; do
   run_case populated "$choice" 'Device or resource busy'
   run_case readonly "$choice" 'Read-only file system' "ReadOnlyPaths=$ROOT/cgroup.subtree_control"
   run_case wrong-subgroup "$choice" 'delegated_cgroup is unavailable'
-  run_case no-bubblewrap "$choice" 'bubblewrap is unavailable' 'InaccessiblePaths=/usr/bin/bwrap'
-  run_case no-landlock "$choice" 'landlock is unavailable' 'InaccessiblePaths=/sys/kernel/security/lsm'
-  run_case no-seccomp "$choice" 'seccomp is unavailable' 'InaccessiblePaths=/proc/sys/kernel/seccomp/actions_avail'
+  run_case no-kvm "$choice" 'this host cannot run a microVM: kvm is' 'InaccessiblePaths=/dev/kvm'
   run_case no-erofs "$choice" 'erofs is unavailable' 'InaccessiblePaths=/proc/filesystems'
 done
-run_case invalid-engine firecracker "invalid value 'firecracker'" '' 2
+run_case invalid-engine bubblewrap "invalid value 'bubblewrap'" '' 2
 if [ -n "${LLVM_PROFILE_FILE:-}" ]; then
   profiles=("$WORK"/*.profraw)
   [ -s "${profiles[0]}" ] || { echo 'startup coverage produced no profiles' >&2; exit 1; }
   cp "${profiles[@]}" "$(dirname "$LLVM_PROFILE_FILE")/"
   echo "Runner startup coverage: ${#profiles[@]} profiles collected"
 fi
-echo 'Runner systemd startup: 31 cases passed; 0 skipped'
+echo 'Runner systemd startup: 27 cases passed; 0 skipped'

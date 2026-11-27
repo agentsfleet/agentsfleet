@@ -5,6 +5,8 @@
 //!               ─► vda erofs at /toolbox; its /usr and /etc bound in place
 //!               ─► vdb ext4 at /disk; its workspace/ and tmp/ at /workspace, /tmp
 //!               ─► vdc, when attached: /etc/hosts and /etc/resolv.conf
+//!               ─► every mount shared, so a hosts file swapped in later
+//!                  reaches the inner environment, downstream of this namespace
 //!               ─► fork ─► executor: root, its files as the sandbox user, on vsock
 //!                          └─► the inner environment every tenant process runs in
 //!               ─► reaps until the executor ends, then powers the guest off
@@ -28,7 +30,7 @@ use afr_engine::Result;
 use afr_executor::InnerEnvironment;
 use afr_guest::Namespaced;
 use rustix::fs::{Gid, Uid};
-use rustix::mount::{MountFlags, mount, mount_bind};
+use rustix::mount::{MountFlags, MountPropagationFlags, mount, mount_bind, mount_change};
 use tokio_vsock::{VMADDR_CID_ANY, VsockAddr, VsockListener, VsockStream};
 
 use super::{Accept, EXECUTOR_PORT, GuestEntry, host_connection};
@@ -56,10 +58,12 @@ const DISK_TREES: [(&str, &str, u32); 2] = [
     ("workspace", afr_executor::WORKSPACE_ROOT, 0o755),
     ("tmp", "/tmp", 0o1777),
 ];
-/// Where the names drive's files are written, and where each is bound.
+/// Where the names drive's files are written, and where each is bound: a
+/// re-plan's hosts file is staged in the same directory.
 const RUN: &str = "/run";
+const HOSTS: &str = "/etc/hosts";
 const NAMED: [(&str, &str); 2] = [
-    ("/run/hosts", "/etc/hosts"),
+    ("/run/hosts", HOSTS),
     ("/run/resolv.conf", "/etc/resolv.conf"),
 ];
 
@@ -71,6 +75,13 @@ const NAMED: [(&str, &str); 2] = [
 /// then ends the guest, since its `init` returned.
 pub fn serve_vm(entry: GuestEntry) -> Result<()> {
     mount_all(entry)?;
+    // Shared, so a hosts file the executor swaps in later reaches the inner
+    // environment's namespace, downstream of this one.
+    mount_change(
+        "/",
+        MountPropagationFlags::REC | MountPropagationFlags::SHARED,
+    )
+    .map_err(io::Error::from)?;
     // SAFETY: called from `init` before any thread exists, so the child is a
     // whole copy of this one process and may run anything.
     let child = unsafe { libc::fork() };
@@ -190,7 +201,12 @@ fn reap_until(executor: libc::pid_t) {
 /// exists, serving each host connection on vsock in turn.
 fn executor(entry: GuestEntry) -> Result<()> {
     let workspace = Path::new(afr_executor::WORKSPACE_ROOT);
-    let inner: Arc<dyn InnerEnvironment> = Arc::new(Namespaced::build(GUEST_USER, workspace)?);
+    let inner: Arc<dyn InnerEnvironment> = Arc::new(Namespaced::build(
+        GUEST_USER,
+        workspace,
+        Path::new(HOSTS),
+        Path::new(RUN),
+    )?);
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;

@@ -58,12 +58,11 @@ pub(super) struct SandboxTuning {
 impl Default for SandboxTuning {
     fn default() -> Self {
         let limits = afr_engine::Limits::DEFAULT;
-        let engine = afr_engine_bubblewrap::EngineTuning::DEFAULT;
         Self {
             memory_mib: limits.memory_bytes / MIB,
             disk_mib: limits.disk_bytes / MIB,
-            io_mib_per_second: engine.io_bytes_per_second / MIB,
-            ready_timeout_seconds: engine.ready_timeout.as_secs(),
+            io_mib_per_second: afr_cgroup::DEFAULT_IO_BYTES_PER_SECOND / MIB,
+            ready_timeout_seconds: afr_engine::DEFAULT_READY_TIMEOUT.as_secs(),
         }
     }
 }
@@ -78,14 +77,14 @@ impl SandboxTuning {
         }
     }
 
-    /// How the engine starts and paces every sandbox, starting each
-    /// executor with `sizes`.
-    pub(super) fn engine(&self, sizes: afr_executor::Sizes) -> afr_engine_bubblewrap::EngineTuning {
-        afr_engine_bubblewrap::EngineTuning {
-            ready_timeout: Duration::from_secs(self.ready_timeout_seconds),
-            io_bytes_per_second: self.io_mib_per_second.saturating_mul(MIB),
-            sizes,
-        }
+    /// How long a new sandbox may take to answer before its run is refused.
+    pub(super) const fn ready_timeout(&self) -> Duration {
+        Duration::from_secs(self.ready_timeout_seconds)
+    }
+
+    /// Disk bytes a run's sandbox may read, and write, per second.
+    pub(super) const fn io_bytes_per_second(&self) -> u64 {
+        self.io_mib_per_second.saturating_mul(MIB)
     }
 }
 

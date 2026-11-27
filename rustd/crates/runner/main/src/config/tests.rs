@@ -185,7 +185,6 @@ fn missing_profile_retains_the_read_failure_and_selected_path() -> Checked {
     Ok(())
 }
 
-#[cfg(feature = "firecracker")]
 #[test]
 fn test_the_firecracker_section_overcommits_four_to_one_with_a_pool_of_four() -> Checked {
     let selected = profile("")?;

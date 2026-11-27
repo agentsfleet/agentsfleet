@@ -2,7 +2,6 @@ use af_wire::runner::{Isolation, Kvm, NetworkPolicy, SandboxEngine, SandboxTier}
 use afr_engine::{Cap, Capabilities, HostProbe, REQUIRED_CONTROLLERS, ResourceFacts};
 
 use super::{CGROUP_OFF, CGROUP_ON, capability_report, probe_answer, selftest};
-use crate::test_support::CAPABILITIES as BUBBLEWRAP_CAPABILITIES;
 
 /// An engine that confines nothing, as the debug engine states itself.
 const UNCONFINED: Capabilities = Capabilities {
@@ -37,7 +36,6 @@ fn probe(kvm: Kvm, toolbox_filesystem: bool) -> HostProbe {
             "pids".to_owned(),
             "io".to_owned(),
         ],
-        bubblewrap: true,
         kvm,
         toolbox_filesystem,
         workspace_direct_io: None,
@@ -58,13 +56,13 @@ fn test_capability_report_states_kvm_and_toolbox_fs() {
     let usable = selftest(
         &probe(Kvm::Usable, true),
         &MICROVM,
-        SandboxTier::LandlockFull,
+        SandboxTier::Firecracker,
         NetworkPolicy::AllowAll,
     );
     let denied = selftest(
         &probe(Kvm::Denied, true),
         &MICROVM,
-        SandboxTier::LandlockFull,
+        SandboxTier::Firecracker,
         NetworkPolicy::AllowAll,
     );
     let absent = selftest(
@@ -92,7 +90,7 @@ fn test_capability_report_states_kvm_and_toolbox_fs() {
     );
     assert_eq!(
         (usable.sandbox_tier.as_ref(), usable.network_policy.as_ref()),
-        ("landlock_full", "allow_all")
+        ("firecracker", "allow_all")
     );
     assert_eq!(absent.network_policy, "deny_all_egress");
 }
@@ -103,58 +101,40 @@ fn every_missing_mechanism_fails_its_own_check() {
         landlock: false,
         seccomp: false,
         cgroup_controllers: vec!["cpu".to_owned()],
-        bubblewrap: false,
         kvm: Kvm::Absent,
         toolbox_filesystem: false,
         workspace_direct_io: None,
         egress: false,
     };
 
-    for engine in [BUBBLEWRAP_CAPABILITIES, MICROVM] {
-        let report = selftest(
-            &bare,
-            &engine,
-            SandboxTier::DevNone,
-            NetworkPolicy::AllowAll,
-        );
+    let report = selftest(
+        &bare,
+        &MICROVM,
+        SandboxTier::DevNone,
+        NetworkPolicy::AllowAll,
+    );
 
-        assert!(report.checks.iter().all(|check| !check.ok), "{engine:?}");
-        assert!(
-            report
-                .checks
-                .iter()
-                .all(|check| check.detail.chars().count() <= af_validate::TEXT_MAX_CHARS)
-        );
-    }
+    assert!(report.checks.iter().all(|check| !check.ok));
+    assert!(
+        report
+            .checks
+            .iter()
+            .all(|check| check.detail.chars().count() <= af_validate::TEXT_MAX_CHARS)
+    );
 }
 
+/// The report names the engine, its wall and what `/dev/kvm` allows, and
+/// no host mechanism.
 #[test]
-fn the_report_carries_the_wire_mechanisms() {
+fn the_report_names_the_engine_and_its_wall() {
     let probe = probe(Kvm::Usable, true);
 
-    let report = capability_report(&probe, &BUBBLEWRAP_CAPABILITIES, None);
+    let report = capability_report(&probe, &MICROVM, Some(3));
 
-    assert!(report.landlock && report.seccomp && report.bubblewrap);
-    assert_eq!(report.cgroup_controllers.len(), 4);
-    assert_eq!(report.engine, SandboxEngine::Bubblewrap);
-    assert_eq!(report.isolation, Isolation::SharedKernel);
+    assert_eq!(report.engine, SandboxEngine::Firecracker);
+    assert_eq!(report.isolation, Isolation::HardwareVm);
     assert_eq!(report.kvm, Kvm::Usable);
-}
-
-/// Egress enforcement is the probe's measurement, never a constant: a host
-/// whose probe built and removed a scope reports it, and one whose probe
-/// failed does not, so the daemon degrades an `allow_list_egress` runner
-/// that cannot hold a sandbox to its allowlist.
-#[test]
-fn test_egress_probe_reports_enforcement() {
-    let measured = |egress| HostProbe {
-        egress,
-        ..probe(Kvm::Usable, true)
-    };
-
-    let engine = &BUBBLEWRAP_CAPABILITIES;
-    assert!(capability_report(&measured(true), engine, None).egress_enforcement);
-    assert!(!capability_report(&measured(false), engine, None).egress_enforcement);
+    assert_eq!(report.sandboxes_max, Some(3));
 }
 
 /// The probe command answers with the heartbeat's report and every check, so
@@ -163,11 +143,11 @@ fn test_egress_probe_reports_enforcement() {
 fn the_probe_answer_is_the_report_plus_every_check() {
     let host = probe(Kvm::Absent, false);
 
-    let answer = probe_answer(&host, &BUBBLEWRAP_CAPABILITIES);
+    let answer = probe_answer(&host, &MICROVM);
 
     assert_eq!(
         answer.capability_report,
-        capability_report(&host, &BUBBLEWRAP_CAPABILITIES, None)
+        capability_report(&host, &MICROVM, None)
     );
     let names: Vec<_> = answer
         .checks
@@ -179,8 +159,8 @@ fn the_probe_answer_is_the_report_plus_every_check() {
         [
             "landlock",
             "seccomp",
-            "bubblewrap",
             "cgroup_controllers",
+            "kvm",
             "toolbox_filesystem"
         ]
     );
@@ -190,12 +170,11 @@ fn the_probe_answer_is_the_report_plus_every_check() {
         .filter(|check| !check.ok)
         .map(|check| check.name.as_ref())
         .collect();
-    assert_eq!(refused, ["toolbox_filesystem"]);
+    assert_eq!(refused, ["kvm", "toolbox_filesystem"]);
 }
 
-/// A host is judged only on what its engine relies on: the launcher for
-/// bubblewrap, the KVM device for an engine behind a virtual machine, and
-/// neither for the unsandboxed engine.
+/// A host is judged only on what its engine relies on: the KVM device for an
+/// engine behind a virtual machine, and not for the unsandboxed engine.
 #[test]
 fn the_checks_are_only_those_the_engine_relies_on() {
     let host = probe(Kvm::Usable, true);
@@ -207,38 +186,24 @@ fn the_checks_are_only_those_the_engine_relies_on() {
             .collect()
     };
 
-    for (engine, bubblewrap, kvm) in [
-        (BUBBLEWRAP_CAPABILITIES, true, false),
-        (MICROVM, false, true),
-        (UNCONFINED, false, false),
-    ] {
+    for (engine, kvm) in [(MICROVM, true), (UNCONFINED, false)] {
         let named = checked(&engine);
-        assert_eq!(
-            named.iter().any(|name| name == "bubblewrap"),
-            bubblewrap,
-            "{named:?}"
-        );
         assert_eq!(named.iter().any(|name| name == "kvm"), kvm, "{named:?}");
     }
 }
 
-/// A bubblewrap host needs no KVM device: one without it passes its
+/// The unsandboxed engine needs no KVM device: a host without it passes its
 /// self-test, while the same host under an engine behind a virtual machine
 /// fails on the KVM check alone.
 #[test]
-fn a_bubblewrap_host_without_kvm_passes_its_selftest() {
-    let tier = SandboxTier::LandlockFull;
+fn a_host_without_kvm_fails_only_under_a_microvm_engine() {
+    let tier = SandboxTier::Firecracker;
     let network = NetworkPolicy::AllowAll;
 
-    let bubblewrap = selftest(
-        &probe(Kvm::Absent, true),
-        &BUBBLEWRAP_CAPABILITIES,
-        tier,
-        network,
-    );
+    let unconfined = selftest(&probe(Kvm::Absent, true), &UNCONFINED, tier, network);
     let microvm = selftest(&probe(Kvm::Denied, true), &MICROVM, tier, network);
 
-    assert!(bubblewrap.all_ok, "{:?}", bubblewrap.checks);
+    assert!(unconfined.all_ok, "{:?}", unconfined.checks);
     assert!(!microvm.all_ok);
     let failing: Vec<_> = microvm
         .checks
@@ -261,8 +226,8 @@ fn test_direct_io_check_follows_the_probe() {
         };
         selftest(
             &probe,
-            &BUBBLEWRAP_CAPABILITIES,
-            SandboxTier::LandlockFull,
+            &MICROVM,
+            SandboxTier::Firecracker,
             NetworkPolicy::AllowAll,
         )
     };

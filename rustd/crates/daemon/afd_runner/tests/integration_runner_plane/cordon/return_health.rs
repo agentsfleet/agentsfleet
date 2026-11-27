@@ -19,18 +19,9 @@ async fn malformed_capability_cannot_complete_a_healthy_return() -> Checked {
         capability_report: Some(CapabilityReport {
             durable_tasks_v1: true,
             build_id: Some("invalid".into()),
-            landlock: true,
-            seccomp: true,
-            cgroup_controllers: Vec::new(),
-            bubblewrap: true,
-            egress_enforcement: true,
-
-            engine: af_wire::runner::SandboxEngine::Bubblewrap,
-
-            isolation: af_wire::runner::Isolation::SharedKernel,
-
-            kvm: af_wire::runner::Kvm::Absent,
-
+            engine: af_wire::runner::SandboxEngine::Firecracker,
+            isolation: af_wire::runner::Isolation::HardwareVm,
+            kvm: af_wire::runner::Kvm::Usable,
             sandboxes_max: None,
         }),
         ..afd_runner::NO_REPORT
@@ -54,7 +45,7 @@ async fn a_degraded_capability_resets_the_healthy_return() -> Checked {
     let (fixture, owner) = ready().await;
     sqlx::query("UPDATE runner.runners SET sandbox_tier=$2 WHERE id=$1")
         .bind(owner.runner())
-        .bind("landlock_full")
+        .bind("firecracker")
         .execute(&mut *fixture.owner.acquire().await?)
         .await?;
     let Decision::Allowed(reply) = fixture

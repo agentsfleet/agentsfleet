@@ -59,7 +59,7 @@ pub(super) async fn assert_seen_now(fixtures: &Fixtures, runner: &Uuid7) {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_the_first_beat_reports_and_comes_online() {
     let fixtures = Fixtures::create().await;
-    let request = enrolment(SandboxTier::LandlockFull, NetworkPolicy::AllowListEgress, 1);
+    let request = enrolment(SandboxTier::Firecracker, NetworkPolicy::AllowListEgress, 1);
     let enrolled = fixtures
         .runners()
         .register(
@@ -99,7 +99,7 @@ async fn test_the_first_beat_reports_and_comes_online() {
         fixtures
             .text(Row::Runner(&runner), "capability_report")
             .await
-            .is_some_and(|report| report.contains("landlock")),
+            .is_some_and(|report| report.contains("firecracker")),
         "the report the verdict was reconciled against is what gets stored"
     );
     assert_eq!(
@@ -167,7 +167,7 @@ async fn test_a_steady_beat_writes_no_second_event() {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_an_out_of_bounds_report_does_not_fail_the_beat() {
     let fixtures = Fixtures::create().await;
-    let request = enrolment(SandboxTier::LandlockFull, NetworkPolicy::AllowAll, 1);
+    let request = enrolment(SandboxTier::Firecracker, NetworkPolicy::AllowAll, 1);
     let enrolled = fixtures
         .runners()
         .register(
@@ -179,11 +179,11 @@ async fn test_an_out_of_bounds_report_does_not_fail_the_beat() {
         .expect("enrolment must succeed");
     let runner = enrolled.runner_id.clone();
 
-    // An empty controller name is outside the report's bounds: no claim a
-    // host could make.
+    // No sandbox fits in no memory: a bound of zero is outside the report's
+    // bounds, no claim a host could make.
     let unreadable = CapabilityReport {
         durable_tasks_v1: false,
-        cgroup_controllers: vec![Cow::Borrowed("")],
+        sandboxes_max: Some(0),
         ..capable()
     };
     let beat = HeartbeatRequest {

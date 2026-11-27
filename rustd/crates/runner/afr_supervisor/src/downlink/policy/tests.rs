@@ -47,7 +47,6 @@ pub(super) fn probe() -> HostProbe {
         landlock: true,
         seccomp: true,
         cgroup_controllers: vec!["cpu".to_owned(), "memory".to_owned(), "pids".to_owned()],
-        bubblewrap: true,
         kvm: Kvm::Absent,
         toolbox_filesystem: true,
         workspace_direct_io: None,
@@ -57,7 +56,7 @@ pub(super) fn probe() -> HostProbe {
 
 /// The assignment every answer here carries.
 pub(super) fn policy() -> serde_json::Value {
-    serde_json::json!({ "durable_tasks_enabled": true,"sandbox_tier": "landlock_full", "network_policy": "allow_all",
+    serde_json::json!({ "durable_tasks_enabled": true,"sandbox_tier": "firecracker", "network_policy": "allow_all",
         "registry_allowlist": [], "worker_count": 3, "extra_binds": []})
 }
 
@@ -157,16 +156,15 @@ async fn an_assignment_reaches_the_runs_and_labels_the_self_test_it_asks_for() {
     assert!(calls.iter().all(|call| {
         sent(call)["capability_report"]["durable_tasks_v1"] == serde_json::Value::Bool(true)
     }));
-    assert!(
-        sent(&calls[0])["capability_report"]["landlock"]
-            .as_bool()
-            .unwrap()
+    assert_eq!(
+        sent(&calls[0])["capability_report"]["engine"],
+        "firecracker"
     );
     assert!(
         sent(&calls[0])["selftest"].is_null(),
         "nothing has asked for a self-test yet"
     );
-    assert_eq!(sent(&calls[1])["selftest"]["sandbox_tier"], "landlock_full");
+    assert_eq!(sent(&calls[1])["selftest"]["sandbox_tier"], "firecracker");
 }
 
 #[test]

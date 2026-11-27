@@ -94,7 +94,7 @@ fn should_reject_an_unknown_enum_value() {
     assert!(err.to_string().contains("macos_seatbelt"), "{err}");
 
     let ok = r#"{
-  "sandbox_tier": "landlock_full",
+  "sandbox_tier": "firecracker",
   "network_policy": "allow_all",
   "registry_allowlist": [],
   "worker_count": 1,
@@ -190,7 +190,7 @@ fn test_daemon_payload_with_unknown_field_decodes() {
 /// The assigned policy, as every reply that carries it spells it, with a bind
 /// and a key no build knows at both levels.
 const GROWN_POLICY: &str = r#"{
-  "sandbox_tier": "landlock_full",
+  "sandbox_tier": "firecracker",
   "network_policy": "allow_all",
   "registry_allowlist": [],
   "worker_count": 1,
@@ -231,7 +231,7 @@ fn policy_carrying_replies() -> [(&'static str, String, Decodes); 2] {
         r#"{{"status":"ok","assigned_policy":{GROWN_POLICY},"degraded":false,"degraded_reason":null,"selftest_requested":false,"release_holds":[],"future":1}}"#
     );
     let own = format!(
-        r#"{{"id":"r","status":"active","host_id":"h","sandbox_tier":"landlock_full","last_seen_at":"1970-01-01T00:00:00.001Z","assigned_policy":{GROWN_POLICY},"achievable":null,"degraded":false,"degraded_reason":null,"future":1}}"#
+        r#"{{"id":"r","status":"active","host_id":"h","sandbox_tier":"firecracker","last_seen_at":"1970-01-01T00:00:00.001Z","assigned_policy":{GROWN_POLICY},"achievable":null,"degraded":false,"degraded_reason":null,"future":1}}"#
     );
     [
         ("heartbeat", heartbeat, |b| {

@@ -205,15 +205,6 @@ fn own_capability(report: CapabilityReport<'_>) -> CapabilityReport<'static> {
     CapabilityReport {
         durable_tasks_v1: report.durable_tasks_v1,
         build_id: report.build_id.map(|value| Cow::Owned(value.into_owned())),
-        landlock: report.landlock,
-        seccomp: report.seccomp,
-        cgroup_controllers: report
-            .cgroup_controllers
-            .into_iter()
-            .map(|controller| Cow::Owned(controller.into_owned()))
-            .collect(),
-        bubblewrap: report.bubblewrap,
-        egress_enforcement: report.egress_enforcement,
         engine: report.engine,
         isolation: report.isolation,
         kvm: report.kvm,

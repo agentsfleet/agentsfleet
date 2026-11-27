@@ -19,8 +19,8 @@ use crate::{EgressPlan, Generation, NetworkKind};
 
 /// What the counting engine states: every cap enforced, nothing parked.
 const CAPABILITIES: Capabilities = Capabilities {
-    engine: SandboxEngine::Bubblewrap,
-    isolation: Isolation::SharedKernel,
+    engine: SandboxEngine::Firecracker,
+    isolation: Isolation::HardwareVm,
     parks: &[],
     snapshots: false,
     resources: ResourceFacts::ENFORCED,
@@ -184,7 +184,7 @@ impl Engine for Counting {
             id: spec.id.clone(),
             granted: spec.granted,
             environment: Environment {
-                engine: SandboxEngine::Bubblewrap,
+                engine: SandboxEngine::Firecracker,
                 root: Root::Host,
             },
             destroyed: Arc::clone(&self.destroyed),

@@ -1,4 +1,4 @@
-//! An engine with no sandbox, for the lanes that run where bubblewrap cannot.
+//! An engine with no sandbox, for the lanes that run where no microVM can.
 //!
 //! It serves the real executor in-process, over a real socket, in a scratch
 //! directory, so the supervisor and the daemon are proven end to end on any

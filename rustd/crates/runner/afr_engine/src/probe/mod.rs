@@ -1,4 +1,4 @@
-//! What this host's kernel can enforce, as the capability report states it.
+//! What this host's kernel can enforce, as the self-test states it.
 //!
 //! The facts alone: each building block probes its own mechanism, and each
 //! engine's boot admission assembles them into one [`HostProbe`], which the
@@ -6,12 +6,10 @@
 
 use af_wire::runner::Kvm;
 
-/// The mechanism names a refusal and the capability report share.
+/// The mechanism names a refusal and the self-test share.
 pub const MECHANISM_LANDLOCK: &str = "landlock";
 /// See [`MECHANISM_LANDLOCK`].
 pub const MECHANISM_SECCOMP: &str = "seccomp";
-/// See [`MECHANISM_LANDLOCK`].
-pub const MECHANISM_BUBBLEWRAP: &str = "bubblewrap";
 /// See [`MECHANISM_LANDLOCK`]; the toolbox's file system is EROFS.
 pub const MECHANISM_TOOLBOX_FILESYSTEM: &str = "erofs";
 /// The cgroup controllers every run's limits are written through.
@@ -34,8 +32,6 @@ pub struct HostProbe {
     pub seccomp: bool,
     /// Controllers enabled in the delegated cgroup's subtree.
     pub cgroup_controllers: Vec<String>,
-    /// The bubblewrap launcher is installed and runs.
-    pub bubblewrap: bool,
     /// What `/dev/kvm` allows.
     pub kvm: Kvm,
     /// The kernel can mount the toolbox's file system (EROFS); without it no

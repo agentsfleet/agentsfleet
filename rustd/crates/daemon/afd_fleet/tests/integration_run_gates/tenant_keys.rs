@@ -34,7 +34,7 @@ const TENANT_SECRET_ROW: &str = "INSERT INTO vault.secrets \
 /// A runner `tenant` registered, tagged for `fleet`, that has reported capable.
 async fn tenant_runner(fixtures: &Fixtures, tenant: &Uuid7, fleet: &Uuid7) -> Uuid7 {
     let request = enrolment_tagged(
-        SandboxTier::LandlockFull,
+        SandboxTier::Firecracker,
         NetworkPolicy::AllowListEgress,
         2,
         &placement_tag(fleet),

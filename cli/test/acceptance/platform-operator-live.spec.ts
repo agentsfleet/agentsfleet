@@ -14,7 +14,7 @@ import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
 import { resolveAcceptanceEnv, resolveClerkSecret, resolveFixtureEmail } from "./global-setup.ts";
 
 const SCOPES = ["runner:register", "runner:write", "model:admin", "platform-key:admin"] as const;
-const POLICY = {sandbox_tier: "landlock_full", network_policy: "deny_all_egress", registry_allowlist: [],
+const POLICY = {sandbox_tier: "firecracker", network_policy: "deny_all_egress", registry_allowlist: [],
   worker_count: 1, extra_binds: [], durable_tasks_enabled: true};
 const rotated = Schema.Struct({id: Schema.String, token_file: Schema.String});
 const signedIn = Schema.Struct({authenticated: Schema.Boolean, credential: Schema.String,

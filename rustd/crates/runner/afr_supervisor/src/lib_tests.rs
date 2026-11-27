@@ -14,7 +14,6 @@ fn probe() -> HostProbe {
         landlock: true,
         seccomp: true,
         cgroup_controllers: vec!["cpu".to_owned()],
-        bubblewrap: true,
         kvm: Kvm::Absent,
         toolbox_filesystem: true,
         workspace_direct_io: None,

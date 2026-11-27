@@ -126,7 +126,7 @@ pub(crate) async fn seeded_parts<const N: usize>(
     let mut runners = Vec::with_capacity(N);
     for _ in 0..N {
         let request = enrolment_tagged(
-            SandboxTier::LandlockFull,
+            SandboxTier::Firecracker,
             NetworkPolicy::AllowListEgress,
             1,
             &tag,

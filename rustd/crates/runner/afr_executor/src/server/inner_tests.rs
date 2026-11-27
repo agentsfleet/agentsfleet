@@ -1,6 +1,6 @@
 //! An executor with an inner environment: every process it starts enters it
-//! in its own working directory, and a renewal reaches it; one without
-//! refuses the renewal.
+//! in its own working directory, and a renewal and a hosts file reach it; one
+//! without refuses both.
 
 #![expect(
     clippy::unwrap_used,
@@ -19,12 +19,14 @@ use crate::api::{Ending, Executor as _, Spawn};
 use crate::{Client, Sizes};
 
 /// An inner environment that counts its renewals, remembers where each
-/// process was to work, and lets each in or refuses it.
+/// process was to work, lets each in or refuses it, and holds the hosts file
+/// it was given last in place of its own.
 #[derive(Debug, Default)]
 struct Fake {
     renewed: AtomicUsize,
     entered: Mutex<Vec<PathBuf>>,
     refuses: bool,
+    hosts: Mutex<String>,
 }
 
 impl InnerEnvironment for Fake {
@@ -46,6 +48,11 @@ impl InnerEnvironment for Fake {
 
     fn renew(&self) -> io::Result<()> {
         self.renewed.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }
+
+    fn hosts(&self, file: &str) -> io::Result<()> {
+        file.clone_into(&mut self.hosts.lock().unwrap_or_else(PoisonError::into_inner));
         Ok(())
     }
 }
@@ -132,6 +139,40 @@ async fn an_executor_with_no_inner_environment_refuses_a_renewal() {
     let client = serving(|stream| connected(stream).unwrap(), dir.path());
 
     let refused = client.renew().await.unwrap_err();
+
+    assert!(
+        refused
+            .wire_message()
+            .contains("builds no inner environment"),
+        "{}",
+        refused.wire_message()
+    );
+}
+
+#[tokio::test]
+async fn a_hosts_file_replaces_the_inner_environments_whole() {
+    let dir = tempfile::tempdir().unwrap();
+    let inner = Arc::new(Fake::default());
+    let held = Arc::clone(&inner) as Arc<dyn InnerEnvironment>;
+    let client = serving(
+        |stream| connected(stream).unwrap().with_inner(held),
+        dir.path(),
+    );
+    let old = "127.0.0.1 localhost\n203.0.113.7 old.example\n";
+    let new = "127.0.0.1 localhost\n198.51.100.9 new.example\n";
+
+    client.hosts(old).await.unwrap();
+    client.hosts(new).await.unwrap();
+
+    assert_eq!(*inner.hosts.lock().unwrap(), new, "the old names are gone");
+}
+
+#[tokio::test]
+async fn an_executor_with_no_inner_environment_refuses_a_hosts_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let client = serving(|stream| connected(stream).unwrap(), dir.path());
+
+    let refused = client.hosts("127.0.0.1 localhost\n").await.unwrap_err();
 
     assert!(
         refused
