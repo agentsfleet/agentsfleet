@@ -51,7 +51,8 @@ runs:
         source deploy/baremetal/toolbox.sh
         digest="$(toolbox_digest_of "$image")"
         [ "$(sha256sum "$image" | cut -d' ' -f1)" = "$digest" ]
-        [ "$(wc -c < "$image")" -le 262848512 ]
+        # Under 160 MB, decimal (Indy, Nov 27, 2026: "bring the toolbox cap to 160mb").
+        [ "$(wc -c < "$image")" -le 159999999 ]
         echo "digest=$digest" >> "$GITHUB_OUTPUT"
 
     - uses: ./.github/actions/toolbox-tools

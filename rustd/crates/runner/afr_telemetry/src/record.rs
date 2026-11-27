@@ -56,6 +56,8 @@ pub trait Recorder: Observer {
     fn tool_call(&self, tool: Tool, outcome: ToolOutcome, elapsed: Duration);
     /// The kernel killed a tenant process for memory.
     fn out_of_memory(&self);
+    /// A run's tenant processes had forks refused at the process cap.
+    fn pids_limit_hit(&self);
     /// A sandbox kept between a fleet's runs was parked, reused or released.
     fn sandbox_park(&self, outcome: SandboxPark);
     /// A run's sandbox build ended.
@@ -135,6 +137,11 @@ pub fn out_of_memory() {
     with(|recorder| recorder.out_of_memory());
 }
 
+/// A run's tenant processes had forks refused at the sandbox's process cap.
+pub fn pids_limit_hit() {
+    with(|recorder| recorder.pids_limit_hit());
+}
+
 /// Records what became of a sandbox parked between a fleet's runs.
 pub fn sandbox_park(outcome: SandboxPark) {
     with(|recorder| recorder.sandbox_park(outcome));
@@ -206,6 +213,7 @@ mod tests {
             super::push_failed(PushFailure::Refused);
             super::tool_call(tool, ToolOutcome::Interrupted, elapsed);
             super::out_of_memory();
+            super::pids_limit_hit();
             super::sandbox_park(SandboxPark::ThawFailed);
             super::spans_suppressed(2);
             super::export_discarded(Signal::Traces, DiscardReason::ExportRejected, 5);
@@ -230,6 +238,7 @@ mod tests {
                 Recorded::PushFailed(PushFailure::Refused),
                 Recorded::ToolCall(tool, ToolOutcome::Interrupted, elapsed),
                 Recorded::OutOfMemory,
+                Recorded::PidsLimitHit,
                 Recorded::SandboxPark(SandboxPark::ThawFailed),
                 Recorded::SpansSuppressed(2),
                 Recorded::ExportDiscarded(Signal::Traces, DiscardReason::ExportRejected, 5),

@@ -3,7 +3,7 @@
 //!
 //! The run's cgroup holds the limits and no process. The engine's own
 //! processes run in its `sandbox` leaf; every process the executor starts runs
-//! in its `tenant` leaf, whose memory limit sits [`SANDBOX_MEMORY_RESERVE_BYTES`]
+//! in its `tenant` leaf, whose memory limit sits [`Room::reserve_bytes`]
 //! below the run's throttle, so the kernel's out-of-memory killer chooses among
 //! tenant processes and never the sandbox's own — systemd's `Delegate=` shape,
 //! where a manager's processes and the subtree it hands out never share a leaf.
@@ -49,8 +49,8 @@ const TENANT_HIGH_SHARE: u64 = 8;
 const MEMORY_SWAP_MAX: &str = "memory.swap.max";
 /// Processor bandwidth: a quota per period, both in microseconds.
 const CPU_MAX: &str = "cpu.max";
-/// Processes and threads the cgroup may hold.
-const PIDS_MAX: &str = "pids.max";
+/// Processes and threads a cgroup may hold: the guest's tenant leaf's cap.
+pub const PIDS_MAX: &str = "pids.max";
 /// Per-device byte rates.
 const IO_MAX: &str = "io.max";
 /// Writing `1` kills every process in the cgroup and its descendants.
@@ -63,6 +63,9 @@ const UNPOPULATED: &str = "populated 0";
 const STILL_POPULATED: &str = "a process outlived the kill past the drain bound";
 /// What a cgroup's memory limit did, its `oom_kill` count among it.
 pub const MEMORY_EVENTS: &str = "memory.events";
+/// What a cgroup's process cap did: its `max` count is the forks refused at
+/// `pids.max`.
+pub const PIDS_EVENTS: &str = "pids.events";
 /// The leaf the engine's own processes run in.
 pub const SANDBOX_LEAF: &str = "sandbox";
 /// The leaf every process the executor starts runs in.
@@ -86,19 +89,21 @@ const DRAIN_TRIES: usize = 1_000;
 
 /// Workspace-disk throughput, each way, in bytes per second.
 pub const DEFAULT_IO_BYTES_PER_SECOND: u64 = 200 * 1024 * 1024;
-/// Memory the sandbox's own processes keep when the tenant's are at their
-/// limit: room for the engine's own resident set.
-///
-/// Kept: without it the out-of-memory killer may pick the executor and end the sandbox.
-pub const SANDBOX_MEMORY_RESERVE_BYTES: u64 = 64 * 1024 * 1024;
-/// Room above a run's memory throttle for the host's cache of its unsaved
-/// disk writes: the run's `memory.max` sits this far above its `memory.high`.
-///
-/// Indy's number (Nov 27, 2026, "256 MiB"). The kernel lane's first run
-/// measured the burst it holds: a 512 MiB guest's monitor killed at its cap
-/// with `memory: usage 589824kB, limit 589824kB` and `file_dirty 194134016`.
-/// Admission reserves the throttle, not this room.
-pub const WRITEBACK_HEADROOM_BYTES: u64 = 256 * 1024 * 1024;
+
+/// The memory a run's cgroup holds beyond its tenant's, which the engine
+/// that makes it chooses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Room {
+    /// What the sandbox leaf's own processes keep when the tenant's are at
+    /// their limit: the tenant leaf's `memory.max` sits this far below the
+    /// run's `memory.high`, so the out-of-memory killer picks a tenant
+    /// process and never the engine's own.
+    pub reserve_bytes: u64,
+    /// How far the run's `memory.max` sits above its `memory.high`: room for
+    /// the host's cache of the run's unsaved disk writes, which the kernel
+    /// writes back under the throttle rather than kill for.
+    pub write_cache_bytes: u64,
+}
 
 /// One run's cgroup. Removing it is the only cleanup, and it consumes it.
 #[derive(Debug)]
@@ -107,19 +112,19 @@ pub struct RunCgroup {
 }
 
 impl RunCgroup {
-    /// Makes the cgroup `name` under the delegated `root`, writes `limits`,
-    /// and splits it into its two leaves.
+    /// Makes the cgroup `name` under the delegated `root`, writes `limits`
+    /// with `headroom` beside them, and splits it into its two leaves.
     ///
     /// # Errors
     /// A directory cannot be made, or a control file refuses its value; what
     /// was made is removed again before the error returns.
-    pub fn create(root: &Path, name: &str, limits: &Limits) -> Result<Self> {
+    pub fn create(root: &Path, name: &str, limits: &Limits, headroom: Room) -> Result<Self> {
         let made = Self {
             dir: root.join(name),
         };
         fs::create_dir(&made.dir)?;
-        made.limit(limits)
-            .and_then(|()| made.split(limits))
+        made.limit(limits, headroom)
+            .and_then(|()| made.split(limits, headroom))
             .map_err(|error| made.undo(error))?;
         Ok(made)
     }
@@ -149,17 +154,18 @@ impl RunCgroup {
     }
 
     /// Writes the run's limits: its memory throttled at `limits`' memory and
-    /// capped [`WRITEBACK_HEADROOM_BYTES`] above it. The host's cache of a
+    /// capped [`Room::write_cache_bytes`] above it. The host's cache of a
     /// guest's unsaved image writes is charged here, so past the throttle the
     /// kernel slows the writer and writes the pages back rather than killing
-    /// the monitor.
-    fn limit(&self, limits: &Limits) -> Result<()> {
+    /// the monitor. `limits`' process count is the tenant's, which the guest
+    /// enforces on its own tenant leaf; the monitor's threads are the
+    /// engine's, so no `pids.max` is written here.
+    fn limit(&self, limits: &Limits, room: Room) -> Result<()> {
         let quota = (u64::from(limits.cpu_millis) * CPU_PERIOD_MICROS).div_euclid(MILLIS_PER_CORE);
-        let cap = limits.memory_bytes.saturating_add(WRITEBACK_HEADROOM_BYTES);
+        let cap = limits.memory_bytes.saturating_add(room.write_cache_bytes);
         self.write(MEMORY_MAX, &cap.to_string())?;
         self.write(MEMORY_HIGH, &limits.memory_bytes.to_string())?;
         self.write(CPU_MAX, &format!("{quota} {CPU_PERIOD_MICROS}"))?;
-        self.write(PIDS_MAX, &limits.pids.to_string())?;
         // Present only where the kernel accounts swap; absent, there is no swap
         // for a runaway to hide in.
         if self.dir.join(MEMORY_SWAP_MAX).exists() {
@@ -169,17 +175,16 @@ impl RunCgroup {
     }
 
     /// Hands the run's controllers to its two leaves, caps the tenant
-    /// leaf's memory below the run's, and throttles it an eighth below that
-    /// cap. The run's own swap limit already covers both leaves.
-    fn split(&self, limits: &Limits) -> Result<()> {
+    /// leaf's memory [`Room::reserve_bytes`] below the run's, and throttles it
+    /// an eighth below that cap. The run's own swap limit already covers both
+    /// leaves.
+    fn split(&self, limits: &Limits, room: Room) -> Result<()> {
         let enable = REQUIRED_CONTROLLERS.map(|controller| format!("+{controller}"));
         self.write(SUBTREE_CONTROL, &enable.join(" "))?;
         LEAVES
             .into_iter()
             .try_for_each(|leaf| fs::create_dir(self.dir.join(leaf)))?;
-        let tenant = limits
-            .memory_bytes
-            .saturating_sub(SANDBOX_MEMORY_RESERVE_BYTES);
+        let tenant = limits.memory_bytes.saturating_sub(room.reserve_bytes);
         let high = tenant - tenant.div_euclid(TENANT_HIGH_SHARE);
         fs::write(self.tenant().join(MEMORY_MAX), tenant.to_string())
             .map_err(cgroup(MEMORY_MAX))?;

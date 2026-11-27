@@ -167,6 +167,7 @@ fn scripted_lessee(home: &StorageHome) -> Lessee {
         mirrors: Mirrors::new(home.mirrors(), GITHUB_ORIGIN),
         staging: home.staging(),
         limits: Limits::default(),
+        park_resume_timeout: crate::config::PARK_RESUME_TIMEOUT,
         parks: crate::parks::Parks::start(clock()),
         clock: clock(),
         halt: Halt::new(CancellationToken::new()),

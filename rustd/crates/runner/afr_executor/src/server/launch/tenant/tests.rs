@@ -17,7 +17,8 @@ use tokio::sync::mpsc;
 use tracing::Level;
 
 use super::{
-    EVENT_EVENTS_UNREAD, Inherit, Placement, SHELL_KILLED_EXIT, SIGKILL, Tenant, oom_kill_count,
+    EVENT_EVENTS_UNREAD, Inherit, OOM_KILL, PIDS_REFUSED, Placement, SHELL_KILLED_EXIT, SIGKILL,
+    Tenant, event_count,
 };
 use crate::api::Ending;
 use crate::error::{Result, tenant_unavailable};
@@ -30,7 +31,13 @@ fn events(kills: u64) -> String {
     format!("low 0\nhigh 0\nmax 4\noom 2\noom_kill {kills}\noom_group_kill 0\n")
 }
 
-/// A stand-in leaf: `cgroup.procs` and `memory.events` as plain files.
+/// `pids.events` as a kernel renders it, with `refused` forks refused.
+fn pids_events(refused: u64) -> String {
+    format!("max {refused}\nmax.imposed 0\n")
+}
+
+/// A stand-in leaf: `cgroup.procs`, `memory.events` and `pids.events` as
+/// plain files.
 struct Leaf {
     dir: tempfile::TempDir,
 }
@@ -38,11 +45,13 @@ struct Leaf {
 impl Leaf {
     const PROCS: &str = "cgroup.procs";
     const EVENTS: &str = "memory.events";
+    const PIDS_EVENTS: &str = "pids.events";
 
     fn new(kills: u64) -> Self {
         let dir = tempfile::tempdir().unwrap();
         fs::write(dir.path().join(Self::PROCS), "").unwrap();
         fs::write(dir.path().join(Self::EVENTS), events(kills)).unwrap();
+        fs::write(dir.path().join(Self::PIDS_EVENTS), pids_events(0)).unwrap();
         Self { dir }
     }
 
@@ -61,6 +70,20 @@ impl Leaf {
             .into()
     }
 
+    fn pids_events(&self) -> OwnedFd {
+        File::open(self.dir.path().join(Self::PIDS_EVENTS))
+            .unwrap()
+            .into()
+    }
+
+    fn refuse(&self, refused: u64) {
+        fs::write(
+            self.dir.path().join(Self::PIDS_EVENTS),
+            pids_events(refused),
+        )
+        .unwrap();
+    }
+
     fn kill(&self, kills: u64) {
         fs::write(self.dir.path().join(Self::EVENTS), events(kills)).unwrap();
     }
@@ -70,7 +93,7 @@ impl Leaf {
     }
 
     fn tenant(&self) -> Tenant {
-        Tenant::new(self.procs(), self.events()).unwrap()
+        Tenant::new(self.procs(), self.events(), self.pids_events()).unwrap()
     }
 }
 
@@ -103,6 +126,10 @@ impl Placement for Refusing {
     fn idle(&self) -> io::Result<bool> {
         Ok(true)
     }
+
+    fn pids_refused(&self) -> io::Result<u64> {
+        Ok(0)
+    }
 }
 
 /// A plan that would leave `marker` behind in `root` if it ever ran.
@@ -120,23 +147,54 @@ fn marking(root: &Path, terminal: bool) -> (Plan, Workspace) {
 
 #[test]
 fn the_oom_kill_count_is_read_from_its_own_line() {
-    assert_eq!(oom_kill_count(events(3).as_bytes()), Some(3));
+    assert_eq!(event_count(events(3).as_bytes(), OOM_KILL), Some(3));
     assert_eq!(
-        oom_kill_count(b"oom_group_kill 7\n"),
+        event_count(b"oom_group_kill 7\n", OOM_KILL),
         None,
         "a group kill is another line"
     );
-    assert_eq!(oom_kill_count(b"oom_kill many\n"), None);
-    assert_eq!(oom_kill_count(&[0xff, 0xfe]), None);
+    assert_eq!(event_count(b"oom_kill many\n", OOM_KILL), None);
+    assert_eq!(event_count(&[0xff, 0xfe], OOM_KILL), None);
+}
+
+/// The forks refused at the leaf's `pids.max` are its `pids.events` `max`
+/// line, never `max.imposed`, which counts an ancestor's cap; with no leaf,
+/// nothing is capped and nothing refused.
+#[test]
+fn the_forks_refused_at_the_process_cap_are_the_leafs_max_count() {
+    let leaf = Leaf::new(0);
+    let tenant = leaf.tenant();
+    let none = tenant.pids_refused().unwrap();
+
+    leaf.refuse(5);
+
+    assert_eq!(none, 0);
+    assert_eq!(tenant.pids_refused().unwrap(), 5);
+    assert_eq!(
+        event_count(b"max.imposed 3\nmax 0\n", PIDS_REFUSED),
+        Some(0),
+        "an ancestor's refusals are another line"
+    );
+    assert_eq!(Inherit.pids_refused().unwrap(), 0);
 }
 
 #[test]
-fn a_tenant_holds_both_descriptors_close_on_exec() {
+fn events_that_do_not_read_as_pids_events_are_refused() {
+    let leaf = Leaf::new(0);
+    fs::write(leaf.dir.path().join(Leaf::PIDS_EVENTS), "not events").unwrap();
+
+    let refused = Tenant::new(leaf.procs(), leaf.events(), leaf.pids_events());
+
+    assert!(refused.is_err(), "no max line, no tenant");
+}
+
+#[test]
+fn a_tenant_holds_every_descriptor_close_on_exec() {
     let leaf = Leaf::new(0);
 
     let tenant = leaf.tenant();
 
-    for held in [&tenant.procs, &tenant.events] {
+    for held in [&tenant.procs, &tenant.events, &tenant.pids_events] {
         let flags = rustix::io::fcntl_getfd(held).unwrap();
         assert!(flags.contains(FdFlags::CLOEXEC), "{flags:?}");
     }
@@ -147,7 +205,7 @@ fn a_procs_descriptor_not_open_for_writing_is_refused_with_its_cause() {
     let leaf = Leaf::new(0);
     let read_only = File::open(leaf.dir.path().join(Leaf::PROCS)).unwrap();
 
-    let refused = Tenant::new(read_only.into(), leaf.events()).unwrap_err();
+    let refused = Tenant::new(read_only.into(), leaf.events(), leaf.pids_events()).unwrap_err();
 
     assert_eq!(refused.wire_message(), {
         let cause = io::Error::from(rustix::io::Errno::BADF);
@@ -169,7 +227,7 @@ fn a_leaf_is_idle_only_while_it_lists_no_process() {
     fs::write(&listed, "4242\n").unwrap();
     let holding = tenant.idle().unwrap();
     let unread = OpenOptions::new().write(true).open(&listed).unwrap();
-    let refused = Tenant::new(unread.into(), leaf.events());
+    let refused = Tenant::new(unread.into(), leaf.events(), leaf.pids_events());
 
     assert!(empty, "no process listed");
     assert!(!holding, "a process a call left behind");
@@ -182,7 +240,7 @@ fn events_that_do_not_read_as_memory_events_are_refused() {
     let leaf = Leaf::new(0);
     fs::write(leaf.dir.path().join(Leaf::EVENTS), "not events").unwrap();
 
-    let refused = Tenant::new(leaf.procs(), leaf.events());
+    let refused = Tenant::new(leaf.procs(), leaf.events(), leaf.pids_events());
 
     assert!(refused.is_err(), "no oom_kill line, no tenant");
 }

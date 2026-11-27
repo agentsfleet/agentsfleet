@@ -228,18 +228,16 @@ struct Available {
 
 /// The bound `available` makes under `tuning`, the lesser of what memory and
 /// disk admit. In memory, one microVM reserves its monitor's cgroup
-/// throttle: its guest's granted memory and `SANDBOX_MEMORY_RESERVE_BYTES`
-/// (64 MiB) beside it. The cgroup's cap sits `WRITEBACK_HEADROOM_BYTES`
-/// above for the host's cache of unsaved image writes, which the kernel
-/// writes back under the throttle, so admission does not reserve it. The spike
-/// measured a 2 GiB guest's idle monitor at 110.9 MiB resident with 46.2 MiB
-/// used inside the guest (`docs/v2/reviews/m258-firecracker-spike.md`), about
-/// 64.7 MiB its own. On disk, it reserves its workspace image's granted size.
+/// throttle: its guest's granted memory and `tuning`'s monitor overhead
+/// beside it. The cgroup's cap sits `tuning`'s write cache above for the
+/// host's cache of unsaved image writes, which the kernel writes back under
+/// the throttle, so admission does not reserve it. On disk, it reserves its
+/// workspace image's granted size.
 fn bound(tuning: &FirecrackerTuning, available: Available) -> Result<AdmissionBound> {
     let granted = crate::grant(tuning.limits)?;
     let limits = granted.limits();
-    // Never zero: the reserve alone is 64 MiB.
-    let reserved = build::monitor_limits(limits).memory_bytes;
+    // Never zero: a granted guest holds at least one mebibyte.
+    let reserved = build::monitor_limits(limits, tuning).memory_bytes;
     let reserved = NonZeroU64::new(reserved).unwrap_or(NonZeroU64::MAX);
     // A granted disk of no bytes holds none, so it never bounds the host.
     let image = NonZeroU64::new(limits.disk_bytes).unwrap_or(NonZeroU64::MIN);

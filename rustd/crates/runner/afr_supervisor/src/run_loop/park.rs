@@ -23,9 +23,6 @@ use crate::egress::Bound;
 use crate::parks::{BuiltUnder, ParkKey, Parks, Release, Stowed, Taken};
 use crate::report::Ending;
 
-/// How long a resumed sandbox's executor has to answer before the park is
-/// given up for a fresh sandbox.
-const RESUME_ANSWER_WAIT: Duration = Duration::from_secs(2);
 const EVENT_REUSED: &str = "sandbox_reused";
 const EVENT_RESUME_STARTED: &str = "sandbox_resume_started";
 const EVENT_RESUME_COMPLETED: &str = "sandbox_resume_completed";
@@ -34,6 +31,10 @@ const EVENT_REFILL_FAILED: &str = "sandbox_refill_failed";
 const EVENT_PARK_STARTED: &str = "sandbox_park_started";
 const EVENT_PARK_COMPLETED: &str = "sandbox_park_completed";
 const EVENT_PARK_FAILED: &str = "sandbox_park_failed";
+/// A run's tenant processes had forks refused at the sandbox's process cap.
+const EVENT_PIDS_LIMIT_HIT: &str = "sandbox_pids_limit_hit";
+/// The count of forks refused at the process cap could not be read.
+const EVENT_PIDS_UNREAD: &str = "sandbox_pids_events_unread";
 /// The workspace's own top, as the executor reads a relative path whatever
 /// its root is mounted at.
 const WORKSPACE_TOP: &str = ".";
@@ -123,7 +124,7 @@ impl Run<'_> {
                 reason,
             },
             resumed,
-        ) = match resume(sandbox, bound, run_id).await {
+        ) = match resume(sandbox, bound, run_id, self.lessee.park_resume_timeout).await {
             Ok(sandbox) => {
                 let event = EVENT_RESUME_COMPLETED;
                 tracing::debug!(run_id, event);
@@ -164,6 +165,12 @@ impl Run<'_> {
             self.capture_without_sandbox(ending).await;
             return Fate::Gone;
         };
+        count_pids_refused(
+            sandbox.as_ref(),
+            self.ids.run.as_str(),
+            self.lessee.limits.pids,
+        )
+        .await;
         // RunPlane is a child of serving, so a runner shutting down or stopped
         // counts too: it takes no run that could take the park.
         let taking_runs = !self.lessee.halt.taking_runs().is_cancelled();
@@ -229,14 +236,15 @@ struct GivenUp {
 }
 
 /// Resumes a parked sandbox, confines it to what `bound` admits when that is
-/// an allowlist, and waits for its executor to answer. The addresses change
-/// before the run's first command, so nothing runs against the old set once
-/// its names name the new one. A failure answers why, with the sandbox when
-/// it resumed and still needs destroying.
+/// an allowlist, and waits up to `within` for its executor to answer. The
+/// addresses change before the run's first command, so nothing runs against
+/// the old set once its names name the new one. A failure answers why, with
+/// the sandbox when it resumed and still needs destroying.
 async fn resume(
     parked: Box<dyn Parked>,
     bound: &Bound,
     run_id: &str,
+    within: Duration,
 ) -> Result<Box<dyn Sandbox>, (GivenUp, Option<Box<dyn Sandbox>>)> {
     let refused = |event, failure: afr_engine::Error| GivenUp {
         event,
@@ -254,7 +262,7 @@ async fn resume(
     if let Err(failure) = sandbox.egress(bound.plan()).await {
         return Err((refused(EVENT_REFILL_FAILED, failure), Some(sandbox)));
     }
-    match answered(sandbox.as_ref()).await {
+    match answered(sandbox.as_ref(), within).await {
         Ok(()) => Ok(sandbox),
         Err(silent) => Err((
             GivenUp {
@@ -267,10 +275,40 @@ async fn resume(
     }
 }
 
-/// Waits for a resumed sandbox's executor to answer.
-async fn answered(sandbox: &dyn Sandbox) -> afr_executor::Result<()> {
+/// Reads, once run `run_id`'s work is done, how many forks its sandbox's
+/// process cap, `pids_max`, refused, and reports a run that met the cap. A
+/// sandbox that no longer runs has no executor to ask.
+async fn count_pids_refused(sandbox: &dyn Sandbox, run_id: &str, pids_max: u32) {
+    if sandbox.state() != SandboxState::Running {
+        return;
+    }
+    match sandbox.executor().pids_refused().await {
+        Ok(refused) => pids_limit_hit(run_id, refused, pids_max),
+        Err(failure) => {
+            let error_code = failure.code().as_str();
+            let reason = failure.wire_message();
+            let event = EVENT_PIDS_UNREAD;
+            tracing::debug!(run_id, error_code, reason, event);
+        }
+    }
+}
+
+/// Logs and counts a run whose tenant processes had `refused` forks refused
+/// at the sandbox's process cap, `pids_max`: what `[sandbox] pids_max` is
+/// tuned from. A run that never met the cap says nothing.
+fn pids_limit_hit(run_id: &str, refused: u64, pids_max: u32) {
+    if refused == 0 {
+        return;
+    }
+    let event = EVENT_PIDS_LIMIT_HIT;
+    tracing::warn!(run_id, refused, pids_max, event);
+    record::pids_limit_hit();
+}
+
+/// Waits up to `within` for a resumed sandbox's executor to answer.
+async fn answered(sandbox: &dyn Sandbox, within: Duration) -> afr_executor::Result<()> {
     let answer = sandbox.executor().list_dir(WORKSPACE_TOP);
-    tokio::time::timeout(RESUME_ANSWER_WAIT, answer)
+    tokio::time::timeout(within, answer)
         .await
         .unwrap_or_else(|_late| Err(silent()))
         .map(drop)
@@ -288,6 +326,9 @@ pub(super) fn mark_reused(reused: bool) {
 #[cfg(test)]
 #[path = "tests/parks/acknowledgement.rs"]
 mod acknowledgement_tests;
+#[cfg(test)]
+#[path = "tests/parks/pids_limit.rs"]
+mod pids_limit_tests;
 #[cfg(test)]
 #[path = "tests/parks/reassignment.rs"]
 mod reassign_tests;

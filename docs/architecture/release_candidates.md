@@ -29,7 +29,7 @@ flowchart LR
 |---|---|---|
 | Entry points | `make` targets | `make/release-candidate.mk` |
 | Candidate builds | daemon amd64 and arm64, runner amd64, macOS arm64 daemon, the toolbox image | `.github/workflows/build-candidate.yml` |
-| Toolbox size limit | 262,848,512 bytes, checked on cache hits too | `.github/actions/build-toolbox/action.yml` |
+| Toolbox size limit | 159,999,999 bytes, under 160 MB (Indy, Nov 27, 2026), checked on cache hits too | `.github/actions/build-toolbox/action.yml` |
 | Candidate retention | 90 days; intermediate uploads 3 days | `build-candidate.yml`, `deploy-dev-build.yml` |
 | Offline proofs | `make check-release-candidate`, inside `make check-gh-actions-valid` | `make/check-safety-gates.mk` |
 

@@ -102,6 +102,8 @@ pub(crate) struct Runner {
     pub(crate) probe: HostProbe,
     /// What every sandbox enforces.
     pub(crate) limits: Limits,
+    /// How long a resumed parked sandbox's executor has to answer.
+    pub(crate) park_resume_timeout: std::time::Duration,
     /// The wall clock run deadlines are read against.
     pub(crate) clock: Arc<dyn Clock>,
 }
@@ -185,6 +187,7 @@ fn compose(
         agent,
         probe,
         limits: config.tuning().limits,
+        park_resume_timeout: config.tuning().park_resume_timeout,
         clock: Arc::new(SystemClock),
     })
 }
@@ -205,6 +208,7 @@ async fn serve_from(runner: Runner, origin: &str, shutdown: CancellationToken) -
         agent,
         probe,
         limits,
+        park_resume_timeout,
         clock,
     } = runner;
     let recovery = recovery::RecoveryResources::configured(plane.runtime)?;
@@ -217,6 +221,7 @@ async fn serve_from(runner: Runner, origin: &str, shutdown: CancellationToken) -
         mirrors: Mirrors::new(home.mirrors(), origin),
         staging: home.staging(),
         limits,
+        park_resume_timeout,
         parks: Parks::start(Arc::clone(&clock)),
         clock,
         halt: Halt::new(shutdown),

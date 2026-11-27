@@ -10,7 +10,8 @@
 //!                  reaches the inner environment, downstream of this namespace
 //!               ─► fork ─► executor: root, never the out-of-memory killer's
 //!                          pick, its files as the sandbox user, on vsock
-//!                          ├─► the tenant leaf, its memory counted, opened as root
+//!                          ├─► the tenant leaf, its memory counted and its
+//!                          │   processes capped, opened as root
 //!                          └─► the inner environment every tenant process runs in,
 //!                              each placed in the tenant leaf
 //!               ─► reaps until the executor ends, then powers the guest off
@@ -26,7 +27,9 @@
 //! The leaf has no memory limit of its own: the guest's memory is the run's,
 //! and the host bounds the whole microVM. Its `memory.events` counts each
 //! tenant process any out-of-memory killer ends, which is how the executor
-//! tells a run out of memory from any other kill.
+//! tells a run out of memory from any other kill. Its `pids.max` is the run's
+//! process cap: a fork bomb stops there, and the executor, outside the leaf,
+//! still answers.
 
 use std::ffi::CString;
 use std::fs::{self, DirBuilder, Permissions};
@@ -35,7 +38,9 @@ use std::os::unix::fs::{DirBuilderExt as _, PermissionsExt as _, symlink};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use afr_cgroup::{CGROUP_PROCS, CGROUP_ROOT, MEMORY_EVENTS, SUBTREE_CONTROL, TENANT_LEAF};
+use afr_cgroup::{
+    CGROUP_PROCS, CGROUP_ROOT, MEMORY_EVENTS, PIDS_EVENTS, PIDS_MAX, SUBTREE_CONTROL, TENANT_LEAF,
+};
 use afr_engine::Result;
 use afr_executor::{InnerEnvironment, Tenant};
 use afr_guest::{Hardened, Namespaced};
@@ -86,10 +91,11 @@ const OVERCOMMIT_MEMORY: &str = "/proc/sys/vm/overcommit_memory";
 /// ended by the out-of-memory killer as it fills it, which is what the
 /// tenant leaf counts and a run reports as out of memory.
 const ALWAYS: &str = "1";
-/// The one controller the tenant leaf needs: memory, for its `oom_kill`
-/// count. The guest's root cgroup may hold the executor beside it, as the
-/// root is exempt from cgroup v2's rule that an inner node holds no process.
-const MEMORY_CONTROLLER: &str = "+memory";
+/// The controllers the tenant leaf needs: memory, for its `oom_kill` count,
+/// and pids, for its process cap. The guest's root cgroup may hold the
+/// executor beside it, as the root is exempt from cgroup v2's rule that an
+/// inner node holds no process.
+const TENANT_CONTROLLERS: &str = "+memory +pids";
 
 /// Mounts the guest's file systems, starts the executor in a process of its
 /// own and reaps every orphan until it ends, then powers the guest off.
@@ -233,24 +239,30 @@ fn reap_until(executor: libc::pid_t) {
 }
 
 /// Makes the tenant leaf under the cgroup v2 mount `root`, its memory
-/// counted, and answers it.
-fn leaf(root: &Path) -> Result<PathBuf> {
-    fs::write(root.join(SUBTREE_CONTROL), MEMORY_CONTROLLER)?;
+/// counted and its processes capped at `pids_max`, and answers it.
+fn leaf(root: &Path, pids_max: u32) -> Result<PathBuf> {
+    fs::write(root.join(SUBTREE_CONTROL), TENANT_CONTROLLERS)?;
     let leaf = root.join(TENANT_LEAF);
     fs::create_dir(&leaf)?;
+    fs::write(leaf.join(PIDS_MAX), pids_max.to_string())?;
     Ok(leaf)
 }
 
-/// The tenant leaf `leaf`, its two files opened while the executor still acts
-/// on files as user 0: the kernel checks each move into it against these
-/// open-time credentials.
+/// The tenant leaf `leaf`, its three files opened while the executor still
+/// acts on files as user 0: the kernel checks each move into it against
+/// these open-time credentials.
 fn tenant(leaf: &Path) -> Result<Tenant> {
     let procs = fs::OpenOptions::new()
         .read(true)
         .write(true)
         .open(leaf.join(CGROUP_PROCS))?;
     let events = fs::File::open(leaf.join(MEMORY_EVENTS))?;
-    Ok(Tenant::new(procs.into(), events.into())?)
+    let pids_events = fs::File::open(leaf.join(PIDS_EVENTS))?;
+    Ok(Tenant::new(
+        procs.into(),
+        events.into(),
+        pids_events.into(),
+    )?)
 }
 
 /// The executor: outside the inner environment it builds before any thread
@@ -258,7 +270,7 @@ fn tenant(leaf: &Path) -> Result<Tenant> {
 /// starts placed in the tenant leaf.
 fn executor(entry: GuestEntry) -> Result<()> {
     let workspace = Path::new(afr_executor::WORKSPACE_ROOT);
-    let tenant = Arc::new(tenant(&leaf(Path::new(CGROUP_ROOT))?)?);
+    let tenant = Arc::new(tenant(&leaf(Path::new(CGROUP_ROOT), entry.pids_max)?)?);
     // The executor's choice, made here once: every tenant process is
     // hardened, and no request names another confinement.
     let inner: Arc<dyn InnerEnvironment> = Arc::new(Namespaced::build(

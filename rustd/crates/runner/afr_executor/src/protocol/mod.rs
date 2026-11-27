@@ -53,6 +53,8 @@ pub(crate) const METHOD_RENEW: &str = "env/renew";
 /// `env/hosts`: replace the hosts file every process inside the inner
 /// environment resolves names through.
 pub(crate) const METHOD_HOSTS: &str = "env/hosts";
+/// `env/count`: one count the tenant leaf keeps, as the kernel reports it.
+pub(crate) const METHOD_COUNT: &str = "env/count";
 /// The notification carrying a chunk of a process's output.
 pub(crate) const NOTIFY_OUTPUT: &str = "process/output";
 /// The notification carrying a process's end; always its last.
@@ -176,6 +178,21 @@ pub(crate) struct RenewParams {
 #[serde(deny_unknown_fields)]
 pub(crate) struct HostsParams<'a> {
     pub(crate) file: Cow<'a, str>,
+}
+
+/// `env/count` parameters: which count.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct CountParams {
+    pub(crate) count: Counted,
+}
+
+/// The counts the tenant leaf keeps that the host reads.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum Counted {
+    /// Forks refused at the leaf's process cap since the guest booted.
+    PidsRefused,
 }
 
 /// What a renewal leaves of the workspace: nothing, for a restore to import

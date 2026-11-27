@@ -15,8 +15,7 @@ mod cgroup;
 
 pub use self::cgroup::{
     CGROUP_PROCS, CGROUP_ROOT, DEFAULT_IO_BYTES_PER_SECOND, Freezer, MECHANISM_DELEGATED_CGROUP,
-    MEMORY_EVENTS, RunCgroup, SANDBOX_LEAF, SANDBOX_MEMORY_RESERVE_BYTES, SELF_CGROUP_PATH,
-    SUBTREE_CONTROL, TENANT_LEAF, WRITEBACK_HEADROOM_BYTES, delegated_controllers, delegated_root,
-    enable_controllers,
+    MEMORY_EVENTS, PIDS_EVENTS, PIDS_MAX, Room, RunCgroup, SANDBOX_LEAF, SELF_CGROUP_PATH,
+    SUBTREE_CONTROL, TENANT_LEAF, delegated_controllers, delegated_root, enable_controllers,
 };
 pub use self::error::{Error, Result};

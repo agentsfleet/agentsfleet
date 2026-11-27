@@ -144,7 +144,7 @@ A release build runs one engine, Firecracker, which `agentsfleet-runner run` pic
 
 | Engine | Wall, as `isolation` | Park mode | How it meets the caps |
 |---|---|---|---|
-| `firecracker` | A microVM with its own guest kernel, `hardware_vm` | `Stop` | Memory, processor and disk enforced; the guest kernel walls the process count |
+| `firecracker` | A microVM with its own guest kernel, `hardware_vm` | `Stop` | Memory, processor, process count and disk enforced; the process count is the guest's tenant leaf's `pids.max` |
 | `unsandboxed` | None, `unconfined`; a release build refuses it | None | None |
 
 #### The seam
@@ -164,7 +164,7 @@ Each engine sweeps what a crashed runner left when the engine is built.
 
 A processed run's sandbox parks in the first mode its engine offers, and a sandbox whose engine offers none is killed ([park](../../rustd/crates/runner/afr_supervisor/src/run_loop/park.rs)). A parked sandbox is its own type, `Parked`, which runs nothing until it resumes.
 
-- `Stop` is Firecracker's. The guest syncs, its monitor stops, and only the disk stays. Resume boots a fresh microVM on that disk.
+- `Stop` is Firecracker's. The guest syncs, its monitor stops, and only the disk stays. Resume boots a fresh microVM on that disk. The run waits `[sandbox] park_resume_timeout_seconds` (2) for its executor to answer, then gives the park up for a fresh sandbox.
 - `Pause` keeps memory and disk while every process stops, and no engine offers it.
 
 #### Egress plans
@@ -215,13 +215,15 @@ Each boot first makes a jail user, the image lock, and a network namespace with 
 | `eth0` | The tap, only when the plan reaches a network |
 | vsock | Guest context identifier 3; the host's end is a Unix socket in the jail |
 
-The guest's memory is the grant rounded up to whole mebibytes. Its processors are the grant rounded up to whole virtual CPUs, at most 32 ([grant](../../rustd/crates/runner/afr_engine_firecracker/src/capabilities.rs)). The monitor's cgroup sets `memory.high` at the guest memory plus the 64 MiB `SANDBOX_MEMORY_RESERVE_BYTES`, and admission reserves that much per microVM. Its `memory.max` sits 256 MiB higher, at `WRITEBACK_HEADROOM_BYTES`. The host caches a guest's unsaved workspace writes in that cgroup, so past `memory.high` the kernel slows the monitor and writes the pages back before `memory.max` kills it ([cgroup](../../rustd/crates/runner/afr_cgroup/src/cgroup/mod.rs)).
+The guest's memory is the grant rounded up to whole mebibytes. Its processors are the grant rounded up to whole virtual CPUs, at most 32 ([grant](../../rustd/crates/runner/afr_engine_firecracker/src/capabilities.rs)). The monitor's cgroup sets `memory.high` at the guest memory plus `[firecracker] monitor_overhead_mib` (64 MiB, the spike's measured monitor overhead), and admission reserves that much per microVM. Its `memory.max` sits `[firecracker] write_cache_mib` higher (256 MiB, Indy's number). The host caches a guest's unsaved workspace writes in that cgroup, so past `memory.high` the kernel slows the monitor and writes the pages back before `memory.max` kills it ([cgroup](../../rustd/crates/runner/afr_cgroup/src/cgroup/mod.rs)). The monitor's cgroup sets no `pids.max`: its threads are Firecracker's own, and the process cap is the tenant's, enforced inside the guest.
 
-`[firecracker]` in the runner's file names `firecracker`, `jailer`, `kernel`, `initrd`, `first_jail_id`, `memory_overcommit`, `disk_overcommit` and `warm_pool` ([section](../../rustd/crates/runner/main/src/config/firecracker.rs)). The program defaults are `/usr/local/bin/firecracker` and `/usr/local/bin/jailer`. The guest defaults are `/usr/local/lib/agentsfleet/vmlinux` and `/usr/local/lib/agentsfleet/guest.cpio`.
+`[firecracker]` in the runner's file names `firecracker`, `jailer`, `kernel`, `initrd`, `first_jail_id`, `memory_overcommit`, `disk_overcommit`, `warm_pool`, `monitor_overhead_mib` and `write_cache_mib` ([section](../../rustd/crates/runner/main/src/config/firecracker.rs)). The program defaults are `/usr/local/bin/firecracker` and `/usr/local/bin/jailer`. The guest defaults are `/usr/local/lib/agentsfleet/vmlinux` and `/usr/local/lib/agentsfleet/guest.cpio`.
 
 #### Inside a microVM
 
 The guest kernel starts the runner binary's `guest` entry as its first process ([guest](../../rustd/crates/runner/afr_engine_firecracker/src/guest/mod.rs)). The entry mounts the toolbox drive's `/usr` and `/etc`, and the workspace drive at `/workspace` and `/tmp`. It brings loopback up, so a process inside reaches its own `127.0.0.1` with or without a network device. It sets the guest kernel to overcommit memory always, so a process asking for more than the guest holds is ended by the out-of-memory killer and its run reads `out_of_memory`, instead of failing on a refused allocation. Then it serves the executor on vsock port 1024.
+
+Every tenant process runs in the guest's tenant cgroup leaf, whose `pids.max` is `[sandbox] pids_max`, passed on the guest's kernel command line as `--pids-max` ([guest entry](../../rustd/crates/runner/afr_engine_firecracker/src/guest/linux.rs)). A fork bomb stops there with `EAGAIN`, and the executor, outside the leaf, still answers. When a run ends, the supervisor reads the leaf's `pids.events` `max` count through the executor; above zero, it logs `sandbox_pids_limit_hit` with `refused` and `pids_max` and counts `agentsfleet_runner_sandbox_pids_limit_hits_total`, the data `pids_max` is tuned from ([park](../../rustd/crates/runner/afr_supervisor/src/run_loop/park.rs)).
 
 The executor is the VM's root service. Tenant code runs in an inner environment the executor builds: a new process namespace, a new mount namespace and a new inter-process communication (IPC) namespace, whose init reaps orphans ([inner environment](../../rustd/crates/runner/afr_guest/src/inner/mod.rs)).
 
@@ -268,7 +270,7 @@ A Firecracker runner keeps `[firecracker] warm_pool` microVMs booted ahead, 4 by
 
 #### Sizes
 
-Every sandbox gets the runner's defaults, and the wire carries no per-run size. The defaults are 2 GiB of memory with no swap, 2 cores and 512 processes. Disk I/O is capped at 200 MiB/s, and the disk holds 4 GiB.
+Every sandbox gets the runner's `[sandbox]` values, and the wire carries no per-run size. The defaults are 2 GiB of memory with no swap, 2 cores (`cpu_millicores`, 2,000) and 512 processes (`pids_max`). Disk I/O is capped at 200 MiB/s, and the disk holds 4 GiB.
 
 ### Sandbox filesystem
 
@@ -390,7 +392,7 @@ The toolbox is a minimal Debian root filesystem with git, Python 3, ripgrep, jq,
 
 `make toolbox-image` builds it with mmdebstrap from pinned Debian snapshots ([manifest](../../scripts/toolbox/manifest.txt)). It ships as a read-only Enhanced Read-Only File System (EROFS) image with LZ4HC compression.
 
-Two builds of one release record are byte-identical. The amd64 build refuses an image above 262,848,512 bytes.
+Two builds of one release record are byte-identical. The amd64 build refuses an image above 159,999,999 bytes, under 160 MB (Indy, Nov 27, 2026), and the kernel lane's `test_toolbox_image_fits_its_size_cap` holds it to the same number.
 
 The Continuous Integration (CI) host scans the image with Syft and Grype, and a fixable Critical finding blocks signing. The tool cosign then signs the release manifest, and the runner checks that signature offline.
 
@@ -425,6 +427,7 @@ The storage home is `/var/lib/agentsfleet-runner` unless `RUNNER_STORAGE_HOME` n
 | How long does a sandbox take to build? | `agentsfleet_runner_sandbox_start_duration_seconds` |
 | Did a tool call wait on the build? | `agentsfleet_runner_sandbox_wait_duration_seconds`; `sandbox_wait_ms` on `run_completed` |
 | How often does a build fail, and where? | `agentsfleet_runner_sandbox_builds_total`, by outcome |
+| Do runs meet the process cap? | `agentsfleet_runner_sandbox_pids_limit_hits_total`; `sandbox_pids_limit_hit` with `refused` and `pids_max` |
 | How long is the release after the report? | `agentsfleet_runner_sandbox_release_duration_seconds` |
 | Where did one run's setup time go? | `egress_ms`, `prepare_ms` and `checkout_ms` on `run_completed` |
 

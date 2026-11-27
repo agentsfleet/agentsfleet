@@ -37,6 +37,15 @@ const ACTIVITY_BATCHES_MIN: usize = 2;
 /// The shortest frame a full directory listing still fits in.
 const FRAME_MIB_MIN: usize = afr_executor::Sizes::LISTING_BYTES / MIB_USIZE + 1;
 
+/// The most processor share one microVM takes: Firecracker's 32 virtual
+/// CPUs, past which its machine configuration refuses.
+const CPU_MILLICORES_MAX: u32 = afr_engine_firecracker::MAX_CPU_MILLIS;
+
+/// The highest process cap a cgroup's `pids.max` takes: the kernel's
+/// `PID_MAX_LIMIT` on a 64-bit build, four mebi-processes
+/// (`include/linux/threads.h`), past which the write answers `EINVAL`.
+const PIDS_MAX_MAX: u32 = 4 * 1024 * 1024;
+
 /// The box each run executes in.
 #[derive(Debug, Clone, Copy, Deserialize, Validate)]
 #[serde(default, deny_unknown_fields)]
@@ -53,6 +62,16 @@ pub(super) struct SandboxTuning {
     /// How long a new sandbox may take to start.
     #[garde(range(min = 1))]
     pub ready_timeout_seconds: u64,
+    /// Processor share one run may use, in thousandths of a core.
+    #[garde(range(min = 1, max = CPU_MILLICORES_MAX))]
+    pub cpu_millicores: u32,
+    /// Processes and threads one run's tenant processes may hold at once.
+    #[garde(range(min = 1, max = PIDS_MAX_MAX))]
+    pub pids_max: u32,
+    /// How long a resumed parked sandbox's executor has to answer before the
+    /// park is given up for a fresh sandbox.
+    #[garde(range(min = 1))]
+    pub park_resume_timeout_seconds: u64,
 }
 
 impl Default for SandboxTuning {
@@ -63,6 +82,9 @@ impl Default for SandboxTuning {
             disk_mib: limits.disk_bytes / MIB,
             io_mib_per_second: afr_cgroup::DEFAULT_IO_BYTES_PER_SECOND / MIB,
             ready_timeout_seconds: afr_engine::DEFAULT_READY_TIMEOUT.as_secs(),
+            cpu_millicores: limits.cpu_millis,
+            pids_max: limits.pids,
+            park_resume_timeout_seconds: afr_supervisor::config::PARK_RESUME_TIMEOUT.as_secs(),
         }
     }
 }
@@ -72,9 +94,15 @@ impl SandboxTuning {
     pub(super) fn limits(&self) -> afr_engine::Limits {
         afr_engine::Limits {
             memory_bytes: self.memory_mib.saturating_mul(MIB),
+            cpu_millis: self.cpu_millicores,
+            pids: self.pids_max,
             disk_bytes: self.disk_mib.saturating_mul(MIB),
-            ..afr_engine::Limits::DEFAULT
         }
+    }
+
+    /// How long a resumed parked sandbox's executor has to answer.
+    pub(super) const fn park_resume_timeout(&self) -> Duration {
+        Duration::from_secs(self.park_resume_timeout_seconds)
     }
 
     /// How long a new sandbox may take to answer before its run is refused.
@@ -382,5 +410,6 @@ pub(super) fn supervisor(
         activity_batch_bytes: daemon.max_activity_batch_kib.saturating_mul(KIB),
         decision: provider.decision(),
         limits: sandbox.limits(),
+        park_resume_timeout: sandbox.park_resume_timeout(),
     }
 }

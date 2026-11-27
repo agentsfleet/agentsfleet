@@ -8,13 +8,19 @@ use std::path::Path;
 
 use afr_engine::Limits;
 
-use super::RunCgroup;
+use super::{Room, RunCgroup};
 
 const LIMITS: Limits = Limits {
     memory_bytes: 268_435_456,
     cpu_millis: 1_500,
     pids: 64,
     disk_bytes: 67_108_864,
+};
+/// The room the engine chose: 32 MiB kept for its own processes, and
+/// 128 MiB of write cache above the throttle.
+const ROOM: Room = Room {
+    reserve_bytes: 33_554_432,
+    write_cache_bytes: 134_217_728,
 };
 
 fn read(dir: &Path, file: &str) -> String {
@@ -32,14 +38,17 @@ fn plain(root: &Path, name: &str) -> (RunCgroup, std::path::PathBuf) {
 fn test_run_cgroup_writes_every_limit() {
     let root = tempfile::tempdir().unwrap();
 
-    let made = RunCgroup::create(root.path(), "run-1", &LIMITS).unwrap();
+    let made = RunCgroup::create(root.path(), "run-1", &LIMITS, ROOM).unwrap();
 
     let dir = root.path().join("run-1");
     assert_eq!(read(&dir, "memory.high"), "268435456");
-    assert_eq!(read(&dir, "memory.max"), "536870912");
+    assert_eq!(read(&dir, "memory.max"), "402653184");
     // pin test: literal is the contract
     assert_eq!(read(&dir, "cpu.max"), "150000 100000");
-    assert_eq!(read(&dir, "pids.max"), "64");
+    assert!(
+        !dir.join("pids.max").exists(),
+        "the tenant's process count is the guest's to cap, never the monitor's"
+    );
     assert!(
         !dir.join("memory.swap.max").exists(),
         "no swap accounting, nothing written"
@@ -51,7 +60,7 @@ fn test_run_cgroup_writes_every_limit() {
 fn test_a_run_cgroup_splits_into_a_sandbox_leaf_and_a_smaller_tenant_leaf() {
     let root = tempfile::tempdir().unwrap();
 
-    let made = RunCgroup::create(root.path(), "run-9", &LIMITS).unwrap();
+    let made = RunCgroup::create(root.path(), "run-9", &LIMITS, ROOM).unwrap();
 
     let dir = root.path().join("run-9");
     assert_eq!(
@@ -62,7 +71,7 @@ fn test_a_run_cgroup_splits_into_a_sandbox_leaf_and_a_smaller_tenant_leaf() {
     let tenant = dir.join("tenant");
     assert_eq!(
         read(&tenant, "memory.max"),
-        (LIMITS.memory_bytes - super::SANDBOX_MEMORY_RESERVE_BYTES).to_string(),
+        (LIMITS.memory_bytes - ROOM.reserve_bytes).to_string(),
         "the tenant runs out before the sandbox"
     );
     assert_eq!(made.tenant_procs(), tenant.join("cgroup.procs"));
@@ -75,10 +84,10 @@ fn test_a_run_cgroup_splits_into_a_sandbox_leaf_and_a_smaller_tenant_leaf() {
 fn test_the_tenant_leaf_throttles_an_eighth_below_its_limit() {
     let root = tempfile::tempdir().unwrap();
 
-    RunCgroup::create(root.path(), "run-11", &LIMITS).unwrap();
+    RunCgroup::create(root.path(), "run-11", &LIMITS, ROOM).unwrap();
 
     let tenant = root.path().join("run-11/tenant");
-    let limit = LIMITS.memory_bytes - super::SANDBOX_MEMORY_RESERVE_BYTES;
+    let limit = LIMITS.memory_bytes - ROOM.reserve_bytes;
     assert_eq!(
         read(&tenant, "memory.high"),
         (limit - limit / 8).to_string()
@@ -89,10 +98,10 @@ fn test_the_tenant_leaf_throttles_an_eighth_below_its_limit() {
 /// image writes fills the monitor's cgroup and the kernel kills the monitor
 /// at its cap.
 #[test]
-fn test_the_run_cgroup_caps_its_memory_the_writeback_headroom_above_its_throttle() {
+fn test_the_run_cgroup_caps_its_memory_the_write_cache_above_its_throttle() {
     let root = tempfile::tempdir().unwrap();
 
-    RunCgroup::create(root.path(), "run-12", &LIMITS).unwrap();
+    RunCgroup::create(root.path(), "run-12", &LIMITS, ROOM).unwrap();
 
     let dir = root.path().join("run-12");
     let max: u64 = read(&dir, "memory.max").parse().unwrap();
@@ -101,7 +110,7 @@ fn test_the_run_cgroup_caps_its_memory_the_writeback_headroom_above_its_throttle
         high, LIMITS.memory_bytes,
         "the run's memory is its throttle"
     );
-    assert_eq!(max, high + super::WRITEBACK_HEADROOM_BYTES);
+    assert_eq!(max, high + ROOM.write_cache_bytes);
 }
 
 #[test]
@@ -112,7 +121,7 @@ fn test_a_limit_below_the_reserve_leaves_the_tenant_nothing_rather_than_wrapping
         ..LIMITS
     };
 
-    RunCgroup::create(root.path(), "run-10", &tiny).unwrap();
+    RunCgroup::create(root.path(), "run-10", &tiny, ROOM).unwrap();
 
     let tenant = root.path().join("run-10/tenant");
     assert_eq!(read(&tenant, "memory.max"), "0");
@@ -153,7 +162,7 @@ fn test_a_split_refused_midway_is_undone_with_the_leaf_it_made() {
     // tenant leaf is refused.
     fs::write(dir.join("tenant"), "").unwrap();
 
-    let refused = made.split(&LIMITS).unwrap_err();
+    let refused = made.split(&LIMITS, ROOM).unwrap_err();
     let midway = dir.join("sandbox").is_dir();
     let handed_back = made.undo(refused);
 
@@ -170,7 +179,7 @@ fn test_swap_is_zeroed_where_the_kernel_accounts_it() {
     let (made, dir) = plain(root.path(), "run-2");
     fs::write(dir.join("memory.swap.max"), "max").unwrap();
 
-    made.limit(&LIMITS).unwrap();
+    made.limit(&LIMITS, ROOM).unwrap();
 
     assert_eq!(read(&dir, "memory.swap.max"), "0");
 }
@@ -189,7 +198,7 @@ fn test_io_is_limited_on_the_workspace_device() {
 fn test_a_cgroup_under_a_missing_root_is_refused() {
     let root = tempfile::tempdir().unwrap();
 
-    let refused = RunCgroup::create(&root.path().join("absent"), "run-4", &LIMITS);
+    let refused = RunCgroup::create(&root.path().join("absent"), "run-4", &LIMITS, ROOM);
 
     refused.unwrap_err();
 }
@@ -198,11 +207,11 @@ fn test_a_cgroup_under_a_missing_root_is_refused() {
 fn test_a_refused_limit_names_its_control_file() {
     let root = tempfile::tempdir().unwrap();
     let (made, dir) = plain(root.path(), "run-5");
-    fs::create_dir(dir.join("pids.max")).unwrap();
+    fs::create_dir(dir.join("cpu.max")).unwrap();
 
-    let refused = made.limit(&LIMITS).unwrap_err();
+    let refused = made.limit(&LIMITS, ROOM).unwrap_err();
 
-    assert!(refused.to_string().contains("pids.max"), "{refused}");
+    assert!(refused.to_string().contains("cpu.max"), "{refused}");
 }
 
 #[test]

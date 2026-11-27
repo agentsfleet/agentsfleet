@@ -79,6 +79,11 @@ pub const TOOL_CALL_DURATION: Declared<HistogramKind> =
 pub const TOOL_OUT_OF_MEMORY: Declared<CounterKind> =
     Declared::new("agentsfleet_runner_tool_out_of_memory_total");
 
+/// Runs whose tenant processes had forks refused at the sandbox's process
+/// cap.
+pub const SANDBOX_PIDS_LIMIT_HITS: Declared<CounterKind> =
+    Declared::new("agentsfleet_runner_sandbox_pids_limit_hits_total");
+
 /// Run sandbox builds, by how each ended.
 pub const SANDBOX_BUILDS: Declared<CounterKind> =
     Declared::new("agentsfleet_runner_sandbox_builds_total");
@@ -125,6 +130,7 @@ pub struct Families {
     push_failures: Counter<u64>,
     tool_calls: Histogram<f64>,
     out_of_memory: Counter<u64>,
+    pids_limit_hits: Counter<u64>,
     sandbox_parks: Counter<u64>,
     spans_suppressed: Counter<u64>,
     entries_discarded: Counter<u64>,
@@ -156,6 +162,7 @@ impl Families {
             push_failures: instruments.counter_u64(&MEMORY_PUSH_FAILURES)?,
             tool_calls: instruments.histogram_f64(&TOOL_CALL_DURATION)?,
             out_of_memory: instruments.counter_u64(&TOOL_OUT_OF_MEMORY)?,
+            pids_limit_hits: instruments.counter_u64(&SANDBOX_PIDS_LIMIT_HITS)?,
             sandbox_parks: instruments.counter_u64(&SANDBOX_PARKS)?,
             spans_suppressed: instruments.counter_u64(&SPANS_SUPPRESSED)?,
             entries_discarded: instruments.counter_u64(&OTLP_ENTRIES_DISCARDED)?,
@@ -306,6 +313,10 @@ impl Recorder for Families {
 
     fn out_of_memory(&self) {
         self.out_of_memory.add(1, &[]);
+    }
+
+    fn pids_limit_hit(&self) {
+        self.pids_limit_hits.add(1, &[]);
     }
 
     fn sandbox_park(&self, outcome: SandboxPark) {

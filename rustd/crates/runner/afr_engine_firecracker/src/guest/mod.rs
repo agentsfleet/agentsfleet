@@ -32,6 +32,8 @@ pub const EXECUTOR_PORT: u32 = 1024;
 pub const GUEST_SUBCOMMAND: &str = "guest";
 /// The flag naming the size of the guest's `/dev/shm`.
 const SHARED_MEMORY_FLAG: &str = "--shared-memory-bytes";
+/// The flag naming the tenant leaf's process cap.
+const PIDS_MAX_FLAG: &str = "--pids-max";
 /// The flags naming the executor's read size and frame.
 const MAX_READ_BYTES_FLAG: &str = "--max-read-bytes";
 const MAX_FRAME_BYTES_FLAG: &str = "--max-frame-bytes";
@@ -44,6 +46,10 @@ pub struct GuestEntry {
     /// What the guest's `/dev/shm` may hold, in bytes.
     #[arg(long)]
     pub shared_memory_bytes: u64,
+    /// The processes and threads every tenant process together may run: the
+    /// tenant leaf's `pids.max`.
+    #[arg(long)]
+    pub pids_max: u32,
     /// The most one read answers with.
     #[arg(long, default_value_t = Sizes::DEFAULT.max_read_bytes)]
     pub max_read_bytes: u64,
@@ -53,12 +59,14 @@ pub struct GuestEntry {
 }
 
 impl GuestEntry {
-    /// The entry whose `/dev/shm` holds `shared_memory_bytes`, its executor
-    /// serving the read size and frame of `sizes`.
+    /// The entry whose `/dev/shm` holds `shared_memory_bytes` and whose
+    /// tenant leaf holds `pids_max` processes, its executor serving the read
+    /// size and frame of `sizes`.
     #[must_use]
-    pub const fn new(shared_memory_bytes: u64, sizes: Sizes) -> Self {
+    pub const fn new(shared_memory_bytes: u64, pids_max: u32, sizes: Sizes) -> Self {
         Self {
             shared_memory_bytes,
+            pids_max,
             max_read_bytes: sizes.max_read_bytes,
             max_frame_bytes: sizes.max_frame_bytes,
         }
@@ -71,6 +79,8 @@ impl GuestEntry {
             GUEST_SUBCOMMAND.to_owned(),
             SHARED_MEMORY_FLAG.to_owned(),
             self.shared_memory_bytes.to_string(),
+            PIDS_MAX_FLAG.to_owned(),
+            self.pids_max.to_string(),
             MAX_READ_BYTES_FLAG.to_owned(),
             self.max_read_bytes.to_string(),
             MAX_FRAME_BYTES_FLAG.to_owned(),

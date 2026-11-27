@@ -47,9 +47,10 @@ readonly REQUIRED_CONFIG=(
   'CONFIG_SYSFS=y'
   'CONFIG_UNIX98_PTYS=y'
   'CONFIG_IP_PNP=y'
-  # The tenant leaf: cgroup v2 with memory counted.
+  # The tenant leaf: cgroup v2 with memory counted and processes capped.
   'CONFIG_CGROUPS=y'
   'CONFIG_MEMCG=y'
+  'CONFIG_CGROUP_PIDS=y'
   # The inner environment and what each tenant process puts on itself.
   'CONFIG_PID_NS=y'
   'CONFIG_SECCOMP_FILTER=y'

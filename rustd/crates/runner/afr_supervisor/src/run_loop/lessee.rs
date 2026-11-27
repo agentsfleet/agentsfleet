@@ -2,6 +2,7 @@
 //! each worker.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use af_core::clock::Clock;
 use af_egress::Resolve;
@@ -31,6 +32,8 @@ pub(crate) struct Lessee {
     pub(crate) staging: crate::staging::Staging,
     /// What every sandbox enforces.
     pub(crate) limits: Limits,
+    /// How long a resumed parked sandbox's executor has to answer.
+    pub(crate) park_resume_timeout: Duration,
     /// The wall clock the daemon's run deadlines are written in.
     pub(crate) clock: Arc<dyn Clock>,
     /// Sandboxes parked for their fleets' next runs.

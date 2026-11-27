@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 
 use af_core::env::{EnvSource as _, ProcessEnv};
 use af_wire::runner::Kvm;
+use afr_cgroup::Room;
 use afr_engine::conformance::{ERRNO, NO_ANSWER, connect};
 use afr_engine::{Allowlist, Engine as _, Limits, Network, ParkMode, Sandbox};
 use afr_engine_firecracker::{Binaries, FirecrackerEngine, FirecrackerTuning, KVM_PATH};
@@ -128,6 +129,17 @@ pub(crate) fn tuning() -> FirecrackerTuning {
         limits: Limits::default(),
         memory_overcommit: afr_engine_firecracker::MEMORY_OVERCOMMIT,
         disk_overcommit: afr_engine_firecracker::DISK_OVERCOMMIT,
+        monitor_overhead_bytes: afr_engine_firecracker::MONITOR_OVERHEAD_BYTES,
+        write_cache_bytes: afr_engine_firecracker::WRITE_CACHE_BYTES,
+    }
+}
+
+/// The room a monitor's cgroup holds beside its guest's memory under
+/// `tuning`, as the engine makes it.
+pub(crate) const fn room(tuning: &FirecrackerTuning) -> Room {
+    Room {
+        reserve_bytes: tuning.monitor_overhead_bytes,
+        write_cache_bytes: tuning.write_cache_bytes,
     }
 }
 

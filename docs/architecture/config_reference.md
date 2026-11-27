@@ -393,6 +393,9 @@ Without `[checkpoint.storage]`, the daemon stores no task checkpoints in R2, Clo
 | `disk_mib` | 4,096 | Runs fill their disk, or you want more runs per host |
 | `io_mib_per_second` | 200 | Disk-heavy runs are slow, or one run starves the others |
 | `ready_timeout_seconds` | 10 | New sandboxes fail to start in time on a slow host |
+| `cpu_millicores` | 2,000 | Runs are slow on CPU-bound work (raise), or you want more runs per host's processors (lower); at most 32,000, Firecracker's 32 virtual CPUs |
+| `pids_max` | 512 | `sandbox_pids_limit_hit` shows runs whose forks were refused at the cap (raise), or one run's processes should be held tighter (lower); at most 4,194,304, the kernel's `PID_MAX_LIMIT` |
+| `park_resume_timeout_seconds` | 2 | Parked sandboxes are given up for fresh ones on a slow host (`sandbox_resume_failed`) |
 
 #### `[firecracker]`
 
@@ -408,6 +411,8 @@ Every build parses it, and only the Firecracker engine uses it (`main/src/config
 | `memory_overcommit` | 4 | Hosts run out of memory under load (lower), or sit idle with runs refused (raise) |
 | `disk_overcommit` | 8 | Hosts run out of disk under load (lower), or refuse runs with disk to spare (raise) |
 | `warm_pool` | 4 | First tool calls wait on a microVM boot (raise), or idle microVMs hold too much of the admission bound (lower) |
+| `monitor_overhead_mib` | 64 | The host runs out of memory with every microVM admitted, because monitors hold more than this beside their guests (raise), or the bound refuses runs with memory to spare (lower) |
+| `write_cache_mib` | 256 | Monitors are killed for memory during heavy disk writes (raise), or the host runs short of memory under write bursts (lower) |
 
 #### `[tools]`
 

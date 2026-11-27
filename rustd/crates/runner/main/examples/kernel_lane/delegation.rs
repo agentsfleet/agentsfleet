@@ -12,6 +12,7 @@ use afr_engine::{Limits, REQUIRED_CONTROLLERS};
 use afr_image::ToolboxHome;
 use libtest_mimic::Failed;
 
+use crate::firecracker::room;
 use crate::lane::Lane;
 use crate::run::expect;
 
@@ -22,8 +23,9 @@ const TOOLBOX: &str = "toolbox";
 const CPU: &str = "cpu";
 const UNMOUNTED: &str = "no toolbox mounted";
 const CHILD_SLEEP_SECONDS: &str = "60";
-/// The process cap [`Limits::default`] writes to a run's `pids.max`.
-const DEFAULT_PIDS_MAX: &str = "512";
+/// The processor quota [`Limits::default`] writes to a run's `cpu.max`: two
+/// cores of each 100 ms period.
+const DEFAULT_CPU_MAX: &str = "200000 100000";
 
 /// Each trial owns an empty cgroup below the lane's delegated root.
 fn with_root(
@@ -72,9 +74,10 @@ pub(crate) fn boots_disabled(lane: &Lane) -> Result<(), Failed> {
                     host.probe.missing_controller().is_none(),
                     "boot reports every controller enabled",
                 )?;
-                let run = RunCgroup::create(root, RUN, &Limits::default())?;
+                let run =
+                    RunCgroup::create(root, RUN, &Limits::default(), room(&lane.config.tuning))?;
                 let limited = expect(
-                    fs::read_to_string(root.join(RUN).join("pids.max"))?.trim() == DEFAULT_PIDS_MAX,
+                    fs::read_to_string(root.join(RUN).join("cpu.max"))?.trim() == DEFAULT_CPU_MAX,
                     "the child enforces the run limit",
                 );
                 run.remove()?;

@@ -134,7 +134,8 @@ def toolbox_digest(root: Path) -> str:
     if len(images) != 1:
         raise ValueError("candidate must have exactly one toolbox image")
     digest = string(images[0].stem.removeprefix("toolbox-"), r"[0-9a-f]{64}")
-    if sha256(images[0]) != digest or images[0].stat().st_size > 262848512:
+    # Under 160 MB, decimal (Indy, Nov 27, 2026: "bring the toolbox cap to 160mb").
+    if sha256(images[0]) != digest or images[0].stat().st_size > 159999999:
         raise ValueError("toolbox digest or size gate failed")
     return digest
 

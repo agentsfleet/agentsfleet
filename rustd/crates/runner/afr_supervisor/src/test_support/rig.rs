@@ -146,6 +146,7 @@ impl Rig {
             ),
             staging: home.staging(),
             limits: Limits::default(),
+            park_resume_timeout: crate::config::PARK_RESUME_TIMEOUT,
             parks,
             clock: clock(),
             halt: Halt::new(shutdown.clone()),

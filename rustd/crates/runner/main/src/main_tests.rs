@@ -28,7 +28,7 @@ fn the_guest_entry_is_the_sub_command_the_engine_starts() {
         max_read_bytes: 1024 * 1024,
         ..afr_executor::Sizes::DEFAULT
     };
-    let entry = afr_engine_firecracker::guest::GuestEntry::new(4096, sizes);
+    let entry = afr_engine_firecracker::guest::GuestEntry::new(4096, 37, sizes);
     let argv = std::iter::once("agentsfleet-runner".into()).chain(entry.arguments());
 
     let parsed = Cli::try_parse_from(argv);

@@ -56,6 +56,8 @@ pub enum Recorded {
     ToolCall(Tool, ToolOutcome, Duration),
     /// [`Recorder::out_of_memory`].
     OutOfMemory,
+    /// [`Recorder::pids_limit_hit`].
+    PidsLimitHit,
     /// [`Recorder::sandbox_park`].
     SandboxPark(SandboxPark),
     /// [`Recorder::sandbox_build`].
@@ -156,6 +158,10 @@ impl Recorder for Tally {
 
     fn out_of_memory(&self) {
         self.send(Recorded::OutOfMemory);
+    }
+
+    fn pids_limit_hit(&self) {
+        self.send(Recorded::PidsLimitHit);
     }
 
     fn sandbox_park(&self, outcome: SandboxPark) {

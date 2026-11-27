@@ -1,8 +1,8 @@
 //! Where a started process runs, and what its ending means there.
 //!
 //! In a microVM the guest entry makes a tenant leaf in the guest's own cgroup
-//! tree, opens its `cgroup.procs` and `memory.events` while it is still user
-//! 0, and hands both in as a [`Tenant`]. Each process writes itself into the
+//! tree, opens its `cgroup.procs`, `memory.events` and `pids.events` while it
+//! is still user 0, and hands all three in as a [`Tenant`]. Each process writes itself into the
 //! leaf between fork and exec, through that descriptor, so the kernel checks
 //! the move against the open-time credentials, not the tenant's. The executor
 //! is never the out-of-memory killer's pick (`afr_guest`), so a guest out of
@@ -11,7 +11,8 @@
 //! other `SIGKILL`. A tool's command runs under `/bin/sh -c`, so the process
 //! killed is often a child the shell forked, and the shell, still alive,
 //! exits with the status it reports that kill under; that exit is judged the
-//! same way.
+//! same way. The leaf's `pids.events` counts each fork refused at its process
+//! cap, which the host reads once a run ends.
 
 use std::fmt;
 use std::fs::File;
@@ -32,7 +33,10 @@ use crate::error::{self, Result};
 const SELF: &[u8] = b"0";
 /// The `memory.events` key counting processes the kernel killed for memory.
 const OOM_KILL: &str = "oom_kill";
-/// Room for the whole of `memory.events`: six short lines.
+/// The `pids.events` key counting forks refused at the leaf's `pids.max`.
+const PIDS_REFUSED: &str = "max";
+/// Room for the whole of `memory.events`, six short lines, and of
+/// `pids.events`, two.
 const EVENTS_MAX_BYTES: usize = 256;
 /// A `memory.events` read failed, so a kill reads as the ending reported.
 const EVENT_EVENTS_UNREAD: &str = "executor_memory_events_unread";
@@ -56,6 +60,12 @@ pub(crate) trait Placement: Send + Sync + fmt::Debug {
     /// # Errors
     /// What is placed here could not be read.
     fn idle(&self) -> io::Result<bool>;
+
+    /// The forks refused at this placement's process cap so far.
+    ///
+    /// # Errors
+    /// The count could not be read.
+    fn pids_refused(&self) -> io::Result<u64>;
 }
 
 /// Processes stay where the executor runs: an engine with no tenant leaf.
@@ -80,38 +90,52 @@ impl Placement for Inherit {
     fn idle(&self) -> io::Result<bool> {
         Ok(true)
     }
+
+    /// It caps nothing, so it refuses nothing.
+    fn pids_refused(&self) -> io::Result<u64> {
+        Ok(0)
+    }
 }
 
-/// The tenant leaf, reached through two descriptors the engine opened.
+/// The tenant leaf, reached through three descriptors the engine opened.
 #[derive(Debug)]
 pub struct Tenant {
     procs: File,
     events: File,
+    pids_events: File,
     /// The leaf's `oom_kill` count when last read; it only rises.
     seen: AtomicU64,
 }
 
 impl Tenant {
     /// The leaf whose `cgroup.procs` is open for reading and writing as
-    /// `procs` and whose `memory.events` is open for reading as `events`.
-    /// Both become close-on-exec here, so no process started inherits either.
+    /// `procs`, whose `memory.events` is open for reading as `events` and
+    /// whose `pids.events` is open for reading as `pids_events`. All three
+    /// become close-on-exec here, so no process started inherits any.
     ///
     /// # Errors
-    /// A descriptor refuses close-on-exec, `procs` is not open for both, or
-    /// `events` does not read as `memory.events`.
-    pub fn new(procs: OwnedFd, events: OwnedFd) -> Result<Self> {
-        let (procs, events) = (File::from(procs), File::from(events));
-        let seen = [&procs, &events]
+    /// A descriptor refuses close-on-exec, `procs` is not open for both,
+    /// `events` does not read as `memory.events`, or `pids_events` as
+    /// `pids.events`.
+    pub fn new(procs: OwnedFd, events: OwnedFd, pids_events: OwnedFd) -> Result<Self> {
+        let (procs, events, pids_events) = (
+            File::from(procs),
+            File::from(events),
+            File::from(pids_events),
+        );
+        let seen = [&procs, &events, &pids_events]
             .into_iter()
             .try_for_each(|held| rustix::io::fcntl_setfd(held, FdFlags::CLOEXEC))
             .map_err(io::Error::from)
             .and_then(|()| writable(&procs))
             .and_then(|()| emptied(&procs))
-            .and_then(|_idle| oom_kills(&events))
+            .and_then(|_idle| count(&pids_events, PIDS_REFUSED))
+            .and_then(|_refused| count(&events, OOM_KILL))
             .map_err(error::tenant_unavailable)?;
         Ok(Self {
             procs,
             events,
+            pids_events,
             seen: AtomicU64::new(seen),
         })
     }
@@ -133,7 +157,7 @@ impl Placement for Tenant {
             ending,
             Ending::Signaled(SIGKILL) | Ending::Exited(SHELL_KILLED_EXIT)
         );
-        match killed.then(|| oom_kills(&self.events)) {
+        match killed.then(|| count(&self.events, OOM_KILL)) {
             Some(Ok(now)) if now > self.seen.fetch_max(now, Ordering::Relaxed) => {
                 Ending::OutOfMemory
             }
@@ -147,6 +171,10 @@ impl Placement for Tenant {
 
     fn idle(&self) -> io::Result<bool> {
         emptied(&self.procs)
+    }
+
+    fn pids_refused(&self) -> io::Result<u64> {
+        count(&self.pids_events, PIDS_REFUSED)
     }
 }
 
@@ -195,20 +223,22 @@ fn writable(fd: impl std::os::fd::AsFd) -> io::Result<()> {
         .ok_or_else(|| io::Error::from(Errno::BADF))
 }
 
-/// The leaf's `oom_kill` count, read whole from the start of `memory.events`.
-fn oom_kills(events: &File) -> io::Result<u64> {
+/// The leaf's `key` count, read whole from the start of the events file
+/// `events`.
+fn count(events: &File, key: &str) -> io::Result<u64> {
     let mut buffer = [0; EVENTS_MAX_BYTES];
     let read = events.read_at(&mut buffer, 0)?;
-    oom_kill_count(buffer.get(..read).unwrap_or_default())
+    event_count(buffer.get(..read).unwrap_or_default(), key)
         .ok_or_else(|| io::Error::from(io::ErrorKind::InvalidData))
 }
 
-/// The `oom_kill` count in a `memory.events` rendering.
-fn oom_kill_count(events: &[u8]) -> Option<u64> {
+/// The `key` count in an events file's rendering, as `memory.events` and
+/// `pids.events` render theirs: one `key count` line each.
+fn event_count(events: &[u8], key: &str) -> Option<u64> {
     std::str::from_utf8(events)
         .ok()?
         .lines()
-        .find_map(|line| line.strip_prefix(OOM_KILL)?.strip_prefix(' ')?.parse().ok())
+        .find_map(|line| line.strip_prefix(key)?.strip_prefix(' ')?.parse().ok())
 }
 
 #[cfg(test)]

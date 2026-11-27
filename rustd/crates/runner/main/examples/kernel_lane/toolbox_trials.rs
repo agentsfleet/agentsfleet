@@ -13,10 +13,11 @@ use crate::run::expect;
 use crate::tools::{answers, shell, shell_calls};
 use crate::trials::Body;
 
-/// The most bytes the image may be: under 195 MB, decimal, which is Indy's
-/// number (Indy, Nov 27, 2026: "raise to 195MB"), ruled when Bun joined the
-/// toolbox and put the amd64 image at 192,294,912 bytes.
-const IMAGE_CAP_BYTES: u64 = 194_999_999;
+/// The most bytes the image may be: under 160 MB, decimal, which is Indy's
+/// number (Indy, Nov 27, 2026: "bring the toolbox cap to 160mb"), ruled once
+/// Node.js left the toolbox. CI's build refuses past the same number
+/// (`.github/actions/build-toolbox/action.yml`).
+const IMAGE_CAP_BYTES: u64 = 159_999_999;
 /// The installed tree must retain licences while excluding the other payloads.
 const LICENCES: &str = r"
 python3 -I - EXPECTED_PACKAGES <<'PY'

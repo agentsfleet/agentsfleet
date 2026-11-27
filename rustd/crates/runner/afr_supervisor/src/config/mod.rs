@@ -18,7 +18,7 @@ mod stream;
 mod tuning;
 pub use runtime::{RuntimePolicy, RuntimeSettings};
 pub use stream::{ENV_STREAM_CA, ENV_STREAM_URL, StreamConfig};
-pub use tuning::{CALL_TIMEOUT_MIN_SECONDS, Tuning};
+pub use tuning::{CALL_TIMEOUT_MIN_SECONDS, PARK_RESUME_TIMEOUT, Tuning};
 
 /// The daemon's base address.
 pub const ENV_API_URL: &str = "AGENTSFLEET_API_URL";

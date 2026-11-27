@@ -70,12 +70,18 @@ fn an_empty_profile_selects_todays_values() -> Checked {
 fn sandbox_values_reach_the_limits_and_the_engine() -> Checked {
     let selected = settings(
         "[sandbox]\nmemory_mib = 512\ndisk_mib = 1_024\nio_mib_per_second = 50\n\
-         ready_timeout_seconds = 4\n",
+         ready_timeout_seconds = 4\ncpu_millicores = 3_000\npids_max = 64\n\
+         park_resume_timeout_seconds = 5\n",
     )?;
-    assert_eq!(selected.tuning.limits.memory_bytes, 512 * 1024 * 1024);
-    assert_eq!(selected.tuning.limits.disk_bytes, 1024 * 1024 * 1024);
+    let limits = selected.tuning.limits;
+    assert_eq!(limits.memory_bytes, 512 * 1024 * 1024);
+    assert_eq!(limits.disk_bytes, 1024 * 1024 * 1024);
+    assert_eq!((limits.cpu_millis, limits.pids), (3_000, 64));
+    // The engine grants every microVM the same limits the supervisor asks.
+    assert_eq!(selected.firecracker.limits, limits);
     assert_eq!(selected.firecracker.io_bytes_per_second, 50 * 1024 * 1024);
     assert_eq!(selected.firecracker.ready_timeout, Duration::from_secs(4));
+    assert_eq!(selected.tuning.park_resume_timeout, Duration::from_secs(5));
     Ok(())
 }
 
@@ -127,7 +133,7 @@ async fn the_executor_uses_the_sizes_the_runner_sent() -> Checked {
     let selected = settings("[tools]\nmax_file_read_mib = 1\n")?;
     let sizes = selected.firecracker.sizes;
     // What the engine tells the guest entry, as the entry reads it back.
-    let told = afr_engine_firecracker::guest::GuestEntry::new(1, sizes).arguments();
+    let told = afr_engine_firecracker::guest::GuestEntry::new(1, 1, sizes).arguments();
     let argv = std::iter::once("agentsfleet-runner".into()).chain(told);
     let crate::Command::Guest(entry) = <crate::Cli as clap::Parser>::try_parse_from(argv)?.command
     else {
@@ -216,6 +222,9 @@ const ZEROES: &[(&str, &str)] = &[
     ("sandbox", "disk_mib"),
     ("sandbox", "io_mib_per_second"),
     ("sandbox", "ready_timeout_seconds"),
+    ("sandbox", "cpu_millicores"),
+    ("sandbox", "pids_max"),
+    ("sandbox", "park_resume_timeout_seconds"),
     ("tools", "default_shell_timeout_seconds"),
     ("tools", "min_command_output_wait_ms"),
     ("tools", "max_command_output_wait_ms"),
@@ -288,6 +297,10 @@ fn values_past_their_bounds_are_refused() -> Checked {
     )?;
     // A frame a full directory listing would not fit in.
     refused_naming("[executor]\nmax_frame_mib = 6\n", "max_frame_mib")?;
+    // More processors than Firecracker's 32 virtual CPUs.
+    refused_naming("[sandbox]\ncpu_millicores = 32_001\n", "cpu_millicores")?;
+    // A process cap past the kernel's `PID_MAX_LIMIT`, which `pids.max` refuses.
+    refused_naming("[sandbox]\npids_max = 4_194_305\n", "pids_max")?;
     // A frame too short to carry one whole read as base64.
     refused_naming(
         "[tools]\nmax_file_read_mib = 12\n\n[executor]\nmax_frame_mib = 16\n",

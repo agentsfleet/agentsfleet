@@ -94,6 +94,10 @@ impl Placement for AlwaysOutOfMemory {
     fn idle(&self) -> std::io::Result<bool> {
         Ok(true)
     }
+
+    fn pids_refused(&self) -> std::io::Result<u64> {
+        Ok(0)
+    }
 }
 
 /// Drives `run` until it ends, `stop` as its stop token, and answers with

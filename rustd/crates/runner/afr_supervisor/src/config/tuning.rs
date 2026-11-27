@@ -1,5 +1,6 @@
 //! The supervisor's bounds the runner's file chooses: its calls to the
-//! daemon, the live tail, decision calls and what every sandbox enforces.
+//! daemon, the live tail, decision calls, what every sandbox enforces and how
+//! long a resumed park has to answer.
 //!
 //! Every default is the constant the supervisor ran with before the file
 //! could choose it. The binary checks the file; this crate takes the values.
@@ -20,6 +21,13 @@ use crate::client::CALL_TIMEOUT;
 pub const CALL_TIMEOUT_MIN_SECONDS: u64 =
     af_wire::message_verb::MESSAGE_DELIVERY_DEADLINE.as_secs() + 1;
 
+/// How long a resumed parked sandbox's executor has to answer before the
+/// park is given up for a fresh sandbox, by default.
+///
+/// Two seconds is Indy's number (Indy, Nov 27, 2026: "park resume wait 2 s"). The runner's
+/// `[sandbox] park_resume_timeout_seconds` chooses it.
+pub const PARK_RESUME_TIMEOUT: Duration = Duration::from_secs(2);
+
 /// The supervisor's chosen bounds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Tuning {
@@ -34,6 +42,8 @@ pub struct Tuning {
     pub decision: DecisionTimeouts,
     /// What every run's sandbox enforces.
     pub limits: Limits,
+    /// How long a resumed parked sandbox's executor has to answer.
+    pub park_resume_timeout: Duration,
 }
 
 impl Tuning {
@@ -44,5 +54,6 @@ impl Tuning {
         activity_batch_bytes: MAX_BATCH_BYTES,
         decision: DecisionTimeouts::DEFAULT,
         limits: Limits::DEFAULT,
+        park_resume_timeout: PARK_RESUME_TIMEOUT,
     };
 }

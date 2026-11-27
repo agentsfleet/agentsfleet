@@ -22,9 +22,16 @@ pub use self::snapshots::{SnapshotRef, Snapshots};
 
 /// Memory a run's sandbox may use before its tree is killed.
 pub const DEFAULT_MEMORY_BYTES: u64 = 2 * 1024 * 1024 * 1024;
-/// Processor share, in thousandths of one core.
+/// Processor share, in thousandths of one core, by default.
+///
+/// Two cores is Indy's number (Indy, Nov 27, 2026: "CPU per VM 2 cores"). The runner's
+/// `[sandbox] cpu_millicores` chooses it.
 pub const DEFAULT_CPU_MILLIS: u32 = 2_000;
-/// Processes and threads the sandbox's tree may run at once.
+/// Processes and threads the sandbox's tenant tree may run at once, by
+/// default.
+///
+/// 512, the value Indy ruled enforced (Indy, Nov 27, 2026: "Enforce
+/// + TOML (Recommended)"). The runner's `[sandbox] pids_max` chooses it.
 pub const DEFAULT_PIDS: u32 = 512;
 /// Size of the run's workspace disk; a write past it answers `ENOSPC`.
 pub const DEFAULT_DISK_BYTES: u64 = 4 * 1024 * 1024 * 1024;

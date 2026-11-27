@@ -13,8 +13,9 @@ use crate::confinement::{
 };
 use crate::delegation::{boots_disabled, refuses_populated, refuses_unavailable};
 use crate::exhaustion::{
-    disk_fill_under_memory_limit_ends_in_enospc, oom_kills_only_the_tenant, runaway,
-    sweep_removes_a_leftover, tenant_holds_no_stray_descriptor, workspace_and_tmp_share_the_disk,
+    disk_fill_under_memory_limit_ends_in_enospc, fork_bomb_stops_at_the_process_cap,
+    oom_kills_only_the_tenant, runaway, sweep_removes_a_leftover, tenant_holds_no_stray_descriptor,
+    workspace_and_tmp_share_the_disk,
 };
 use crate::exhaustion_concurrent::writable_state_exhaustion_spares_the_sandbox;
 use crate::files::{file_tools_refuse_link_out, file_tools_run_inside};
@@ -70,6 +71,10 @@ const ENGINE_TRIALS: &[(&str, Body)] = &[
     ("test_memory_hog_is_contained", runaway),
     ("test_oom_kills_only_the_tenant", oom_kills_only_the_tenant),
     ("test_shell_reported_kill_reads_as_oom", forked_oom),
+    (
+        "test_fork_bomb_stops_at_the_process_cap",
+        fork_bomb_stops_at_the_process_cap,
+    ),
     (
         "test_workspace_and_tmp_share_the_disk",
         workspace_and_tmp_share_the_disk,

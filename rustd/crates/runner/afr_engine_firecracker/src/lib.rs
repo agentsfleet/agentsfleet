@@ -42,10 +42,10 @@ mod sweep;
 mod vsock;
 
 pub use self::admission::{Admission, Reservation};
-pub use self::capabilities::{CAPABILITIES as FIRECRACKER_CAPABILITIES, grant};
+pub use self::capabilities::{CAPABILITIES as FIRECRACKER_CAPABILITIES, MAX_CPU_MILLIS, grant};
 pub use self::config::{
     Binaries, DISK_OVERCOMMIT, FIRECRACKER_PATH, FIRST_JAIL_ID, FirecrackerTuning, INITRD_PATH,
-    JAILER_PATH, KERNEL_PATH, MEMORY_OVERCOMMIT,
+    JAILER_PATH, KERNEL_PATH, MEMORY_OVERCOMMIT, MONITOR_OVERHEAD_BYTES, WRITE_CACHE_BYTES,
 };
 #[cfg(target_os = "linux")]
 pub use self::engine::{FirecrackerBackend, FirecrackerConfig, FirecrackerEngine};

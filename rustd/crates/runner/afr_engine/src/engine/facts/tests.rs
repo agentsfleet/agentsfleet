@@ -31,24 +31,15 @@ fn test_admit_refuses_a_limit_the_engine_cannot_enforce() {
     assert_eq!(refused.detail(), "the firecracker engine cannot limit pids");
 }
 
-/// An engine that enforces every cap grants exactly what it was asked, and a
-/// cap its wall covers is granted without a mechanism, never refused.
+/// An engine that enforces every cap grants exactly what it was asked.
 #[test]
 fn test_a_grant_is_never_less_than_the_ask() {
     let enforced = ResourceFacts::ENFORCED
         .grant(SandboxEngine::Firecracker, ASKED)
         .expect("an engine enforcing every cap grants the ask");
-    let walled = ResourceFacts {
-        pids: Cap::Walled,
-        ..ResourceFacts::ENFORCED
-    }
-    .grant(SandboxEngine::Firecracker, ASKED)
-    .expect("a walled cap needs no mechanism");
 
     assert_eq!(*enforced.limits(), ASKED);
     assert_eq!(enforced.facts(), ResourceFacts::ENFORCED);
-    assert_eq!(*walled.limits(), ASKED);
-    assert_eq!(walled.facts().pids, Cap::Walled);
 }
 
 /// A park mode outside an engine's table is refused naming `park`; one in it

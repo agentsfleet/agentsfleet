@@ -1,12 +1,13 @@
 //! The `[firecracker]` section: where our Firecracker engine's programs and
 //! guest artifacts live on this host, where its jail users start, how far it
-//! overcommits memory and disk and how many microVMs it boots ahead of their
-//! runs.
+//! overcommits memory and disk, the memory each monitor holds beside its
+//! guest's, and how many microVMs it boots ahead of their runs.
 
 use std::path::PathBuf;
 
 use afr_engine_firecracker::{
     Binaries, DISK_OVERCOMMIT, FIRST_JAIL_ID, FirecrackerTuning, MEMORY_OVERCOMMIT,
+    MONITOR_OVERHEAD_BYTES, WRITE_CACHE_BYTES,
 };
 use garde::Validate;
 use serde::Deserialize;
@@ -20,6 +21,8 @@ const FIRST_JAIL_ID_MAX: u32 = u32::MAX - 1 - af_core::limits::MAX_WORKERS;
 /// The microVMs booted ahead of their runs, by default: 4 is Indy's number
 /// (Indy, Nov 26, 2026: "Build now, pool of 4").
 const WARM_POOL: u32 = 4;
+/// One mebibyte.
+const MIB: u64 = 1024 * 1024;
 
 /// The programs every microVM boot runs, and its jail users.
 #[derive(Debug, Clone, Deserialize, Validate)]
@@ -52,6 +55,14 @@ pub(super) struct FirecrackerSection {
     /// admission bound while it waits.
     #[garde(range(min = 1))]
     pub warm_pool: u32,
+    /// What admission reserves for each monitor beyond its guest's memory,
+    /// and where the monitor's cgroup throttles above it.
+    #[garde(range(min = 1))]
+    pub monitor_overhead_mib: u64,
+    /// How far each monitor's cgroup cap sits above its throttle, for the
+    /// host's cache of the guest's unsaved disk writes.
+    #[garde(range(min = 1))]
+    pub write_cache_mib: u64,
 }
 
 impl Default for FirecrackerSection {
@@ -71,6 +82,8 @@ impl Default for FirecrackerSection {
             memory_overcommit: MEMORY_OVERCOMMIT,
             disk_overcommit: DISK_OVERCOMMIT,
             warm_pool: WARM_POOL,
+            monitor_overhead_mib: MONITOR_OVERHEAD_BYTES / MIB,
+            write_cache_mib: WRITE_CACHE_BYTES / MIB,
         }
     }
 }
@@ -97,6 +110,8 @@ impl FirecrackerSection {
             limits: sandbox.limits(),
             memory_overcommit: self.memory_overcommit,
             disk_overcommit: self.disk_overcommit,
+            monitor_overhead_bytes: self.monitor_overhead_mib.saturating_mul(MIB),
+            write_cache_bytes: self.write_cache_mib.saturating_mul(MIB),
         }
     }
 

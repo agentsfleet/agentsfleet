@@ -37,11 +37,11 @@ use crate::api::{
 };
 use crate::error::{self, Result};
 use crate::protocol::{
-    HostsParams, KillParams, METHOD_DELETE_FILE, METHOD_HOSTS, METHOD_KILL, METHOD_LIST_DIR,
-    METHOD_READ_FILE, METHOD_RECOVERY_IDLE, METHOD_RENEW, METHOD_SEARCH, METHOD_SPAWN,
-    METHOD_WRITE, METHOD_WRITE_FILE, PathParams, ReadParams, ReadResult, RecoveryParams,
-    RecoveryProof, RenewParams, RenewedWorkspace, SpawnParams, WriteFileParams, WriteParams,
-    decoded, request,
+    CountParams, Counted, HostsParams, KillParams, METHOD_COUNT, METHOD_DELETE_FILE, METHOD_HOSTS,
+    METHOD_KILL, METHOD_LIST_DIR, METHOD_READ_FILE, METHOD_RECOVERY_IDLE, METHOD_RENEW,
+    METHOD_SEARCH, METHOD_SPAWN, METHOD_WRITE, METHOD_WRITE_FILE, PathParams, ReadParams,
+    ReadResult, RecoveryParams, RecoveryProof, RenewParams, RenewedWorkspace, SpawnParams,
+    WriteFileParams, WriteParams, decoded, request,
 };
 use crate::sizes::Sizes;
 
@@ -197,6 +197,16 @@ impl Executor for Client {
             METHOD_RECOVERY_IDLE,
             &RecoveryParams {
                 proof: RecoveryProof::FileJobs,
+            },
+        )
+        .await
+    }
+
+    async fn pids_refused(&self) -> Result<u64> {
+        self.fetch(
+            METHOD_COUNT,
+            &CountParams {
+                count: Counted::PidsRefused,
             },
         )
         .await

@@ -4,12 +4,18 @@ use std::fs;
 
 use afr_engine::Limits;
 
-use super::RunCgroup;
+use super::{Room, RunCgroup};
+
+/// Any room: this trial reads only the leaves' events.
+const ROOM: Room = Room {
+    reserve_bytes: 1,
+    write_cache_bytes: 1,
+};
 
 #[test]
 fn recovery_quiescence_reads_the_entire_tenant_subtree() -> crate::Result<()> {
     let root = tempfile::tempdir()?;
-    let group = RunCgroup::create(root.path(), "recovery-boundary", &Limits::default())?;
+    let group = RunCgroup::create(root.path(), "recovery-boundary", &Limits::default(), ROOM)?;
     // Its parent may contain the resident executor while tenant custody is empty.
     fs::write(
         root.path().join("recovery-boundary/cgroup.events"),

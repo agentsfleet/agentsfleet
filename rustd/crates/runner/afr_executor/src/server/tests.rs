@@ -84,12 +84,14 @@ async fn a_writer_whose_socket_closed_stops_though_its_queues_stay_open() {
 #[test]
 fn a_listener_with_a_tenant_places_its_processes_in_the_leaf() {
     let dir = tempfile::tempdir().unwrap();
-    let (procs, events) = (
+    let (procs, events, pids_events) = (
         dir.path().join("cgroup.procs"),
         dir.path().join("memory.events"),
+        dir.path().join("pids.events"),
     );
     fs::write(&procs, "").unwrap();
     fs::write(&events, NO_KILLS).unwrap();
+    fs::write(&pids_events, "max 0\n").unwrap();
     let tenant = Tenant::new(
         OpenOptions::new()
             .read(true)
@@ -98,6 +100,7 @@ fn a_listener_with_a_tenant_places_its_processes_in_the_leaf() {
             .unwrap()
             .into(),
         File::open(&events).unwrap().into(),
+        File::open(&pids_events).unwrap().into(),
     )
     .unwrap();
     let bare = bind(&dir.path().join("bare.sock")).unwrap();
@@ -109,4 +112,55 @@ fn a_listener_with_a_tenant_places_its_processes_in_the_leaf() {
 
     assert_eq!(tenanted.placement.judge(killed), Ending::OutOfMemory);
     assert_eq!(bare.placement.judge(killed), killed);
+}
+
+/// The host reads the forks the tenant leaf refused at its process cap over
+/// the executor's own link, from the leaf's `pids.events`; a bare listener
+/// caps nothing and refuses none.
+#[tokio::test]
+async fn the_host_reads_the_forks_the_leaf_refused_at_its_process_cap() {
+    use crate::api::Executor as _;
+
+    let dir = tempfile::tempdir().unwrap();
+    let (procs, events, pids_events) = (
+        dir.path().join("cgroup.procs"),
+        dir.path().join("memory.events"),
+        dir.path().join("pids.events"),
+    );
+    fs::write(&procs, "").unwrap();
+    fs::write(&events, NO_KILLS).unwrap();
+    fs::write(&pids_events, "max 0\nmax.imposed 0\n").unwrap();
+    let tenant = Tenant::new(
+        OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&procs)
+            .unwrap()
+            .into(),
+        File::open(&events).unwrap().into(),
+        File::open(&pids_events).unwrap().into(),
+    )
+    .unwrap();
+    let root = dir.path().join("w");
+    fs::create_dir(&root).unwrap();
+    let mut refused = Vec::new();
+    for (name, tenant) in [("tenant.sock", Some(tenant)), ("bare.sock", None)] {
+        let socket = dir.path().join(name);
+        let bound = bind(&socket).unwrap();
+        let server = match tenant {
+            Some(tenant) => bound.with_tenant(Arc::new(tenant)),
+            None => bound,
+        };
+        let root = root.clone();
+        let serving = tokio::spawn(async move { server.serve(&root).await });
+        let client = crate::Client::connect_within(&socket, PATIENCE, crate::Sizes::DEFAULT)
+            .await
+            .unwrap();
+        fs::write(&pids_events, "max 3\nmax.imposed 0\n").unwrap();
+        refused.push(client.pids_refused().await.unwrap());
+        drop(client);
+        serving.await.unwrap().unwrap();
+    }
+
+    assert_eq!(refused, [3, 0]);
 }

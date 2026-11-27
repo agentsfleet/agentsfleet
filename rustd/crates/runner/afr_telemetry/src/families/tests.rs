@@ -22,8 +22,9 @@ use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider, Temporality};
 use super::{
     ACTIVITY_FRAMES_DROPPED, DECISION_DURATION, DECISION_EVALUATIONS, Families,
     MEMORY_PUSH_FAILURES, OTLP_ENTRIES_DISCARDED, PROVIDER_RETRIES, PROVIDER_TURN_DURATION,
-    SANDBOX_BUILDS, SANDBOX_PARKS, SANDBOX_RELEASE_DURATION, SANDBOX_START_DURATION,
-    SANDBOX_WAIT_DURATION, SPANS_SUPPRESSED, TOOL_CALL_DURATION, TOOL_OUT_OF_MEMORY, registry,
+    SANDBOX_BUILDS, SANDBOX_PARKS, SANDBOX_PIDS_LIMIT_HITS, SANDBOX_RELEASE_DURATION,
+    SANDBOX_START_DURATION, SANDBOX_WAIT_DURATION, SPANS_SUPPRESSED, TOOL_CALL_DURATION,
+    TOOL_OUT_OF_MEMORY, registry,
 };
 use af_observability::metrics::label::models::CallOutcome;
 use af_providers::observe::Observer;
@@ -133,7 +134,7 @@ fn test_every_runner_census_family_has_a_producer() {
 }
 
 /// Each family, and how many series its closed sets can produce.
-fn label_products() -> [(&'static str, usize); 16] {
+fn label_products() -> [(&'static str, usize); 17] {
     [
         (
             DECISION_EVALUATIONS.wire_name(),
@@ -169,6 +170,7 @@ fn label_products() -> [(&'static str, usize); 16] {
             Tool::COUNT * ToolOutcome::ALL.len(),
         ),
         (TOOL_OUT_OF_MEMORY.wire_name(), 1),
+        (SANDBOX_PIDS_LIMIT_HITS.wire_name(), 1),
         (SANDBOX_PARKS.wire_name(), SandboxPark::ALL.len()),
         (SPANS_SUPPRESSED.wire_name(), 1),
         (
@@ -282,6 +284,7 @@ fn record_every_family(families: &Families) {
     families.push_failed(PushFailure::Upstream);
     families.tool_call(Tool::of("file_read"), ToolOutcome::Succeeded, elapsed);
     families.out_of_memory();
+    families.pids_limit_hit();
     families.sandbox_park(SandboxPark::Parked);
     families.spans_suppressed(2);
     families.export_discarded(Signal::Traces, DiscardReason::ExportRejected, 4);

@@ -1,15 +1,18 @@
-//! The trials of a guest under exhaustion: full disks and runaway memory,
-//! what the monitor's cgroup counts of them, and what is left afterwards.
+//! The trials of a guest under exhaustion: full disks, runaway memory and a
+//! fork bomb, what the monitor's cgroup counts of them, and what is left
+//! afterwards.
 
 use std::fs;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use afr_cgroup::{MEMORY_EVENTS, RunCgroup, SANDBOX_LEAF};
 use afr_engine::conformance::{ENOSPC, SMALL_DISK, SMALL_MEMORY};
 use afr_engine::{Engine as _, Limits, Network};
-use afr_executor::Ending;
+use afr_executor::{Ending, Executor};
 use libtest_mimic::Failed;
 
+use crate::firecracker::room;
 use crate::lane::{Lane, id_of, isolated, spec};
 use crate::run::{expect, in_sandbox, in_sandbox_each, run as run_in, runtime, shell};
 
@@ -25,6 +28,45 @@ pub(crate) const NO_OOM_KILLS: &str = "oom_kill 0";
 const FILL_PAST_THE_DISK: &str = "dd if=/dev/zero of=/workspace/fill bs=1M count=4096 2>&1";
 /// Why a trial that ran two scripts and got another count fails.
 const TWO_OUTCOMES: &str = "two outcomes";
+/// The process cap the fork bomb meets: far below the default, so the
+/// bomb's processes fit the guest's memory many times over.
+const FORK_PIDS: u32 = 64;
+/// Where the fork bomb writes how many children it forked and the `errno`
+/// that stopped it, relative to the workspace.
+const FORKS: &str = "forks";
+/// The `errno` a fork refused at `pids.max` reads: `EAGAIN`.
+const EAGAIN: &str = "11";
+/// A fork bomb in a session of its own, so the shell's exit does not end it:
+/// after two seconds, which the shell needs to see it lead that session and
+/// exit, it forks children that sleep 30 seconds until a fork is refused,
+/// then writes how many it forked and the refusal's `errno` to [`FORKS`].
+/// The children hold the tenant leaf full while the trial lists the
+/// workspace. It stops at four times [`FORK_PIDS`], so a leaf with no cap
+/// fails the trial rather than the guest.
+// pin test: literal is the contract
+const FORK_BOMB: &str = "setsid python3 -c 'import os, time
+time.sleep(2)
+forked, errno = 0, 0
+while forked < 256:
+    try:
+        child = os.fork()
+    except OSError as refused:
+        errno = refused.errno
+        break
+    if child == 0:
+        time.sleep(30)
+        os._exit(0)
+    forked += 1
+open(\"/workspace/forks\", \"w\").write(str(forked) + \" \" + str(errno))
+' >/dev/null 2>&1 </dev/null & pid=$!; tries=0; \
+     until [ \"$(cut -d' ' -f6 /proc/$pid/stat 2>/dev/null)\" = \"$pid\" ] || [ \"$tries\" -ge 100 ]; \
+     do sleep 0.01; tries=$((tries + 1)); done; echo started";
+/// What [`FORK_BOMB`] prints once the bomb leads its own session.
+const STARTED: &str = "started";
+/// How often the trial lists the workspace while the bomb runs.
+const LIST_EVERY: Duration = Duration::from_millis(100);
+/// How many listings it waits through: 20 seconds, inside the children's 30.
+const LIST_TRIES: usize = 200;
 
 /// The `memory.events` of the leaf sandbox `name`'s monitor runs in: what the
 /// host's kernel killed of the microVM itself.
@@ -113,6 +155,67 @@ pub(crate) fn oom_kills_only_the_tenant(lane: &Lane) -> Result<(), Failed> {
     )
 }
 
+/// A fork bomb inside the microVM stops at the run's process cap, the
+/// tenant leaf's `pids.max`, with `EAGAIN`; while its children hold the leaf
+/// full, the executor, outside the leaf, still lists the workspace, reads
+/// what the bomb wrote and counts the refusals from the leaf's `pids.events`.
+pub(crate) fn fork_bomb_stops_at_the_process_cap(lane: &Lane) -> Result<(), Failed> {
+    let name = "forkbomb";
+    let limits = Limits {
+        pids: FORK_PIDS,
+        ..Limits::default()
+    };
+    let (started, listed, forks, refused) = runtime().block_on(async {
+        let engine = lane.microvms()?;
+        let id = id_of(name);
+        let sandbox = engine
+            .prepare(spec(&engine, &id, limits, Network::Isolated)?)
+            .await?;
+        let bombed = async {
+            let started = run_in(sandbox.executor(), shell(FORK_BOMB)).await?;
+            let listed = listed_while_full(sandbox.executor()).await?;
+            let forks = sandbox.executor().read_file(FORKS, 64).await?;
+            let refused = sandbox.executor().pids_refused().await?;
+            Ok::<_, Failed>((started, listed, forks, refused))
+        }
+        .await;
+        sandbox.destroy().await?;
+        bombed
+    })?;
+    expect(
+        started.output.trim() == STARTED,
+        format!("the bomb leads its own session, got {started:?}"),
+    )?;
+    expect(
+        listed,
+        "the executor listed the workspace with the leaf full",
+    )?;
+    let said = String::from_utf8_lossy(&forks.data).into_owned();
+    let (forked, errno) = said.split_once(' ').unwrap_or_default();
+    expect(
+        errno == EAGAIN && forked.parse::<u32>().is_ok_and(|forked| forked < FORK_PIDS),
+        format!("the bomb stops below {FORK_PIDS} with EAGAIN, got {said:?}"),
+    )?;
+    expect(
+        refused > 0,
+        format!("the leaf counts the refused forks, got {refused}"),
+    )
+}
+
+/// Lists the workspace through `executor` until the fork bomb's [`FORKS`]
+/// appears in it, each listing an answer the executor gave while the bomb
+/// ran: whether it appeared within [`LIST_TRIES`] listings.
+async fn listed_while_full(executor: &dyn Executor) -> Result<bool, Failed> {
+    for _try in 0..LIST_TRIES {
+        let listing = executor.list_dir(".").await?;
+        if listing.entries.iter().any(|entry| entry.name == FORKS) {
+            return Ok(true);
+        }
+        tokio::time::sleep(LIST_EVERY).await;
+    }
+    Ok(false)
+}
+
 /// A tenant process holds only its three standard streams.
 pub(crate) fn tenant_holds_no_stray_descriptor(lane: &Lane) -> Result<(), Failed> {
     let said = in_sandbox(lane, "tenantfds", Limits::default(), "ls /proc/$$/fd")?.output;
@@ -134,6 +237,7 @@ pub(crate) fn sweep_removes_a_leftover(lane: &Lane) -> Result<(), Failed> {
         &lane.config.cgroup_root,
         id_of(name).as_str(),
         &Limits::default(),
+        room(&lane.config.tuning),
     )?);
     fs::create_dir_all(lane.run_dir(name))?;
     expect(

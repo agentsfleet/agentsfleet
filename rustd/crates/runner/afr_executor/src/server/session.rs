@@ -22,10 +22,10 @@ use super::launch::{InnerEnvironment, Placement, Plan};
 use super::process::ProcessRun;
 use crate::error::{self, Result};
 use crate::protocol::{
-    DELIMITER, KillParams, METHOD_DELETE_FILE, METHOD_HOSTS, METHOD_KILL, METHOD_LIST_DIR,
-    METHOD_READ_FILE, METHOD_RECOVERY_IDLE, METHOD_RENEW, METHOD_SEARCH, METHOD_SPAWN,
-    METHOD_WRITE, METHOD_WRITE_FILE, PathParams, ReadParams, RecoveryParams, SpawnParams,
-    SpawnResult, WriteFileParams, WriteParams,
+    CountParams, Counted, DELIMITER, KillParams, METHOD_COUNT, METHOD_DELETE_FILE, METHOD_HOSTS,
+    METHOD_KILL, METHOD_LIST_DIR, METHOD_READ_FILE, METHOD_RECOVERY_IDLE, METHOD_RENEW,
+    METHOD_SEARCH, METHOD_SPAWN, METHOD_WRITE, METHOD_WRITE_FILE, PathParams, ReadParams,
+    RecoveryParams, SpawnParams, SpawnResult, WriteFileParams, WriteParams,
 };
 use crate::sizes::Sizes;
 
@@ -216,6 +216,13 @@ impl Session {
             METHOD_SEARCH => self.search(id, params(request)),
             METHOD_RENEW => self.renew(id, params(request)),
             METHOD_HOSTS => self.hosts(id, params(request)),
+            METHOD_COUNT => {
+                let counted =
+                    params::<CountParams>(request).and_then(|params| match params.count {
+                        Counted::PidsRefused => Ok(self.placement.pids_refused()?),
+                    });
+                self.answer(id, counted);
+            }
             _other if self.transfer(id.clone(), request) => {}
             _unknown => self.refuse(id, METHOD_NOT_FOUND_CODE, DETAIL_NO_METHOD),
         }

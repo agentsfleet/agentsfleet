@@ -30,6 +30,22 @@ pub const MEMORY_OVERCOMMIT: u32 = 4;
 /// workspace disks, by default: 8 is Indy's number (Indy, Nov 27, 2026:
 /// "8"). A workspace image is sparse, backed only as it is written.
 pub const DISK_OVERCOMMIT: u32 = 8;
+/// What admission reserves for one monitor beyond its guest's memory, and
+/// where the monitor's cgroup throttles above it, by default.
+///
+/// 64 MiB: the spike measured a 2 GiB guest's idle monitor at 110.9 MiB resident with
+/// 46.2 MiB used inside the guest, about 64.7 MiB the monitor's own
+/// (`docs/v2/reviews/m258-firecracker-spike.md`).
+pub const MONITOR_OVERHEAD_BYTES: u64 = 64 * MIB;
+/// How far a monitor's cgroup cap sits above its throttle, for the host's
+/// cache of the guest's unsaved disk writes, by default.
+///
+/// 256 MiB is Indy's number (Indy, Nov 27, 2026: "256 MiB"). The kernel lane's first run
+/// measured the burst it holds: a 512 MiB guest's monitor killed at its cap
+/// with `memory: usage 589824kB, limit 589824kB` and `file_dirty 194134016`.
+pub const WRITE_CACHE_BYTES: u64 = 256 * MIB;
+/// Bytes in a mebibyte.
+const MIB: u64 = 1024 * 1024;
 
 /// The programs and guest artifacts every boot uses.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -79,4 +95,10 @@ pub struct FirecrackerTuning {
     /// How many times the free space under its state directory the host
     /// admits in workspace disks.
     pub disk_overcommit: u32,
+    /// What admission reserves for each monitor beyond its guest's memory,
+    /// and where the monitor's cgroup throttles above it, in bytes.
+    pub monitor_overhead_bytes: u64,
+    /// How far each monitor's cgroup cap sits above its throttle, in bytes.
+    /// Admission reserves the throttle, not this room.
+    pub write_cache_bytes: u64,
 }

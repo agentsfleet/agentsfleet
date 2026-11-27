@@ -220,6 +220,15 @@ pub trait Executor: Send + Sync + fmt::Debug {
         Err(file_calls_unsupported())
     }
 
+    /// The forks its sandbox's process cap has refused since the sandbox
+    /// started. One that caps no process refuses none.
+    ///
+    /// # Errors
+    /// The executor is unreachable, or its count could not be read.
+    async fn pids_refused(&self) -> Result<u64> {
+        Ok(0)
+    }
+
     /// What this executor's link holds to: its read size, the output its
     /// events keep at each edge and its frame. A stand-in keeps the
     /// defaults.

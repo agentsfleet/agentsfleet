@@ -14,7 +14,7 @@ use std::process::Stdio;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use af_core::error_code::{Coded as _, Logged};
-use afr_cgroup::{CGROUP_PROCS, RunCgroup, SANDBOX_MEMORY_RESERVE_BYTES};
+use afr_cgroup::{CGROUP_PROCS, Room, RunCgroup};
 use afr_engine::{Allowlist, Limits, RESOLV_CONF, Result, until_in_force};
 use afr_executor::{Client, Executor as _};
 use afr_firewall::{
@@ -25,6 +25,7 @@ use tokio::process::{Child, Command};
 use super::vm::Vm;
 use super::{Kept, Reach, Shared};
 use crate::admission::Reservation;
+use crate::config::FirecrackerTuning;
 use crate::error::{exited, not_ready, unrendered};
 use crate::guest::{EXECUTOR_PORT, GuestEntry};
 use crate::jail::{self, Furnishing, JailId};
@@ -97,11 +98,8 @@ async fn start(shared: &Shared, kept: &Kept, parts: &mut Parts) -> Result<Client
         .namespace
         .insert(GuestNamespace::create(&kept.layout.namespace())?);
     let network = join(namespace, &kept.plan.reach, owner, &mut parts.scope)?;
-    let entry = GuestEntry::new(
-        kept.granted.limits().shared_memory_bytes(),
-        config.tuning.sizes,
-    )
-    .arguments();
+    let granted = kept.granted.limits();
+    let entry = guest_entry(granted, config.tuning.sizes).arguments();
     let names = names(&kept.plan.reach);
     let boot = Boot {
         granted: &kept.granted,
@@ -121,7 +119,8 @@ async fn start(shared: &Shared, kept: &Kept, parts: &mut Parts) -> Result<Client
     let cgroup = parts.cgroup.insert(RunCgroup::create(
         &config.cgroup_root,
         kept.id.as_str(),
-        &monitor_limits(kept.granted.limits()),
+        &monitor_limits(granted, &config.tuning),
+        room(&config.tuning),
     )?);
     let argv = jail::jailer_arguments(
         &kept.layout,
@@ -175,17 +174,34 @@ fn names(reach: &Reach) -> Option<String> {
     Some(format!("{hosts}\0{RESOLV_CONF}"))
 }
 
-/// The monitor's cgroup: the guest's memory and the room a monitor's own
-/// resident set takes beside it, the guest's processors, and the run's
-/// process cap over the monitor's threads. `afr_cgroup` throttles the
-/// monitor at this memory and caps it `WRITEBACK_HEADROOM_BYTES` above, and
-/// admission reserves this memory, not the cap.
-pub(super) fn monitor_limits(granted: &Limits) -> Limits {
+/// What the guest entry is told for `granted`: its `/dev/shm` share, its
+/// tenant leaf's process cap and the executor's `sizes`. The process cap is
+/// enforced inside the guest, on the tenant alone.
+pub(super) const fn guest_entry(granted: &Limits, sizes: afr_executor::Sizes) -> GuestEntry {
+    GuestEntry::new(granted.shared_memory_bytes(), granted.pids, sizes)
+}
+
+/// The monitor's cgroup: the guest's memory and `tuning`'s monitor overhead
+/// beside it, and the guest's processors. `afr_cgroup` throttles the monitor
+/// at this memory and caps it `tuning`'s write cache above, and admission
+/// reserves this memory, not the cap. The process count is the tenant's, and
+/// `afr_cgroup` writes none on the monitor's cgroup.
+pub(super) fn monitor_limits(granted: &Limits, tuning: &FirecrackerTuning) -> Limits {
     Limits {
         memory_bytes: granted
             .memory_bytes
-            .saturating_add(SANDBOX_MEMORY_RESERVE_BYTES),
+            .saturating_add(tuning.monitor_overhead_bytes),
         ..*granted
+    }
+}
+
+/// The monitor's cgroup's room: its leaf for the guest gives back the
+/// monitor overhead `monitor_limits` added, and its cap sits the write cache
+/// above its throttle.
+pub(super) const fn room(tuning: &FirecrackerTuning) -> Room {
+    Room {
+        reserve_bytes: tuning.monitor_overhead_bytes,
+        write_cache_bytes: tuning.write_cache_bytes,
     }
 }
 

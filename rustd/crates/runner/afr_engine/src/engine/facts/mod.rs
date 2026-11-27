@@ -23,10 +23,6 @@ pub enum ParkMode {
 pub enum Cap {
     /// A mechanism enforces the asked value.
     Enforced,
-    /// No mechanism counts it, and none is needed: the engine's wall already
-    /// keeps its excess away from every other sandbox, as a virtual machine
-    /// does a process count.
-    Walled,
     /// The engine has no way to enforce it.
     Absent,
 }
