@@ -27,6 +27,7 @@ readonly host_env_file
 readonly SENTINEL_INSTALL="install-ran"
 readonly FIXTURE_DIGEST="0000000000000000000000000000000000000000000000000000000000000001"
 readonly TOOLBOX_PARTS=(erofs json json.sig)
+readonly GUEST_PARTS=(firecracker jailer vmlinux guest.cpio)
 readonly PRIVATE_DIR_MODE="drwx------"
 
 passed=0
@@ -51,13 +52,22 @@ printf '#!/usr/bin/env bash\nwhile [ $# -gt 1 ] && [ "$1" != -o ]; do shift; don
 printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$@" >"$TAR_ARGS"\nexec "$REAL_TAR" "$@"\n' >"$STUB_DIR/tar"
 chmod +x "$STUB_DIR/install" "$STUB_DIR/curl" "$STUB_DIR/tar"
 
-# A directory holding the toolbox set, without `skip` if given.
+# A directory holding the toolbox set and the guest set beside it, without
+# `skip` if given: a toolbox part, or a guest file. The guest record names
+# each guest file's real SHA-256, as scripts/toolbox/guest.sh writes it.
 toolbox_set() {
-  local dir="$1" skip="${2:-}" part
+  local dir="$1" skip="${2:-}" part artifacts='{}'
   mkdir -p "$dir"
   for part in "${TOOLBOX_PARTS[@]}"; do
     [[ "$part" == "$skip" ]] || printf '%s\n' "$part" >"$dir/toolbox-$FIXTURE_DIGEST.$part"
   done
+  for part in "${GUEST_PARTS[@]}"; do
+    printf '%s\n' "$part" >"$dir/$part"
+    artifacts="$(jq -c --arg name "$part" --arg sha256 "$(sha256sum "$dir/$part" | cut -d' ' -f1)" \
+      '.[$name]={sha256:$sha256}' <<<"$artifacts")"
+    [[ "$part" != "$skip" ]] || rm "$dir/$part"
+  done
+  [[ "$skip" == guest.json ]] || jq -n --argjson artifacts "$artifacts" '{artifacts:$artifacts}' >"$dir/guest.json"
 }
 
 # Runs deploy.sh's main in local mode with the lock taken as given, and leaves
@@ -99,6 +109,51 @@ test_deploy_refused_toolbox_leaves_the_host_untouched() {
   elif [[ -e "$sentinels/$SENTINEL_INSTALL" ]]; then
     bad "$name" "a deploy refused for its toolbox wrote to the host first"
   else
+    ok "$name"
+  fi
+}
+
+# A host whose guest set is short, or differs from its record, cannot boot a
+# microVM: every run would be refused after the restart, on a binary already
+# replaced. Every other input is complete, so each refusal is the guest set's.
+test_deploy_refused_guest_set_leaves_the_host_untouched() {
+  local name="test_deploy_refused_guest_set_leaves_the_host_untouched"
+  local binary="$WORK_DIR/guest-binary" env_file="$WORK_DIR/guest.env" ca="$WORK_DIR/guest-ca.pem"
+  local toolbox part output failures=0
+  : >"$binary"
+  printf 'public certificate fixture\n' >"$ca"
+  printf 'AGENTSFLEET_API_URL=https://api.example.test\nAGENTSFLEET_RUNNER_TOKEN=agt_rREAL\nAGENTSFLEET_RUNNER_STREAM_URL=https://agentsfleetd-dev.internal:4443\nAGENTSFLEET_RUNNER_STREAM_TLS_CA_CERT_FILE=/etc/agentsfleet/runner-stream-trust.pem\n' >"$env_file"
+  toolbox="$WORK_DIR/guest-whole"
+  toolbox_set "$toolbox"
+  # shellcheck source=./deploy.sh
+  if ! (source "$DEPLOY_SH"; check_deploy_inputs "$binary" "$toolbox" "$env_file" "$ca") >/dev/null 2>&1; then
+    bad "$name" "positive control: a complete guest set was refused"
+    return
+  fi
+  for part in "${GUEST_PARTS[@]}" guest.json swapped; do
+    toolbox="$WORK_DIR/guest-$part"
+    if [[ "$part" == swapped ]]; then
+      toolbox_set "$toolbox"
+      printf 'another release\n' >"$toolbox/guest.cpio"
+    else
+      toolbox_set "$toolbox" "$part"
+    fi
+    # shellcheck source=./deploy.sh
+    if output="$( (source "$DEPLOY_SH"; check_deploy_inputs "$binary" "$toolbox" "$env_file" "$ca") 2>&1)"; then
+      bad "$name" "a guest set that is $part short passed the input checks"
+      failures=$((failures + 1))
+    elif [[ "$output" != *"guest set under"* ]]; then
+      bad "$name" "a guest set that is $part short was refused for another reason: $output"
+      failures=$((failures + 1))
+    fi
+  done
+  toolbox="$WORK_DIR/guest-short"
+  toolbox_set "$toolbox" vmlinux
+  if local_deploy_status "$WORK_DIR/guest-refused" "$binary" "$toolbox"; then
+    bad "$name" "a deploy whose guest set lacks its kernel exited 0"
+  elif [[ -e "$WORK_DIR/guest-refused/$SENTINEL_INSTALL" ]]; then
+    bad "$name" "a deploy refused for its guest set wrote to the host first"
+  elif [[ "$failures" -eq 0 ]]; then
     ok "$name"
   fi
 }
@@ -206,6 +261,7 @@ test_stream_inputs_refuse_empty_values_and_missing_trust() {
 
 test_stream_inputs_refuse_empty_values_and_missing_trust
 test_deploy_refused_toolbox_leaves_the_host_untouched
+test_deploy_refused_guest_set_leaves_the_host_untouched
 test_deploy_refused_env_leaves_the_host_untouched
 test_deploy_inputs_refuse_a_placeholder_token
 

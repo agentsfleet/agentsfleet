@@ -1,9 +1,9 @@
-"""Package verified binaries and toolbox without rebuilding their contents."""
+"""Package verified binaries, toolbox and guest set without rebuilding their contents."""
 
 from pathlib import Path
 import tarfile
 
-from .model import BINARIES, toolbox_digest
+from .model import BINARIES, GUEST_ARTIFACTS, GUEST_PROGRAMS, toolbox_digest
 
 
 def package(root: Path) -> None:
@@ -20,6 +20,10 @@ def package(root: Path) -> None:
         "erofs", "json", "json.sig", "sbom.spdx.json", "scan.json",
     )]
     files.append(root / "toolbox" / "release.pub")
+    # An artifact upload drops the executable bit, as it does for the binaries.
+    for name in GUEST_PROGRAMS:
+        (root / "toolbox" / name).chmod(0o755)
+    files += [root / "toolbox" / name for name in GUEST_ARTIFACTS + ("guest.json", "guest.json.sig")]
     with tarfile.open(archives / "agentsfleet-runner-bundle-linux-amd64.tar.gz", "w:gz") as handle:
         for path in files:
             handle.add(path, arcname=path.name, recursive=False)

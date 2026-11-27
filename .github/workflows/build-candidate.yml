@@ -114,8 +114,43 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
+  guest:
+    # What a Firecracker microVM boots from, beside the toolbox it mounts. The
+    # kernel's bytes are the compiler's output, so the builder is pinned like
+    # the toolbox's. The initramfs is built around this run's own runner, the
+    # binary the candidate ships, which `make candidate-create` then checks.
+    needs: linux
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: candidate-part-agentsfleet-runner-linux-amd64
+          path: ${{ runner.temp }}/runner
+      - uses: ./.github/actions/guest-set
+        with:
+          runner-binary: ${{ runner.temp }}/runner/bin/agentsfleet-runner-linux-amd64
+          output-dir: dist/candidate/toolbox
+      - uses: ./.github/actions/toolbox-tools
+      - uses: ./.github/actions/scan-guest
+        with:
+          output-dir: dist/candidate/toolbox
+      - name: Retain vulnerability evidence on a failed scan too
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: guest-audit
+          path: dist/candidate/toolbox/guest.scan.json
+          retention-days: 90
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: candidate-part-guest
+          path: dist/candidate/
+          if-no-files-found: error
+          retention-days: 3
+
   assemble:
-    needs: [linux, macos, toolbox]
+    needs: [linux, macos, toolbox, guest]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

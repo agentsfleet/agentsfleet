@@ -1,0 +1,18 @@
+name: Open the KVM device to the job's user
+description: A hosted runner exposes /dev/kvm to root and the kvm group only; this udev rule, the one GitHub documents for hosted runners, opens it to the job's user.
+runs:
+  using: composite
+  steps:
+    - name: Open /dev/kvm to the job's user
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
+        sudo udevadm control --reload-rules
+        sudo udevadm trigger --name-match=kvm
+        sudo udevadm settle
+        if [ ! -c /dev/kvm ] || [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; then
+          echo "::error::/dev/kvm is not a device this job's user can open; a Firecracker microVM cannot boot here"
+          ls -l /dev/kvm || true
+          exit 1
+        fi

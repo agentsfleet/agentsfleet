@@ -76,6 +76,10 @@ test-coverage-all:  ## Run coverage gates across app, website, agentsfleet, and 
 # (already root) falls back to `env`, because the runner must name a command.
 KERNEL_LANE_RUNNER ?= sudo -E
 # AFR_TOOLBOX_IMAGE reuses an image; unset, the lane builds one from the manifest.
+# AFR_GUEST_KERNEL and AFR_GUEST_INITRD name the guest kernel and initramfs the
+# lane boots (`make guest-pinned guest-set` writes both); the lane refuses to
+# run without either. The monitor and jailer are read where a host installs
+# them (install_guest in deploy/baremetal/toolbox.sh).
 # ENGINE names the engine the lane builds and holds to the conformance suite.
 ENGINE ?= firecracker
 KERNEL_LANE_HOST = $(shell cd $(RUSTD_DIR) && rustc -vV | sed -n 's/^host: //p' | tr 'a-z-' 'A-Z_')

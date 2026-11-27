@@ -312,6 +312,89 @@ test_should_refuse_a_deploy_without_its_toolbox() {
     ok "$name"
   fi
 }
+# The guest set a Firecracker microVM boots from, laid beside the toolbox as
+# every workflow lays it: each file, and a record naming its real SHA-256.
+readonly GUEST_FIXTURE_FILES=(firecracker jailer vmlinux guest.cpio)
+guest_fixture() {
+  local name artifacts='{}'
+  for name in "${GUEST_FIXTURE_FILES[@]}"; do
+    printf '%s\n' "$name" >"$toolbox_fixture/$name"
+    artifacts="$(jq -c --arg name "$name" --arg sha256 "$(sha256sum "$toolbox_fixture/$name" | cut -d' ' -f1)" \
+      '.[$name]={sha256:$sha256}' <<<"$artifacts")"
+  done
+  jq -n --argjson artifacts "$artifacts" '{artifacts:$artifacts}' >"$toolbox_fixture/guest.json"
+}
+guest_fixture_remove() {
+  local name
+  for name in "${GUEST_FIXTURE_FILES[@]}" guest.json; do rm -f "$toolbox_fixture/$name"; done
+}
+test_should_copy_the_guest_set_after_clearing_an_earlier_one() {
+  local name="test_should_copy_the_guest_set_after_clearing_an_earlier_one"
+  local output status=0 file cleared copied
+  guest_fixture
+  output="$(run_script ENV=dev bash "$DEPLOY")" || status=$?
+  guest_fixture_remove
+  if [ "$status" -ne 0 ]; then
+    bad "$name" "$output"
+    return
+  fi
+  for file in "${GUEST_FIXTURE_FILES[@]}" guest.json; do
+    if ! grep -q "cat > '/opt/agentsfleet/toolbox/$file.new'" "$calls"; then
+      bad "$name" "the guest set's $file never reached the host"
+      return
+    fi
+  done
+  cleared="$(grep -nF 'rm -f /opt/agentsfleet/toolbox/firecracker /opt/agentsfleet/toolbox/jailer /opt/agentsfleet/toolbox/vmlinux /opt/agentsfleet/toolbox/guest.cpio /opt/agentsfleet/toolbox/guest.json' "$calls" | head -1 | cut -d: -f1)"
+  copied="$(grep -nF "cat > '/opt/agentsfleet/toolbox/firecracker.new'" "$calls" | head -1 | cut -d: -f1)"
+  if [ -z "$cleared" ]; then
+    bad "$name" "an earlier deploy's guest set is never removed from the host's staging directory"
+  elif [ "$cleared" -ge "$copied" ]; then
+    bad "$name" "the staging directory is cleared after the new guest set lands, not before it"
+  else
+    ok "$name"
+  fi
+}
+test_should_refuse_a_guest_set_that_differs_from_its_record() {
+  local name="test_should_refuse_a_guest_set_that_differs_from_its_record"
+  local output status=0
+  guest_fixture
+  printf 'another release\n' >"$toolbox_fixture/guest.cpio"
+  output="$(run_script ENV=dev bash "$DEPLOY")" || status=$?
+  guest_fixture_remove
+  if [ "$status" -eq 0 ]; then
+    bad "$name" "a deploy whose initramfs differs from its record passed"
+  elif [[ "$output" != *"guest file is not the one"* ]]; then
+    bad "$name" "$output"
+  elif grep -q '/opt/agentsfleet/deploy/deploy.sh runner' "$calls"; then
+    bad "$name" "the refused deploy still reached the host's deploy"
+  else
+    ok "$name"
+  fi
+}
+test_should_load_what_a_microvm_needs_and_install_no_bubblewrap() {
+  local name="test_should_load_what_a_microvm_needs_and_install_no_bubblewrap"
+  local output status=0
+  output="$(
+    run_script \
+      ENV=dev \
+      ALLOW_VAULT_READS=1 \
+      ALLOW_RUNNER_HOST_PREPARE=1 \
+      bash "$PREPARE"
+  )" || status=$?
+  if [ "$status" -ne 0 ]; then
+    bad "$name" "$output"
+  elif grep -q 'bubblewrap' "$calls"; then
+    bad "$name" "host preparation still installs bubblewrap"
+  elif ! grep -q 'sudo modprobe -a kvm .* tun' "$calls"; then
+    bad "$name" "host preparation did not load kvm and tun"
+  elif ! grep -q "sudo tee '/etc/modules-load.d/agentsfleet-runner.conf'" "$calls"; then
+    bad "$name" "host preparation did not keep the modules loaded across boots"
+  elif ! grep -q "sudo install -d -m 755 -o 0 -g 0 '/usr/local/lib/agentsfleet'" "$calls"; then
+    bad "$name" "host preparation did not make the guest kernel's directory"
+  else
+    ok "$name"
+  fi
+}
 test_should_prepare_host_without_reading_runner_token
 test_should_require_host_prepare_approval
 test_should_refuse_host_without_required_cgroup_support
@@ -325,6 +408,9 @@ test_should_require_vault_read_approval
 test_should_copy_the_toolbox_beside_the_binary
 test_should_clear_an_earlier_toolbox_before_staging
 test_should_refuse_a_deploy_without_its_toolbox
+test_should_copy_the_guest_set_after_clearing_an_earlier_one
+test_should_refuse_a_guest_set_that_differs_from_its_record
+test_should_load_what_a_microvm_needs_and_install_no_bubblewrap
 test_should_deliver_only_public_stream_trust
 test_should_refuse_missing_or_wrong_environment_stream_inputs
 report_results

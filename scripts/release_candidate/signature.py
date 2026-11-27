@@ -1,4 +1,4 @@
-"""Verify the retained toolbox signature against the runner's embedded key."""
+"""Verify the retained toolbox and guest signatures against the runner's embedded key."""
 
 from pathlib import Path
 import re
@@ -14,9 +14,10 @@ def verify(root: Path) -> None:
     public = (root / "toolbox" / "release.pub").read_text(encoding="utf-8")
     if key is None or "".join(key[0].split()) != "".join(public.split()):
         raise ValueError("toolbox signing key differs from the key embedded in the runner")
-    subprocess.run([
-        "cosign", "verify-blob", "--insecure-ignore-tlog", "--key",
-        str(root / "toolbox" / "release.pub"), "--signature",
-        str(root / "toolbox" / f"toolbox-{digest}.json.sig"),
-        str(root / "toolbox" / f"toolbox-{digest}.json"),
-    ], check=True)
+    for signed in (f"toolbox-{digest}.json", "guest.json"):
+        subprocess.run([
+            "cosign", "verify-blob", "--insecure-ignore-tlog", "--key",
+            str(root / "toolbox" / "release.pub"), "--signature",
+            str(root / "toolbox" / f"{signed}.sig"),
+            str(root / "toolbox" / signed),
+        ], check=True)

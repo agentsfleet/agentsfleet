@@ -9,9 +9,10 @@ source "$SCRIPT_DIR/common.sh"
 HOST_DEPLOY_SOURCE_DIR="$(cd "$SCRIPT_DIR/../../../deploy/baremetal" && pwd)"
 readonly HOST_DEPLOY_SOURCE_DIR
 
-# What one toolbox set is (toolbox_set_files), as the host's deploy.sh checks
-# it. The runner admits the set's three files together and refuses runs
-# without them, so a deploy that lacks any of them stops here.
+# What one toolbox set is (toolbox_set_files) and what one guest set is
+# (guest_set_files), as the host's deploy.sh checks them. The runner admits
+# the toolbox's three files together and refuses runs without them, so a
+# deploy that lacks any of them stops here.
 # shellcheck source=../../../deploy/baremetal/toolbox.sh
 source "$HOST_DEPLOY_SOURCE_DIR/toolbox.sh"
 # Where the set sits: a directory of this name beside RUNNER_BINARY, as every
@@ -42,6 +43,20 @@ validate_inputs() {
   while IFS= read -r file; do
     TOOLBOX_PATHS+=("$file")
   done <<<"$files"
+  # The guest set a Firecracker microVM boots from travels in the same
+  # directory. A directory holding its record must hold the whole set, each
+  # file as recorded. One holding no record is left to the host's deploy.sh,
+  # which refuses it before it writes anything.
+  GUEST_PATHS=()
+  if [ -e "$RUNNER_TOOLBOX_DIR/$GUEST_RECORD" ]; then
+    files="$(guest_set_files "$RUNNER_TOOLBOX_DIR")" || {
+      echo "ERROR: the guest set under $RUNNER_TOOLBOX_DIR is incomplete or differs from its record" >&2
+      return 1
+    }
+    while IFS= read -r file; do
+      GUEST_PATHS+=("$file")
+    done <<<"$files"
+  fi
 }
 
 # Preparation creates the staging directories and hands HOST_ROOT to the
@@ -110,7 +125,7 @@ REMOTE
 )
 
 copy_deploy_files() {
-  local entry file
+  local entry file name stale=""
   for entry in "${HOST_DEPLOY_FILES[@]}"; do
     file="${entry%%:*}"
     runner_copy "$HOST_DEPLOY_SOURCE_DIR/$file" "$HOST_DEPLOY_DIR/$file" "${entry##*:}"
@@ -122,6 +137,16 @@ copy_deploy_files() {
   # the set an earlier deploy (or one cut short) left here goes first.
   runner_remote "find $HOST_TOOLBOX_DIR -maxdepth 1 -name 'toolbox-*' -type f -delete"
   for file in "${TOOLBOX_PATHS[@]}"; do
+    runner_copy "$file" "$HOST_TOOLBOX_DIR/$(basename "$file")" 644
+  done
+  # The guest set's names never change, so an earlier deploy's files go first:
+  # a kernel or initramfs left behind would otherwise be installed beside a
+  # runner it was not built with. deploy.sh gives each file its final mode.
+  for name in "${GUEST_PROGRAMS[@]}" "${GUEST_IMAGES[@]}" "$GUEST_RECORD"; do
+    stale="$stale $HOST_TOOLBOX_DIR/$name"
+  done
+  runner_remote "rm -f$stale"
+  for file in ${GUEST_PATHS[@]+"${GUEST_PATHS[@]}"}; do
     runner_copy "$file" "$HOST_TOOLBOX_DIR/$(basename "$file")" 644
   done
 }

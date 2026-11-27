@@ -1,0 +1,25 @@
+# What a Firecracker microVM boots from, pinned. Same manifest + same
+# architecture + same builder => the same bytes for the monitor, the jailer
+# and the guest kernel; the initramfs adds only the runner binary it is given.
+#
+# One `key value...` per line; `#` starts a comment. `guest.sh` reads it.
+#
+# epoch    — seconds since 1970 stamped into the kernel's banner and onto the
+#            initramfs's one file, fixed so neither varies between builds
+# kernel   — `<version> <url> <sha256>`: the kernel.org source tarball, refused
+#            unless its SHA-256 matches the one kernel.org signs in
+#            sha256sums.asc
+# config   — `<dpkg-arch> <url> <sha256>`: the configuration Firecracker's own
+#            Continuous Integration (CI) builds and boots this kernel version
+#            with; the path names the CI run's date and Firecracker commit.
+#            `guest.config` is merged over it
+# monitor  — `<dpkg-arch> <version> <url> <sha256> <member>=<name>...`: the
+#            Firecracker release archive, refused unless its SHA-256 matches
+#            the release's own `.sha256.txt`; each member is installed as
+#            <name>
+epoch 1793404800
+kernel 6.18.65 https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.18.65.tar.xz c92606f956f09dc50b5a0e2af9e86763fce27ada1647de97f8d1ac8cfc95801d
+config amd64 https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/20261125-454a9e84e707-0/x86_64/vmlinux-6.18.62.config b5a0947b980942e8e60085b979b07476b7b08fc8c9024269bdda79f4473aa8a3
+config arm64 https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/20261125-454a9e84e707-0/aarch64/vmlinux-6.18.62.config bd602729c312e909b05dd2fd20663199aced5be678c7e235666df3716d6abbe7
+monitor amd64 1.18.0 https://github.com/firecracker-microvm/firecracker/releases/download/v1.18.0/firecracker-v1.18.0-x86_64.tgz 1ac8eec866dd5eea14efecf6323e22b23eea24054545338a5b34bc5bca6623cd release-v1.18.0-x86_64/firecracker-v1.18.0-x86_64=firecracker release-v1.18.0-x86_64/jailer-v1.18.0-x86_64=jailer
+monitor arm64 1.18.0 https://github.com/firecracker-microvm/firecracker/releases/download/v1.18.0/firecracker-v1.18.0-aarch64.tgz 2a6130ff0338901ff9d7fbd73ce046c6b1c6123889dc84a34d678aa53bd0c0c2 release-v1.18.0-aarch64/firecracker-v1.18.0-aarch64=firecracker release-v1.18.0-aarch64/jailer-v1.18.0-aarch64=jailer

@@ -232,6 +232,33 @@ jobs:
             sudo modprobe erofs
           }
           grep -qw erofs /proc/filesystems
+          sudo modprobe tun
+          test -c /dev/net/tun
+      # The lane boots real microVMs: the hosted runner opens /dev/kvm to root
+      # and the kvm group only, and the guest boots the static runner built
+      # from this commit, around which the initramfs is made.
+      - uses: ./.github/actions/enable-kvm
+      - name: Compile the static runner the guest boots
+        env:
+          CANDIDATE_PACKAGE: agentsfleet_runner
+          CANDIDATE_BINARY: agentsfleet-runner
+          CANDIDATE_FILENAME: agentsfleet-runner-linux-amd64
+          CANDIDATE_ARCH: amd64
+        run: make candidate-native-linux
+      - name: Build and install the guest set
+        id: guest
+        uses: ./.github/actions/guest-set
+        with:
+          runner-binary: dist/candidate/bin/agentsfleet-runner-linux-amd64
+          output-dir: dist/guest
+          install: 'true'
+      - name: Point the lane at the guest kernel and initramfs
+        env:
+          KERNEL: ${{ steps.guest.outputs.kernel }}
+          INITRD: ${{ steps.guest.outputs.initrd }}
+        run: |
+          echo "AFR_GUEST_KERNEL=$KERNEL" >> "$GITHUB_ENV"
+          echo "AFR_GUEST_INITRD=$INITRD" >> "$GITHUB_ENV"
       - name: Build matched toolbox images for explicit qualification
         if: github.event_name == 'workflow_dispatch' && inputs.toolbox_baseline_sha != ''
         env:

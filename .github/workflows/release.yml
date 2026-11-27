@@ -72,17 +72,22 @@ jobs:
           CANDIDATE_RUN_ID: ${{ steps.candidate.outputs.run-id }}
         run: make candidate-verify-development
       - uses: ./.github/actions/toolbox-tools
-      - name: Verify the existing toolbox signature against the embedded key
+      - name: Verify the existing toolbox and guest signatures against the embedded key
         run: make candidate-verify-signature
       - uses: ./.github/actions/scan-toolbox
         with:
           report: dist/production.scan.json
+      - uses: ./.github/actions/scan-guest
+        with:
+          report: dist/production.guest.scan.json
       - name: Retain fresh vulnerability evidence on failure too
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: toolbox-production-audit
-          path: dist/production.scan.json
+          path: |
+            dist/production.scan.json
+            dist/production.guest.scan.json
           retention-days: 90
       - name: Stage unchanged release files and their evidence
         run: |
@@ -90,7 +95,7 @@ jobs:
           cp dist/candidate/archives/*.tar.gz dist/release/
           cp dist/candidate/toolbox/* dist/release/
           cp dist/candidate/candidate.json dist/candidate/development.json dist/candidate/images.json dist/release/
-          cp dist/production.scan.json dist/release/
+          cp dist/production.scan.json dist/production.guest.scan.json dist/release/
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-files
@@ -246,11 +251,19 @@ jobs:
           files: |
             dist/*.tar.gz
             dist/toolbox-*
+            dist/firecracker
+            dist/jailer
+            dist/vmlinux
+            dist/guest.cpio
+            dist/guest.json
+            dist/guest.json.sig
+            dist/guest.scan.json
             dist/release.pub
             dist/candidate.json
             dist/development.json
             dist/images.json
             dist/production.scan.json
+            dist/production.guest.scan.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

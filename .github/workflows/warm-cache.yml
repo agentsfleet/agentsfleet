@@ -92,6 +92,20 @@ jobs:
       - name: Restore or build the toolbox image
         uses: ./.github/actions/kernel-toolbox
 
+  # The guest kernel, monitor and jailer, saved under the key every job that
+  # assembles a guest set restores (.github/actions/guest-set). A pull request
+  # cannot read a cache another pull request saved, so without this each new
+  # branch built the kernel on its first run. It builds only when the pinned
+  # manifest, the configuration fragment or the builder changed.
+  warm-guest-pinned:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Restore or build the pinned guest files
+        uses: ./.github/actions/guest-set
+
   # The musl gate's fast-profile build, saved under the key test.yml restores.
   # It builds the same two binaries and stops there: the static check belongs to
   # the gate, and a second run of it on main buys nothing.

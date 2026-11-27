@@ -26,7 +26,7 @@ runs:
       id: cache
       with:
         path: ${{ inputs.output-dir }}
-        key: toolbox-amd64-v1-${{ steps.builder.outputs.fingerprint }}-${{ hashFiles('scripts/toolbox/**', 'VERSION', '.github/actions/build-toolbox/action.yml', '.github/actions/toolbox-tools/action.yml') }}
+        key: toolbox-amd64-v1-${{ steps.builder.outputs.fingerprint }}-${{ hashFiles('scripts/toolbox/build.sh', 'scripts/toolbox/manifest.txt', 'VERSION', '.github/actions/build-toolbox/action.yml', '.github/actions/toolbox-tools/action.yml') }}
 
     - name: Build from the pinned manifest on a cache miss
       if: steps.cache.outputs.cache-hit != 'true'

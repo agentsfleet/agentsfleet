@@ -13,6 +13,11 @@ BINARIES = (
     "agentsfleetd-darwin-arm64", "agentsfleet-runner-linux-amd64",
 )
 GATES = ("fly", "metal", "dashboard", "verify", "qa", "acceptance", "cli")
+# What a Firecracker microVM boots from, beside the toolbox it mounts: the
+# monitor, its jailer, the guest kernel and the initramfs around the runner.
+GUEST_PROGRAMS = ("firecracker", "jailer")
+GUEST_ARTIFACTS = GUEST_PROGRAMS + ("vmlinux", "guest.cpio")
+GUEST_RUNNER = "bin/agentsfleet-runner-linux-amd64"
 IMAGE_REPOSITORY = "ghcr.io/agentsfleet/agentsfleetd"
 
 
@@ -139,13 +144,13 @@ def candidate_names(digest: str) -> set[str]:
         "images/daemon-linux-amd64.tar", "images/daemon-linux-arm64.tar",
     } | {f"toolbox/toolbox-{digest}.{suffix}" for suffix in (
         "erofs", "json", "sbom.spdx.json", "scan.json",
-    )}
+    )} | {f"toolbox/{name}" for name in GUEST_ARTIFACTS + ("guest.json", "guest.scan.json")}
 
 
 def promoted_names(digest: str) -> set[str]:
     return candidate_names(digest) | {
-        "candidate.json", "promotion.scan.json", "images.json",
-        f"toolbox/toolbox-{digest}.json.sig", "toolbox/release.pub",
+        "candidate.json", "promotion.scan.json", "promotion.guest.scan.json", "images.json",
+        f"toolbox/toolbox-{digest}.json.sig", "toolbox/guest.json.sig", "toolbox/release.pub",
         "archives/agentsfleet-runner-bundle-linux-amd64.tar.gz",
     } | {f"archives/{name}.tar.gz" for name in BINARIES}
 
@@ -172,7 +177,23 @@ def verify_candidate(root: Path, tree: str, version: str,
             or manifest.get("length") != actual[f"toolbox/toolbox-{digest}.erofs"].size
             or manifest.get("runner_versions") != [version]):
         raise ValueError("toolbox manifest identity does not match candidate")
+    verify_guest(root, actual, version)
     return candidate
+
+
+def guest_file(raw: object) -> File:
+    data = record(raw, {"sha256", "length"})
+    return File(string(data["sha256"], r"[0-9a-f]{64}"), positive(data["length"]))
+
+
+def verify_guest(root: Path, actual: dict[str, File], version: str) -> None:
+    """The guest record names this candidate's own files and its own runner."""
+    guest = record(load(root / "toolbox" / "guest.json"))
+    artifacts = record(guest.get("artifacts"), set(GUEST_ARTIFACTS))
+    if (guest.get("arch") != "amd64" or guest.get("runner_version") != version
+            or any(guest_file(entry) != actual[f"toolbox/{name}"] for name, entry in artifacts.items())
+            or guest_file(guest.get("init")) != actual[GUEST_RUNNER]):
+        raise ValueError("guest record does not match the candidate's files or its runner")
 
 
 def create(root: Path, source: Source) -> None:

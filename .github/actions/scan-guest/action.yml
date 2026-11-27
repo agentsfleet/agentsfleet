@@ -1,0 +1,54 @@
+name: Scan an existing guest set
+description: Match the pinned Firecracker release and guest kernel against current vulnerability data; reject a fixable Critical vulnerability in the monitor. Run toolbox-tools first.
+inputs:
+  output-dir:
+    description: Directory containing the guest set and its record.
+    default: dist/candidate/toolbox
+  report:
+    description: Optional destination for a fresh promotion report; preserves the PR report.
+    default: ''
+runs:
+  using: composite
+  steps:
+    # The set holds a kernel image and static binaries: no package database
+    # for an SBOM to read, so each is matched by the version its record pins.
+    #
+    # The monitor is held to the toolbox's gate. The kernel's report is
+    # evidence, and the step warns without failing: a version match lists
+    # every CVE whose range covers that version, whatever this configuration
+    # builds, so the toolbox's threshold is not yet a ruling on it. The
+    # warning names what a newer release on the pinned line fixes.
+    - name: Scan with current vulnerability data
+      shell: bash
+      env:
+        OUTPUT_DIR: ${{ inputs.output-dir }}
+        REPORT: ${{ inputs.report }}
+        GRYPE_DB_CACHE_DIR: ${{ runner.temp }}/toolbox-grype-db
+      run: |
+        set -euo pipefail
+        source deploy/baremetal/toolbox.sh
+        guest_set_files "$OUTPUT_DIR" >/dev/null
+        record="$OUTPUT_DIR/$GUEST_RECORD"
+        report="${REPORT:-$OUTPUT_DIR/guest.scan.json}"
+        kernel="$(jq -er '.kernel.version' "$record")"
+        monitor="$(jq -er '.monitor.version' "$record")"
+        [[ "$kernel" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$monitor" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+        scratch="$(mktemp -d "$RUNNER_TEMP/guest-scan.XXXXXX")"
+        trap 'rm -rf "$scratch"' EXIT
+        grype db update
+        status=0
+        GRYPE_DB_AUTO_UPDATE=false grype "cpe:2.3:a:amazon:firecracker:${monitor}:*:*:*:*:*:*:*" \
+          --only-fixed --fail-on critical -o table -o "json=$scratch/monitor.json" || status=$?
+        GRYPE_DB_AUTO_UPDATE=false grype "cpe:2.3:o:linux:linux_kernel:${kernel}:*:*:*:*:*:*:*" \
+          --only-fixed -o "json=$scratch/kernel.json" >/dev/null
+        jq -n --slurpfile monitor "$scratch/monitor.json" --slurpfile kernel "$scratch/kernel.json" \
+          '{monitor:$monitor[0],kernel:$kernel[0]}' > "$report"
+        line="${kernel%.*}."
+        behind="$(jq -r --arg line "$line" '[.kernel.matches[].vulnerability
+          | select(.severity == "Critical" and any(.fix.versions[]; startswith($line))) | .id] | unique | join(" ")' "$report")"
+        total="$(jq -r '[.kernel.matches[].vulnerability | select(.severity == "Critical")] | length' "$report")"
+        echo "guest kernel $kernel: $total Critical findings by version match; a newer ${line}x release fixes: ${behind:-none}"
+        if [ -n "$behind" ]; then
+          echo "::warning::the pinned guest kernel $kernel is behind Critical fixes on its own line: $behind"
+        fi
+        exit "$status"

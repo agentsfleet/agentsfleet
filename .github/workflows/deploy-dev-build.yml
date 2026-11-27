@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       verified: ${{ steps.verify.outcome }}
-      toolbox: ${{ steps.scan.outcome == 'success' && steps.sign.outcome || steps.scan.outcome }}
+      toolbox: ${{ steps.scan.outcome != 'success' && steps.scan.outcome || steps.scan-guest.outcome != 'success' && steps.scan-guest.outcome || steps.sign.outcome }}
       ghcr: ${{ steps.publish.outcome }}
       image: ${{ steps.publish.outputs.image }}
       build-commit: ${{ steps.verify.outputs.build-commit }}
@@ -60,19 +60,25 @@ jobs:
         id: scan
         with:
           report: dist/candidate/promotion.scan.json
+      - uses: ./.github/actions/scan-guest
+        id: scan-guest
+        with:
+          report: dist/candidate/promotion.guest.scan.json
       - name: Retain fresh vulnerability evidence on failure too
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: toolbox-promotion-audit
-          path: dist/candidate/promotion.scan.json
+          path: |
+            dist/candidate/promotion.scan.json
+            dist/candidate/promotion.guest.scan.json
           retention-days: 90
       - uses: ./.github/actions/sign-toolbox
         id: sign
         with:
           op-token: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           vault: ${{ vars.VAULT_PROD }}
-      - name: Package the existing binaries and signed toolbox
+      - name: Package the existing binaries, signed toolbox and guest set
         run: make candidate-package
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Authenticate to the existing registry

@@ -12,7 +12,8 @@ from unittest.mock import patch
 from release_candidate.archive import package
 from release_candidate.github import select, verify_rollout, verify_source
 from release_candidate.model import (
-    BINARIES, Candidate, Development, GATES, IMAGE_REPOSITORY, Source, create,
+    BINARIES, Candidate, Development, GATES, GUEST_ARTIFACTS, GUEST_PROGRAMS, GUEST_RUNNER,
+    IMAGE_REPOSITORY, Source, create,
     inventory, load, safe_path, save, verify_candidate, verify_development,
 )
 from release_candidate.registry import promote_runtime, publish_runtime
@@ -67,14 +68,28 @@ def candidate_fixture(root: Path) -> str:
     })
     for suffix in ("sbom.spdx.json", "scan.json"):
         save(root / "toolbox" / f"toolbox-{digest}.{suffix}", {"report": suffix})
+    for name in GUEST_ARTIFACTS:
+        (root / "toolbox" / name).write_bytes(f"pinned {name}".encode())
+    save(root / "toolbox" / "guest.json", {
+        "arch": "amd64", "runner_version": SOURCE.version, "init": measured(root / GUEST_RUNNER),
+        "artifacts": {name: measured(root / "toolbox" / name) for name in GUEST_ARTIFACTS},
+    })
+    save(root / "toolbox" / "guest.scan.json", {"report": "guest"})
     create(root, SOURCE)
     return digest
 
 
+def measured(path: Path) -> dict:
+    contents = path.read_bytes()
+    return {"sha256": hashlib.sha256(contents).hexdigest(), "length": len(contents)}
+
+
 def promote_fixture(root: Path, digest: str) -> Development:
     (root / "toolbox" / f"toolbox-{digest}.json.sig").write_text("signature")
+    (root / "toolbox" / "guest.json.sig").write_text("signature")
     (root / "toolbox" / "release.pub").write_text("public key")
     save(root / "promotion.scan.json", {"matches": []})
+    save(root / "promotion.guest.scan.json", {"matches": []})
     package(root)
     save(root / "images.json", {"image": IMAGE})
     receipt = Development(REPOSITORY, TREE, DEPLOY_SHA, 200, 1, IMAGE,
@@ -151,6 +166,33 @@ class PayloadTests(unittest.TestCase):
         # Even a self-consistent candidate receipt cannot override this identity.
         with self.assertRaisesRegex(ValueError, "toolbox manifest identity"):
             create(self.root, SOURCE)
+
+    def test_guest_record_must_name_the_candidate_files_and_runner(self) -> None:
+        record = self.root / "toolbox" / "guest.json"
+        original = load(record)
+        mutations = (
+            {"runner_version": "0.70.0"}, {"arch": "arm64"},
+            {"init": measured(self.root / "bin" / BINARIES[0])},
+            {"artifacts": original["artifacts"] | {"guest.cpio": original["artifacts"]["vmlinux"]}},
+            {"artifacts": {name: original["artifacts"][name] for name in GUEST_PROGRAMS}},
+        )
+        for mutation in mutations:
+            save(record, original | mutation)
+            # Even a self-consistent candidate receipt cannot override the record.
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                create(self.root, SOURCE)
+        save(record, original)
+        (self.root / "toolbox" / "guest.cpio").write_bytes(b"an initramfs around another runner")
+        with self.assertRaisesRegex(ValueError, "guest record"):
+            create(self.root, SOURCE)
+
+    def test_runner_bundle_carries_the_guest_set_with_executable_programs(self) -> None:
+        promote_fixture(self.root, self.digest)
+        with tarfile.open(self.root / "archives" / "agentsfleet-runner-bundle-linux-amd64.tar.gz") as handle:
+            members = {member.name: member for member in handle.getmembers()}
+        self.assertLessEqual(set(GUEST_ARTIFACTS) | {"guest.json", "guest.json.sig"}, members.keys())
+        for name in GUEST_PROGRAMS:
+            self.assertEqual(members[name].mode, 0o755)
 
     def test_qualified_payload_and_archive_preserve_original_bytes(self) -> None:
         promote_fixture(self.root, self.digest)

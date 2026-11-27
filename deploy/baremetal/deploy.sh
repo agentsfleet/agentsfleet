@@ -17,6 +17,11 @@
 # refuses every run, so a deploy that lacks one stops before it writes
 # anything to the host, as does every other refusal (see main).
 #
+# The guest set travels in the toolbox directory and lands where the
+# Firecracker engine boots from (toolbox.sh): the monitor, its jailer, the
+# guest kernel and the initramfs built around this release's runner. A deploy
+# whose guest set is incomplete, or differs from its record, stops the same way.
+#
 # At most one deploy runs per host: main() takes a non-blocking flock and exits
 # non-zero when another deploy already holds it. Sourcing this file runs no deploy
 # — deploy_test.sh relies on that to exercise the functions directly.
@@ -248,6 +253,8 @@ check_deploy_inputs() {
   [[ -f "$binary" ]] || die "runner binary not found: $binary"
   toolbox_set_files "$toolbox_dir" >/dev/null \
     || die "the toolbox under $toolbox_dir is not one complete set"
+  guest_set_files "$toolbox_dir" >/dev/null \
+    || die "the guest set under $toolbox_dir is not complete; no microVM would boot"
   check_env_file "$env_file"
   [[ -s "${4:-$HOST_STREAM_CA_FILE}" ]] || die "missing runner stream public CA certificate"
   [[ -s "$(dirname "${BASH_SOURCE[0]}")/agentsfleet-runner.toml" ]] || die "missing runner TOML profile"
@@ -263,6 +270,16 @@ stage_toolbox() {
   log "Staged toolbox → ${incoming}"
 }
 
+# Installs the guest set under `src` where the Firecracker engine boots each
+# microVM from: the monitor and jailer, the guest kernel, and the initramfs
+# built around this release's runner.
+stage_guest() {
+  local src="$1"
+  install_guest "$src" \
+    || die "could not install the guest set under $src"
+  log "Installed guest set → ${GUEST_PROGRAM_DIR_DEFAULT}, ${GUEST_IMAGE_DIR_DEFAULT}"
+}
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 main() {
@@ -271,6 +288,7 @@ main() {
     echo "  version:     GitHub release tag (e.g. v0.1.0) or dev SHA (e.g. dev-abc1234)"
     echo "  binary-path: local path to the pre-staged binary; with it, toolbox-dir is required"
     echo "  toolbox-dir: local directory holding toolbox-<sha256>.{erofs,json,json.sig}"
+    echo "               and the guest set: firecracker, jailer, vmlinux, guest.cpio, guest.json"
     echo "  Both omitted: the release's offline bundle is downloaded from GitHub Releases."
     exit 1
   fi
@@ -303,6 +321,7 @@ main() {
   check_deploy_inputs "$binary" "$toolbox_dir"
   install_binary "$binary"
   stage_toolbox "$toolbox_dir"
+  stage_guest "$toolbox_dir"
   sync_systemd_unit
   sync_env
   restart_services "$SERVICE_NAME" "$DRAIN_TIMEOUT_SECONDS"

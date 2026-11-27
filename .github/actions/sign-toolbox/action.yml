@@ -1,5 +1,5 @@
-name: Sign an existing toolbox
-description: Sign an already verified toolbox with the key embedded in its runner; never build an image.
+name: Sign an existing toolbox and guest set
+description: Sign an already verified toolbox manifest and guest record with the key embedded in their runner; never build either.
 inputs:
   op-token:
     description: 1Password service-account token; trusted workflows only.
@@ -11,7 +11,7 @@ inputs:
     description: Release key item.
     default: toolbox-release-key
   output-dir:
-    description: Directory containing the verified unsigned toolbox.
+    description: Directory containing the verified unsigned toolbox and the guest set beside it.
     default: dist/candidate/toolbox
 runs:
   using: composite
@@ -44,12 +44,12 @@ runs:
     # `--output-signature`; the two `=false` flags keep the bare signature file
     # the runner verifies. The key's first line in manifest/mod.rs carries the
     # `pub const … = "` prefix, which `sub` strips before the comparison.
-    - name: Sign the release manifest with the key the runner is built with
+    - name: Sign the release manifest and the guest record with the key the runner is built with
       shell: bash
       env:
         OUTPUT_DIR: ${{ inputs.output-dir }}
         DIGEST: ${{ steps.identity.outputs.digest }}
-        RUNNER_KEY_SOURCE: rustd/crates/runner/afr_sandbox/src/toolbox/manifest/mod.rs
+        RUNNER_KEY_SOURCE: rustd/crates/runner/afr_image/src/toolbox/manifest/mod.rs
       run: |
         set -euo pipefail
         out="$PWD/$OUTPUT_DIR"
@@ -64,13 +64,20 @@ runs:
           echo "✗ the signing key's public half is not TOOLBOX_RELEASE_PUBLIC_KEY in $RUNNER_KEY_SOURCE; the runner would refuse this toolbox" >&2
           exit 1
         fi
-        cosign sign-blob --yes --tlog-upload=false \
-          --new-bundle-format=false --use-signing-config=false \
-          --key env://COSIGN_PRIVATE_KEY \
-          --output-signature "$out/toolbox-$DIGEST.json.sig" \
-          "$out/toolbox-$DIGEST.json"
-        cosign verify-blob --insecure-ignore-tlog \
-          --key "$out/release.pub" \
-          --signature "$out/toolbox-$DIGEST.json.sig" \
-          "$out/toolbox-$DIGEST.json"
-        echo "✓ toolbox-$DIGEST.json signed; signature verifies against the runner's key"
+        # The guest record names the SHA-256 of the monitor, the jailer, the
+        # guest kernel and the initramfs; the set's own check reads each file
+        # back against it before the record is signed.
+        source deploy/baremetal/toolbox.sh
+        guest_set_files "$out" >/dev/null
+        for signed in "toolbox-$DIGEST.json" "$GUEST_RECORD"; do
+          cosign sign-blob --yes --tlog-upload=false \
+            --new-bundle-format=false --use-signing-config=false \
+            --key env://COSIGN_PRIVATE_KEY \
+            --output-signature "$out/$signed.sig" \
+            "$out/$signed"
+          cosign verify-blob --insecure-ignore-tlog \
+            --key "$out/release.pub" \
+            --signature "$out/$signed.sig" \
+            "$out/$signed"
+          echo "✓ $signed signed; signature verifies against the runner's key"
+        done
