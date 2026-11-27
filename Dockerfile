@@ -9,9 +9,9 @@
 #
 # The image carries the daemon and what the daemon needs, which is a CA bundle
 # and a clock. `static-debian13` is 7MB and provides both. The base it replaces
-# was 275MB, measured, because it also carried bubblewrap, git, openssl and
-# wget — none of which this program calls. bubblewrap is the RUNNER's sandbox
-# and runs on baremetal worker hosts from
+# was 275MB, measured, because it also carried a sandbox program, git, openssl
+# and wget — none of which this program calls. Sandboxes are the RUNNER's: it
+# boots a Firecracker microVM per run on baremetal worker hosts, from
 # deploy/baremetal/agentsfleet-runner.service; the other three were carried for
 # reasons that no longer exist.
 #

@@ -285,8 +285,9 @@ describe("runner enrollment", () => {
       expect(await Bun.file(file).exists()).toBe(false);
       if (method === "GET") return { items: [], next_cursor: null };
       expect(await Bun.file(`${file}.enrolling`).exists()).toBe(true);
-      // The task goal check runs only for a runner that names a decision model.
-      expect(body).toMatchObject({ assigned_policy: { decision_model_id: DECISION_ID } });
+      // The task goal check runs only for a runner that names a decision model,
+      // and the daemon refuses any tier but the engine's the runner boots.
+      expect(body).toMatchObject({ assigned_policy: { decision_model_id: DECISION_ID, sandbox_tier: "firecracker", network_policy: "allow_all" } });
       writes++;
       return registration;
     });

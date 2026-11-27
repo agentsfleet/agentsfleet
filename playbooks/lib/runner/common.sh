@@ -22,10 +22,12 @@ readonly REQUIRED_CGROUP_CONTROLLERS="cpu io memory pids"
 # reads the setting and reports egress unenforced without it.
 readonly IPV4_FORWARD_PROC="/proc/sys/net/ipv4/ip_forward"
 readonly IPV4_FORWARD_SYSCTL_FILE="/etc/sysctl.d/60-agentsfleet-runner.conf"
-# What a runner host must have on PATH: bubblewrap for each run's sandbox, nft
-# and ip for its egress boundary, and the curl and jq the checks in this
-# directory run on the host. Host preparation installs them.
-readonly RUNNER_HOST_TOOLS="bwrap nft ip curl jq"
+# What a runner host must have on PATH: nft, which the runner collector's unit
+# loads its table with, ip, and the curl and jq the checks in this directory
+# run on the host. Host preparation installs them. Firecracker, its jailer and
+# the guest files are no PATH tools: the engine reads each at a fixed path, and
+# verification probes those (`egress_probe_remote`).
+readonly RUNNER_HOST_TOOLS="nft ip curl jq"
 # Debian omits sbin from non-interactive Tailscale SSH sessions even though
 # nftables installs nft there. Expands on the host, not here.
 # shellcheck disable=SC2016

@@ -172,11 +172,11 @@ jobs:
         # a diagnostic that fails exactly when it is needed.
         run: docker compose logs --tail 200 postgres ant bee elk
 
-  # The kernel lane, as root on the hosted runner, which is a virtual machine
-  # of its own: no nested virtualization is needed, only what a runner host is
-  # prepared with. It is the only run that reaches the Linux-only sandbox
-  # lines (egress, cgroups, mounts), so its report joins the shards' in the
-  # merge below. `make test-coverage-runner-kernel` runs the lane under the
+  # The kernel lane, as root on the hosted runner, prepared as a runner host
+  # is. It boots Firecracker microVMs, so it needs the runner's KVM device,
+  # which root opens as it is. It is the only run that reaches the Linux-only
+  # sandbox lines (egress, cgroups, mounts), so its report joins the shards' in
+  # the merge below. `make test-coverage-runner-kernel` runs the lane under the
   # instrument and fails, never skips, when the kernel lacks a mechanism.
   kernel:
     name: coverage (kernel)
@@ -204,8 +204,8 @@ jobs:
       - uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
         with:
           tool: cargo-llvm-cov
-      - name: Install the toolbox builder and bubblewrap
-        run: bash .github/actions/build-toolbox/install-tools.sh bubblewrap
+      - name: Install the toolbox builder
+        run: bash .github/actions/build-toolbox/install-tools.sh
       # Restored from the cache warm-cache.yml saves on main, or built once and
       # saved, so most runs never download from snapshot.debian.org. Rebuilding
       # it on every run is what failed this job. A dispatched qualification run
@@ -219,16 +219,13 @@ jobs:
         run: echo "AFR_TOOLBOX_IMAGE=$IMAGE" >> "$GITHUB_ENV"
       # The host the runner playbook prepares: IPv4 forwarding on, and no
       # forward chain that drops by policy (Docker's `FORWARD` chain does, and
-      # the runner's probe refuses such a host). Ubuntu's AppArmor denies
-      # capabilities inside an unprivileged user namespace, and bubblewrap
-      # starts as the sandbox's own user. The toolbox is an EROFS image, and
-      # the probe reads /proc/filesystems, which lists erofs only once its
+      # the runner's probe refuses such a host). The toolbox is an EROFS image,
+      # and the probe reads /proc/filesystems, which lists erofs only once its
       # module is loaded; the hosted kernel may ship it in modules-extra.
       - name: Prepare the host as a runner host
         run: |
           sudo sysctl -w net.ipv4.ip_forward=1
           sudo iptables -P FORWARD ACCEPT
-          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           sudo modprobe erofs || {
             sudo apt-get update -q
             sudo apt-get install -y "linux-modules-extra-$(uname -r)"

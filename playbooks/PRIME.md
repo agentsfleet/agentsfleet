@@ -102,9 +102,15 @@ Fix the secret or catalogue before retrying a failed model selection.
 
 ## Enroll a runner
 
-1. On the Debian 13 runner, install `bubblewrap nftables iproute2 ca-certificates git openssl curl jq`. Prepare cgroup v2 with the `cpu`, `io`, `memory` and `pids` controllers, EROFS, user namespaces and the networking required by the selected policy.
+1. On the Debian 13 runner, install `nftables iproute2 ca-certificates git openssl curl jq`. Prepare cgroup v2 with the `cpu`, `io`, `memory` and `pids` controllers, EROFS and the networking required by the selected policy.
+
+   The runner boots a Firecracker virtual machine for each run. The host therefore needs a Kernel-based Virtual Machine (KVM) device at `/dev/kvm` that root can open for reading and writing.
+
+   Put Firecracker's `firecracker` and `jailer` programs in `/usr/local/bin/`. Put the guest kernel at `/usr/local/lib/agentsfleet/vmlinux` and the guest's initial file system at `/usr/local/lib/agentsfleet/guest.cpio`.
 
    Verify the runner archive digest against the trusted release's `candidate.json`. Separately verify the signed toolbox manifest and its image digest. Put the runner at `/usr/local/bin/agentsfleet-runner` and run `agentsfleet-runner probe` on that host.
+
+   The probe exits zero only on a host Firecracker can boot on. Its output reads `"kvm": "usable"` there.
 2. Check `agentsfleet platform runners list --json` for the host's stable private DNS name. If absent, register it. Set `AF_RUNNER_POLICY` to the path of the reviewed runner policy JSON file.
 
    Set `AF_RUNNER_TOKEN_FILE` to a new path in a private directory.

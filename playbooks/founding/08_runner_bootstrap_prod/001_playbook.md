@@ -64,7 +64,7 @@ Preparation matches [the development step](../05_runner_bootstrap_dev/001_playbo
 ### 3. Human creates the runner tokens
 
 1. Open `https://app.agentsfleet.net` → **Avatar → Platform → Runners** and add one runner per inventory entry.
-2. Set **Host identifier** to that host's `tailscale-hostname` and select **Landlock** under **Isolation**.
+2. Set **Host identifier** to that host's `tailscale-hostname` and select the `firecracker` tier under **Isolation**.
 3. Store each once-revealed `agt_r` token in the matching item's `runner-token` field.
 
 Never store a placeholder token. If a value is lost, revoke that runner and add it again.

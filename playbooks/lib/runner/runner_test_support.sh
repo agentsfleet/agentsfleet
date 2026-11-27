@@ -108,11 +108,14 @@ case "$command" in
   *"openssl s_client -brief"*)
     printf '%s\n' 'CONNECTION ESTABLISHED' 'Protocol version: TLSv1.3' 'Verification: OK' 'Negotiated TLS1.3 group: X25519MLKEM768'
     ;;
-  *"BWRAP_VERSION="*)
+  *"FIRECRACKER_VERSION="*)
     printf '%s\n' \
-      'BWRAP_VERSION=bwrap 0.11.0' \
-      'BWRAP_INFO_FD=1' \
-      'BWRAP_BLOCK_FD=1' \
+      'FIRECRACKER_VERSION=Firecracker v1.18.0' \
+      'JAILER_VERSION=Jailer v1.18.0' \
+      'GUEST_KERNEL=1' \
+      'GUEST_INITRD=1' \
+      'KVM_DEVICE=1' \
+      'TUN_DEVICE=1' \
       'NFT_VERSION=nftables v1.0' \
       'IP_VERSION=iproute2-6.0'
     ;;

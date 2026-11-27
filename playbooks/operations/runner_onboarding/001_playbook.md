@@ -48,18 +48,33 @@ Indy creates external state, the agent prepares the host, and the deployment pip
    ```
 
    Preparation checks the `cpu`, `io`, `memory` and `pids` cgroup v2 controllers, installs packages, enables IPv4 forwarding and creates directories.
+   It loads the Kernel-based Virtual Machine (KVM) and tap modules, and fails on a host without hardware virtualization.
    It installs no binary, writes no token and starts no service.
+
+   The runner boots a Firecracker virtual machine for each run, so the agent confirms root can open the KVM device:
+
+   ```bash
+   tailscale ssh <DEPLOY_USER>@<TAILSCALE_HOSTNAME> 'sudo sh -c "exec 3<>/dev/kvm" && echo usable'
+   ```
+
+   ```text
+   usable
+   ```
+
+   `<DEPLOY_USER>` and `<TAILSCALE_HOSTNAME>` are the item's `deploy-user` and `tailscale-hostname`.
+   Any other output means the runner would exit at boot naming `kvm`; fix the host before enrolling it.
 2. The agent enrolls the host with the command-line interface (CLI). The host ID is the item's exact `tailscale-hostname`, and the token lands in a new private file.
    `DECISION_MODEL_ID` is the `id` of the `typesafe` row in `agentsfleet platform models list`; a durable task's goal check runs on that model:
 
    ```bash
-   printf '{"durable_tasks_enabled":true,"sandbox_tier":"landlock_full","network_policy":"allow_all","registry_allowlist":[],"worker_count":4,"extra_binds":[],"decision_model_id":"%s"}' \
+   printf '{"durable_tasks_enabled":true,"sandbox_tier":"firecracker","network_policy":"allow_all","registry_allowlist":[],"worker_count":4,"extra_binds":[],"decision_model_id":"%s"}' \
      "$DECISION_MODEL_ID" > policy.json
    agentsfleet platform runners register --host-id "$(op read "op://$VAULT/<RUNNER_ITEM>/tailscale-hostname")" \
      --policy policy.json --labels dev --token-out runner-token
    ```
 
    Use `--labels prod` for production.
+   Under the `firecracker` tier, the daemon marks the runner degraded unless it reports the Firecracker engine.
 3. The agent stores the token in the item's `runner-token` field only, through a template file, then deletes both files.
    Use `op item get --format json`, set that one field, `op item edit --template <file>`, and confirm every other field is unchanged.
    If the token is lost, run `agentsfleet platform runners rotate-token <RUNNER_ID> --token-out runner-token`, then store the new file the same way.
@@ -74,3 +89,4 @@ Indy creates external state, the agent prepares the host, and the deployment pip
 - The runner deployment and verification jobs are green.
 - The host gate confirms `cpu`, `io`, `memory` and `pids` delegation.
 - `agentsfleet platform runners list` shows the runner `online`.
+- `agentsfleet platform runners show <RUNNER_ID>` shows the engine `firecracker`, the isolation tier `firecracker` and the health `Ready`.

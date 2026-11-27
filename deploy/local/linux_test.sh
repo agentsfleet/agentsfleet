@@ -212,7 +212,62 @@ acceptance_adapter
 ''')
         self.assertEqual(result.returncode, 1)
         self.assertIn('requires Linux', result.stderr)
+        self.assertIn('/dev/kvm', result.stderr)
         self.assertNotIn('unexpected docker call', result.stdout)
+
+    def test_a_machine_that_cannot_boot_firecracker_refuses_before_any_docker_call(self):
+        present = self.root / 'present'
+        present.write_text('fixture')
+        absent = str(self.root / 'absent')
+        body = '''
+source "$DEV_ROOT/deploy/local/linux.sh"
+uname() { printf 'Linux\n'; }
+docker() { printf 'unexpected docker call\n'; exit 99; }
+dev_fail() { printf '%s\n' "$*" >&2; exit 1; }
+acceptance_engine_devices=("$TEST_DEVICE")
+acceptance_engine_files=("$TEST_FILE")
+acceptance_adapter
+'''
+        # A regular file is not a device, and a device is not an installed file.
+        for device, file, refusal in ((absent, str(present), f'requires the device {absent}'),
+                                      (str(present), str(present), f'requires the device {present}'),
+                                      ('/dev/null', absent, f'requires {absent}'),
+                                      ('/dev/null', '/dev/null', 'requires /dev/null')):
+            result = self.shell(body, TEST_DEVICE=device, TEST_FILE=file)
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertIn(refusal, result.stderr)
+            self.assertIn('Firecracker', result.stderr)
+            self.assertNotIn('unexpected docker call', result.stdout)
+
+    def test_the_runner_container_borrows_the_devices_and_the_engine_files(self):
+        state = self.root / 'state'
+        state.mkdir()
+        created = self.root / 'created.json'
+        result = self.shell('''
+source "$DEV_ROOT/deploy/local/linux.sh"
+acceptance_runner_container=acceptance-fixture
+acceptance_runner_image=runner-image
+ACCEPTANCE_LOCAL_TOOLBOX_DIR="$TEST_STATE"
+LOCAL_ACCEPTANCE_CA="$TEST_STATE/ca.crt"
+docker() {
+  case "$1" in
+    container) return 1 ;;
+    create) python3 -c 'import json,sys; print(json.dumps(sys.argv[1:]))' "$@" >"$TEST_CREATED"; printf 'created-fixture\\n' ;;
+  esac
+}
+start_runner
+printf '%s\\n' "${acceptance_engine_files[@]}"
+''', LOCAL_ACCEPTANCE_STATE=str(state), TEST_STATE=str(state), TEST_CREATED=str(created))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        args = json.loads(created.read_text())
+        # Privileged is what hands the container /dev/kvm and /dev/net/tun.
+        self.assertIn('--privileged', args)
+        self.assertIn('--cgroupns=private', args)
+        files = result.stdout.split()
+        self.assertEqual(len(files), 4)
+        for file in files:
+            mount = f'type=bind,src={file},dst={file},readonly'
+            self.assertEqual(args[args.index(mount) - 1], '--mount')
 
 unittest.main(argv=['acceptance-linux'])
 PY

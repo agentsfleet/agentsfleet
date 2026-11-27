@@ -62,7 +62,7 @@ It installs no runner binary, writes no token and starts no service.
 ### 4. Human creates the runner token
 
 1. Open `https://app-dev.agentsfleet.net` → **Avatar → Platform → Runners → Add runner**.
-2. Enter the Tailscale hostname as **Host identifier** and select **Landlock** under **Isolation**.
+2. Enter the Tailscale hostname as **Host identifier** and select the `firecracker` tier under **Isolation**.
 3. Save the once-revealed `agt_r` token straight into the host item's concealed `runner-token` field.
 
 Never store a placeholder token. If the value is lost, revoke the runner and add it again.

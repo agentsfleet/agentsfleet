@@ -23,4 +23,4 @@ for image in /toolbox/toolbox-*.erofs; do
   done
 done
 cat /etc/ssl/certs/ca-certificates.crt /acceptance-ca.crt >"$storage/ca.pem"
-exec /usr/local/bin/agentsfleet-runner run
+exec /usr/local/bin/agentsfleet-runner run --engine firecracker

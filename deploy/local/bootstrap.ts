@@ -14,6 +14,7 @@ const PLATFORM_SCOPES = ["runner:register", "runner:read", "model:read", "model:
 const PLATFORM_SESSION_ATTEMPTS = 2;
 const RUNNERS = "/v1/admin/runners";
 const FLEET_RUNNERS = "/v1/admin/runners";
+const RUNNER_TIER = "firecracker";
 const MODELS = "/v1/admin/models";
 const DECISION_PROVIDER = "typesafe";
 // TypeSafe answers `jev-latest` with the version that served it, and only an
@@ -294,8 +295,10 @@ export async function enroll(request: Request, base: string, namespace: string, 
   const host = `local-acceptance-${namespace}`;
   await requireFreshHost(request, host);
   await writeFile(pending, host, {flag: EXCLUSIVE_CREATE, mode: 0o600});
+  // The acceptance runner boots Firecracker (`deploy/local/linux-runner.sh`), and
+  // the daemon holds a tier to the engine its runner reports.
   const registration = await request(HTTP_METHOD.post, RUNNERS, { host_id: host, labels: [],
-    assigned_policy: { durable_tasks_enabled: true, decision_model_id: decisionModelId, sandbox_tier: "container_nested",
+    assigned_policy: { durable_tasks_enabled: true, decision_model_id: decisionModelId, sandbox_tier: RUNNER_TIER,
       network_policy: "allow_all", registry_allowlist: [], worker_count: 4, extra_binds: [] } });
   registrationSchema.parse(registration);
   await writeFile(temporary, `${JSON.stringify(registration)}\n`, { flag: EXCLUSIVE_CREATE, mode: 0o600 });

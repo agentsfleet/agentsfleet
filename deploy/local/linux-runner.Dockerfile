@@ -3,5 +3,5 @@ FROM mirror.gcr.io/library/debian:trixie-slim@sha256:f6b08b09a05725f9431502d3b57
 
 RUN set -eu; \
     apt-get update && apt-get install --yes --no-install-recommends \
-      bubblewrap ca-certificates e2fsprogs iproute2 nftables util-linux \
+      ca-certificates e2fsprogs iproute2 nftables util-linux \
     && update-ca-certificates && rm -rf /var/lib/apt/lists/*

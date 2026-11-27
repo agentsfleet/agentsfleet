@@ -1,7 +1,14 @@
 #!/usr/bin/env bash
-# Measure cold first use with the toolbox as bubblewrap's read-only root.
+# Measure cold first use of the toolbox image's tools, read from its mount.
 # Usage: sudo bash measure_first_use.sh IMAGE OUTPUT.json [RUNS [BASELINE.json]]
 # Each command gets a fresh writable workspace and a cleared host page cache.
+#
+# The figures compare two images on one host: what each tool's first start
+# costs to read cold from each. A step runs on this host's kernel, as an
+# unprivileged user with the image as its read-only root. Inside a Firecracker
+# microVM, the same tools' first use is the kernel lane's
+# `test_toolbox_carries_the_tools` and its start budgets
+# (rustd/crates/runner/main/examples/kernel_lane).
 set -euo pipefail
 
 readonly MIN_RUNS=20
@@ -19,7 +26,7 @@ if [ "$(uname -s)" != Linux ] || [ "$(id -u)" -ne 0 ]; then
   echo "measure_first_use.sh: needs Linux root to mount EROFS and drop caches" >&2
   exit 1
 fi
-for command in mount mountpoint umount bwrap python3; do
+for command in mount mountpoint umount setpriv unshare python3; do
   command -v "$command" >/dev/null
 done
 [ -f "$IMAGE" ]
@@ -81,6 +88,27 @@ GIT_COMMIT = (
     "git -c user.name=agentsfleet -c user.email=noreply@agentsfleet.net "
     "commit -q -m one"
 )
+# What a step's command sees, and where every program before it is found: the
+# sampler's own PATH never reaches a step.
+STEP_ENVIRONMENT = ["PATH=/usr/local/bin:/usr/bin:/bin", "HOME=/workspace", "LANG=C.UTF-8"]
+STEP_USER = "65534"
+# Run in mount, process, network and IPC namespaces of the step's own, so every
+# mount here ends with the step: the fresh workspace over the image's
+# /workspace and /tmp, then the command as the unprivileged user, rooted in
+# the image. The shell stays root and waits, so a kill of the namespace's
+# first process ends the command with it.
+ENTER_IMAGE = """
+root="$1" workspace="$2" user="$3"
+shift 4
+mount --bind "$workspace" "$root/workspace"
+mount --bind "$workspace/tmp" "$root/tmp"
+mount -t proc -o nosuid,nodev,noexec proc "$root/proc"
+mount --rbind /dev "$root/dev"
+mount -t tmpfs -o nosuid,nodev tmpfs "$root/run"
+status=0
+unshare --root="$root" --wd=/workspace --setuid="$user" --setgid="$user" -- "$@" || status=$?
+exit "$status"
+"""
 STEPS = {
     "node_test": ["node", "--test", "/workspace/sum.test.js"],
     "python_import": ["python3", "-c", "import hashlib, json, pathlib, ssl"],
@@ -128,21 +156,20 @@ def measure(command):
     (workspace / "tmp").mkdir(mode=0o777)
     (workspace / "tmp").chmod(0o777)
     (workspace / "sum.test.js").write_text(NODE_TEST)
-    sandbox = [
-        "bwrap", "--unshare-all", "--die-with-parent", "--new-session",
-        "--cap-drop", "ALL", "--uid", "65534", "--gid", "65534",
-        "--ro-bind", str(work / "root"), "/",
-        "--bind", str(workspace), "/workspace",
-        "--bind", str(workspace / "tmp"), "/tmp",
-        "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/run",
-        "--clearenv", "--setenv", "PATH", "/usr/local/bin:/usr/bin:/bin",
-        "--setenv", "HOME", "/workspace", "--setenv", "LANG", "C.UTF-8",
-        "--chdir", "/workspace", "--", *command,
+    # `setpriv` ends the step when this sampler dies, however it dies, and
+    # `--kill-child` passes that on to the namespace: no step outlives its
+    # measurement holding the image's mount.
+    step = [
+        "setpriv", "--pdeathsig", "KILL",
+        "env", "-i", *STEP_ENVIRONMENT,
+        "unshare", "--mount", "--pid", "--fork", "--kill-child", "--net", "--ipc", "--uts",
+        "sh", "-ec", ENTER_IMAGE, "enter-image", str(work / "root"), str(workspace), STEP_USER,
+        "--", *command,
     ]
     os.sync()
     DROP_CACHES.write_text("3")
     start = time.perf_counter_ns()
-    result = subprocess.run(sandbox, capture_output=True, timeout=COMMAND_TIMEOUT_SECONDS)
+    result = subprocess.run(step, capture_output=True, timeout=COMMAND_TIMEOUT_SECONDS)
     elapsed = (time.perf_counter_ns() - start) / NANOSECONDS_PER_MILLISECOND
     if result.returncode:
         raise SystemExit(f"{command!r} failed ({result.returncode}): {result.stderr.decode(errors='replace')}")

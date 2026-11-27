@@ -28,9 +28,23 @@ acceptance_untrust_certificate() {
   fi
 }
 acceptance_runner_owned=0
+# What the runner borrows from this machine to boot Firecracker microVMs: the
+# devices it and each monitor open, then the monitor, its jailer, the guest
+# kernel and the guest's initial file system, where a runner host keeps them
+# (`afr_engine_firecracker`'s `config.rs`).
+acceptance_engine_devices=(/dev/kvm /dev/net/tun)
+acceptance_engine_files=(/usr/local/bin/firecracker /usr/local/bin/jailer
+  /usr/local/lib/agentsfleet/vmlinux /usr/local/lib/agentsfleet/guest.cpio)
 
 acceptance_adapter() {
-  [ "$(uname -s)" = Linux ] || dev_fail 'acceptance-linux requires Linux and privileged Docker'
+  local path
+  [ "$(uname -s)" = Linux ] || dev_fail 'acceptance requires Linux with a Kernel-based Virtual Machine (KVM) device at /dev/kvm: its runner boots Firecracker, and Docker on macOS offers none'
+  for path in "${acceptance_engine_devices[@]}"; do
+    [ -c "$path" ] || dev_fail "acceptance requires the device $path: its runner boots Firecracker microVMs on KVM, and never an unsandboxed engine in their place"
+  done
+  for path in "${acceptance_engine_files[@]}"; do
+    [ -f "$path" ] || dev_fail "acceptance requires $path: install Firecracker, its jailer, the guest kernel and the guest's initial file system as on a runner host"
+  done
   docker info >/dev/null || dev_fail 'acceptance-linux requires a running Docker daemon'
   command -v certutil >/dev/null || dev_fail 'install libnss3-tools for browser certificate trust'
 }
@@ -94,13 +108,20 @@ start_runner() {
   if docker container inspect "$acceptance_runner_container" >/dev/null 2>&1; then
     dev_fail 'the acceptance runner container already exists; inspect its owner before removing it'
   fi
-  local args=(--init --name "$acceptance_runner_container" --privileged --cgroupns=private --network host
+  # Privileged: the container holds every host device, /dev/kvm and
+  # /dev/net/tun among them, the capabilities the runner and the jailer use as
+  # root, and, with its private cgroup namespace, a cgroup v2 tree of its own to
+  # delegate (`linux-runner.sh`).
+  local path args=(--init --name "$acceptance_runner_container" --privileged --cgroupns=private --network host
     --mount "type=bind,src=$DEV_ROOT/dist/acceptance/agentsfleet-runner,dst=/usr/local/bin/agentsfleet-runner,readonly"
     --mount "type=bind,src=$DEV_ROOT/deploy/local/linux-runner.sh,dst=/usr/local/bin/acceptance-runner,readonly"
     --mount "type=bind,src=$DEV_ROOT/deploy/baremetal/agentsfleet-runner.toml,dst=/etc/agentsfleet/agentsfleet-runner.toml,readonly"
     --mount "type=bind,src=$ACCEPTANCE_LOCAL_TOOLBOX_DIR,dst=/toolbox,readonly"
     --mount "type=bind,src=$LOCAL_ACCEPTANCE_CA,dst=/acceptance-ca.crt,readonly"
     --env-file "$LOCAL_ACCEPTANCE_STATE/runner.env")
+  for path in "${acceptance_engine_files[@]}"; do
+    args+=(--mount "type=bind,src=$path,dst=$path,readonly")
+  done
   acceptance_runner_container="$(docker create "${args[@]}" "$acceptance_runner_image" \
     bash /usr/local/bin/acceptance-runner)"
   acceptance_runner_owned=1

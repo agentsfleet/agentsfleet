@@ -140,17 +140,21 @@ try:
         baseline = []
         called = directory / "command-called"
         publication = case in ("signal_during_publication", "signal_hangup_during_publication")
+        # `setpriv` is the first program of every step's command line, so a
+        # stub of that name on PATH stands in for the whole step.
         if case in ("null_baseline", "missing_digest", *published) or publication:
-            bwrap = directory / "bwrap"
-            bwrap.write_text(f'#!/bin/bash\ntouch "{called}"\nexit 0\n')
-            bwrap.chmod(0o700)
+            step = directory / "setpriv"
+            step.write_text(f'#!/bin/bash\ntouch "{called}"\nexit 0\n')
+            step.chmod(0o700)
         if case == "signal_during_measurement":
-            bwrap = directory / "bwrap"
-            bwrap.write_text('#!/bin/bash\nset -euo pipefail\nargs=()\n'
-                             'for arg in "$@"; do\n args+=("$arg")\n [ "$arg" != -- ] || break\ndone\n'
-                             'exec /usr/bin/bwrap "${args[@]}" /usr/bin/sh -ec '
-                             "'printf running >/workspace/cancellation-started; exec /usr/bin/sleep 120'\n")
-            bwrap.chmod(0o700)
+            # The real step, namespaces and image root included, with its
+            # command swapped for one that says it started and then waits.
+            step = directory / "setpriv"
+            step.write_text('#!/bin/bash\nset -euo pipefail\nargs=()\n'
+                            'for arg in "$@"; do\n args+=("$arg")\n [ "$arg" != -- ] || break\ndone\n'
+                            'exec /usr/bin/setpriv "${args[@]}" /usr/bin/sh -ec '
+                            "'printf running >/workspace/cancellation-started; exec /usr/bin/sleep 120'\n")
+            step.chmod(0o700)
         if case == "null_baseline":
             invalid = directory / "baseline.json"
             invalid.write_text("null\n")
@@ -178,7 +182,7 @@ try:
                 hook += ("import json, subprocess, time\n"
                          "real_run = subprocess.run\n"
                          "def instant_step(args, *rest, **options):\n"
-                         "    if args and args[0] == 'bwrap':\n"
+                         "    if args and args[0] == 'setpriv':\n"
                          "        return subprocess.CompletedProcess(args, 0, b'', b'')\n"
                          "    return real_run(args, *rest, **options)\n"
                          "subprocess.run = instant_step\n"
