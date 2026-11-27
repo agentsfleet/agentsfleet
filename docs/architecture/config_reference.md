@@ -161,7 +161,7 @@ Each key overrides `[database]` and the environment for that role only.
 | `health.heartbeat_interval_seconds` | 10 | Runners should report more or less often |
 | `health.offline_after_seconds` | unset: 3 × `ttl_seconds` (114) | Runners are marked offline too fast or too slow |
 | `health.healthy_before_uncordon_seconds` | 30 | A recovered runner should get work sooner or later |
-| `sandboxes.max_idle_hold_seconds` | 600 | Frozen sandboxes hold host resources too long, or follow-ups miss a warm sandbox |
+| `sandboxes.max_idle_park_seconds` | 600 | Frozen sandboxes hold host resources too long, or follow-ups miss a warm sandbox |
 
 #### `[runner.recovery]` and `[runner.scheduling]`
 

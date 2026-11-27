@@ -35,9 +35,9 @@ impl Runs {
     pub async fn select_measured(
         &self,
         runner_id: &Uuid7,
-        held: &[Uuid7],
+        parked: &[Uuid7],
     ) -> (Result<Option<Acquired>>, PollMeasurement) {
-        self.select_counted(runner_id, held, None).await
+        self.select_counted(runner_id, parked, None).await
     }
 
     /// Probe one real recovery page and expose its scan count to the fixture.
@@ -53,10 +53,10 @@ impl Runs {
     async fn select_counted(
         &self,
         runner_id: &Uuid7,
-        held: &[Uuid7],
+        parked: &[Uuid7],
         scan: Option<&mut RecoveryScan>,
     ) -> (Result<Option<Acquired>>, PollMeasurement) {
-        let (selected, cost) = self.select_recording(runner_id, held, scan).await;
+        let (selected, cost) = self.select_recording(runner_id, parked, scan).await;
         let measured = PollMeasurement {
             candidates_scanned: cost.candidates_scanned,
         };

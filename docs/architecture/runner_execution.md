@@ -19,7 +19,7 @@ executable: false
 | Sandbox | One per run, built by the runner's engine. It runs tool calls and nothing else |
 | Toolbox | A signed, read-only Debian filesystem image every sandbox runs on |
 | Workspace disk | A per-run writable disk holding `/workspace` and `/tmp` |
-| Held sandbox | A finished run's sandbox, parked and kept for its fleet's next run |
+| Parked sandbox | A finished run's sandbox, frozen and kept for its fleet's next run |
 | Network | The runner's assigned policy: the public network, none, or an allowlist |
 
 ## Why it exists
@@ -67,8 +67,8 @@ Down::Run
   ├─ memory     the fleet's memory window, carried on the run
   ├─ admitted   size, egress and checkout plan, before any model call
   ├─ run        the agent loop in the supervisor; sandbox tool calls cross the socket
-  │  └─ build   beside it: the fleet's held sandbox, or a fresh one with repositories checked out
-  ├─ keep       a processed run's sandbox is parked and held; any other is killed
+  │  └─ build   beside it: the fleet's parked sandbox, or a fresh one with repositories checked out
+  ├─ keep       a processed run's sandbox is parked; any other is killed
   ├─ settle     tool records, then the report with memory changes and timing
   └─ release    a killed sandbox's disk, beside at most 5 s of live-activity drain
        renewal runs alongside from the start until the report is acknowledged
@@ -173,7 +173,7 @@ The supervisor gives every sandbox a numbered egress plan: no network, an allowl
 
 `afr_engine::enforce` applies a plan for every engine. It refuses a plan older than the one in force, applies the new one, then reads the mechanism back until it holds the new number.
 
-`prepare` returns only once the plan reads back in force, so no command runs before it. A held sandbox takes its next run's plan the same way. Firecracker reads an allowlist back by dumping the kernel's address set and comparing it with the plan's.
+`prepare` returns only once the plan reads back in force, so no command runs before it. A parked sandbox takes its next run's plan the same way. Firecracker reads an allowlist back by dumping the kernel's address set and comparing it with the plan's.
 
 A new allowlist on a running microVM refills the tap's set, then replaces the guest's `/etc/hosts` before the plan applies ([re-plan](../../rustd/crates/runner/afr_engine_firecracker/src/engine/vm.rs)). A warm slot or a resumed microVM therefore resolves its new run's names.
 
@@ -215,7 +215,7 @@ Each boot first makes a jail user, the image lock, and a network namespace with 
 | `eth0` | The tap, only when the plan reaches a network |
 | vsock | Guest context identifier 3; the host's end is a Unix socket in the jail |
 
-The guest's memory is the grant rounded up to whole mebibytes. Its processors are the grant rounded up to whole virtual CPUs, at most 32 ([grant](../../rustd/crates/runner/afr_engine_firecracker/src/capabilities.rs)). The monitor's cgroup holds the guest memory plus the 64 MiB `SANDBOX_MEMORY_RESERVE_BYTES`.
+The guest's memory is the grant rounded up to whole mebibytes. Its processors are the grant rounded up to whole virtual CPUs, at most 32 ([grant](../../rustd/crates/runner/afr_engine_firecracker/src/capabilities.rs)). The monitor's cgroup sets `memory.high` at the guest memory plus the 64 MiB `SANDBOX_MEMORY_RESERVE_BYTES`, and admission reserves that much per microVM. Its `memory.max` sits 256 MiB higher, at `WRITEBACK_HEADROOM_BYTES`. The host caches a guest's unsaved workspace writes in that cgroup, so past `memory.high` the kernel slows the monitor and writes the pages back before `memory.max` kills it ([cgroup](../../rustd/crates/runner/afr_cgroup/src/cgroup/mod.rs)).
 
 `[firecracker]` in the runner's file names `firecracker`, `jailer`, `kernel`, `initrd`, `first_jail_id`, `memory_overcommit`, `disk_overcommit` and `warm_pool` ([section](../../rustd/crates/runner/main/src/config/firecracker.rs)). The program defaults are `/usr/local/bin/firecracker` and `/usr/local/bin/jailer`. The guest defaults are `/usr/local/lib/agentsfleet/vmlinux` and `/usr/local/lib/agentsfleet/guest.cpio`.
 
@@ -366,23 +366,23 @@ A revoked grant leaves a live run the token it already has. The next run and the
 
 A run that ends processed leaves its sandbox parked ([parks](../../rustd/crates/runner/afr_supervisor/src/parks/mod.rs)). The supervisor parks it in its engine's mode: Firecracker stops the microVM and keeps its disk.
 
-The hold is keyed by fleet, workspace, limits, network policy and repository binding. The fleet's next run within the hold window resumes it and continues with the files the last run left.
+The park is keyed by fleet, workspace, limits, network policy and repository binding. The fleet's next run within the park window resumes it and continues with the files the last run left.
 
 ```text
-run ends processed ──► park ──► held (≤ 10 min, ≤ 1 per worker)
+run ends processed ──► park ──► parked (≤ 10 min, ≤ 1 per worker)
                                       │
    next run, same fleet and key ──────┼──► resume ──► runs in the same sandbox
    other key or a failed resume ──────┼──► destroy ──► fresh sandbox
    deadline · worker needed ·         │
    shutdown · refused report ·        └──► destroy
-   fleet archived, deleted or held elsewhere
+   fleet archived, deleted or parked elsewhere
 ```
 
-Processes do not survive a hold, because the run's end closes every command session. The host never writes into a held clone, because a tenant-written `.git` could redirect a privileged write.
+Processes do not survive a park, because the run's end closes every command session. The host never writes into a parked clone, because a tenant-written `.git` could redirect a privileged write.
 
-A durable task's sandbox is never held, because a durable task restores a fresh workspace from its own checkpoint.
+A durable task's sandbox is never parked, because a durable task restores a fresh workspace from its own checkpoint.
 
-A turn that moves to another runner restores its files from a [checkpoint](checkpoints.md), not from a hold. The daemon's hold rules are in [runner fleet](runner_fleet.md#capacity-and-sandbox-holds).
+A turn that moves to another runner restores its files from a [checkpoint](checkpoints.md), not from a park. The daemon's park rules are in [runner fleet](runner_fleet.md#capacity-and-parked-sandboxes).
 
 ### Toolbox
 

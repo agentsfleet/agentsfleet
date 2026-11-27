@@ -21,7 +21,7 @@
 
 use af_core::error_code::{Coded as _, Logged};
 use af_core::id::Uuid7;
-use af_observability::metrics::label::fleet::HeldAssignment;
+use af_observability::metrics::label::fleet::ParkedAssignment;
 use af_observability::producers;
 #[cfg(any(test, feature = "test-util"))]
 use jiff::Timestamp;
@@ -88,7 +88,7 @@ impl Fence {
 }
 
 /// A won assignment: the new token, the instant the thread — and the run issued
-/// against it — stays valid until, and whether the winner held the fleet.
+/// against it — stays valid until, and whether the winner parked the fleet's sandbox.
 ///
 /// What the test-only [`Runs::assign`] answers; production reads the same
 /// facts from the assignment head's row.
@@ -99,22 +99,22 @@ pub struct WonAssignment {
     pub fence: Fence,
     /// When the assignment lapses and the thread becomes winnable again.
     pub held_until: Timestamp,
-    /// Whether the winner holds the sandbox the fleet's last run left: that
-    /// run ran on this runner and its hold had not lapsed at the assignment.
-    pub resume_hold: bool,
+    /// Whether the winner keeps parked the sandbox the fleet's last run left: that
+    /// run ran on this runner and its park had not lapsed at the assignment.
+    pub resume_park: bool,
 }
 
 #[cfg(any(test, feature = "test-util"))]
 /// What [`sql::shared::ASSIGN_THREAD`] answers when the assignment wins: the new
 /// fence, the thread's deadline on the database clock, and whether the thread's
-/// prior hold was still live and whose it was.
+/// prior park was still live and whose it was.
 #[derive(Debug, sqlx::FromRow)]
 struct Won {
     fencing_token: i64,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     run_expires_at: Timestamp,
-    held: bool,
-    holder: Option<Uuid7>,
+    parked: bool,
+    keeper: Option<Uuid7>,
 }
 
 impl Runs {
@@ -123,9 +123,9 @@ impl Runs {
     /// `ttl_ms`.
     ///
     /// Wins iff the thread is unassigned or its prior assignment has expired, and no
-    /// other live runner holds the fleet's sandbox, bumping the monotonic token
+    /// other live runner keeps the fleet's sandbox parked, bumping the monotonic token
     /// and recording the sticky hint. Answers `None` when a live runner still
-    /// holds it — an ordinary outcome the caller reads as "try the next
+    /// keeps it parked — an ordinary outcome the caller reads as "try the next
     /// candidate", not a failure.
     ///
     /// The assignment PRECEDES the event read by design: a loser has consumed no
@@ -157,14 +157,18 @@ impl Runs {
         let Some(won) = won else {
             return Ok(None);
         };
-        let outcome = held_assignment(won.held, won.holder.as_ref().map(Uuid7::as_str), runner_id);
-        if outcome == Some(HeldAssignment::OtherAfterLapse) {
-            producers::fleet::hold::assigned(HeldAssignment::OtherAfterLapse);
+        let outcome = parked_assignment(
+            won.parked,
+            won.keeper.as_ref().map(Uuid7::as_str),
+            runner_id,
+        );
+        if outcome == Some(ParkedAssignment::OtherAfterLapse) {
+            producers::fleet::park::assigned(ParkedAssignment::OtherAfterLapse);
         }
         Ok(Some(WonAssignment {
             fence: Fence::from_i64(won.fencing_token),
             held_until: won.run_expires_at,
-            resume_hold: outcome == Some(HeldAssignment::Holder),
+            resume_park: outcome == Some(ParkedAssignment::Keeper),
         }))
     }
 
@@ -230,7 +234,7 @@ impl Runs {
     #[cfg(any(test, feature = "test-util"))]
     /// The release a finished run owes, on a connection the caller already
     /// holds. Keeps the sticky hint: this runner did run the fleet. Records
-    /// `hold_expires_at` too, the hold the run's sandbox is kept under, or clears
+    /// `park_expires_at` too, the park the run's sandbox is kept under, or clears
     /// it: the fencing guard means a superseded holder records nothing.
     ///
     /// The report path needs it: freeing the thread makes the fleet's next event
@@ -249,13 +253,13 @@ impl Runs {
         connection: &mut PgConnection,
         fleet_id: &Uuid7,
         fence: Fence,
-        asked_hold: Option<Timestamp>,
+        asked_park: Option<Timestamp>,
     ) -> Result<()> {
         sqlx::query(sql::shared::RELEASE_THREAD)
             .bind(fleet_id)
             .bind(fence.as_i64())
-            .bind(asked_hold.map(jiff_sqlx::ToSqlx::to_sqlx))
-            .bind(self.clock().sandbox_idle_hold())
+            .bind(asked_park.map(jiff_sqlx::ToSqlx::to_sqlx))
+            .bind(self.clock().sandbox_idle_park())
             .execute(&mut *connection)
             .await
             .map_err(query(CONTEXT_RELEASE))?;
@@ -263,26 +267,30 @@ impl Runs {
     }
 }
 
-/// Counts the holder's assignment on its live hold, on the exit that hands out a
-/// run resuming it. Not at the assignment: the holder's reassignment resumes nothing,
+/// Counts the keeper's assignment on its live park, on the exit that hands out a
+/// run resuming it. Not at the assignment: the keeper's reassignment resumes nothing,
 /// since the event's first attempt may have run in that sandbox.
 pub(crate) fn count_resumed(acquired: &Acquired) {
-    if acquired.resume_hold {
-        producers::fleet::hold::assigned(HeldAssignment::Holder);
+    if acquired.resume_park {
+        producers::fleet::park::assigned(ParkedAssignment::Keeper);
     }
 }
 
 #[cfg(any(test, feature = "test-util"))]
-/// Who won an assignment on a fleet whose thread held a sandbox live at `now`, from
-/// the thread's prior `hold_expires_at` and `last_runner_id`, or `None` when it held
-/// none. A hold at or past its deadline binds nobody at the assignment's own
-/// predicate, so it is no hold here either.
-fn held_assignment(held: bool, holder: Option<&str>, runner_id: &Uuid7) -> Option<HeldAssignment> {
-    held.then(|| {
-        if holder == Some(runner_id.as_str()) {
-            HeldAssignment::Holder
+/// Who won an assignment on a fleet whose thread parked a sandbox live at `now`, from
+/// the thread's prior `park_expires_at` and `last_runner_id`, or `None` when it parked
+/// none. A park at or past its deadline binds nobody at the assignment's own
+/// predicate, so it is no park here either.
+fn parked_assignment(
+    parked: bool,
+    keeper: Option<&str>,
+    runner_id: &Uuid7,
+) -> Option<ParkedAssignment> {
+    parked.then(|| {
+        if keeper == Some(runner_id.as_str()) {
+            ParkedAssignment::Keeper
         } else {
-            HeldAssignment::OtherAfterLapse
+            ParkedAssignment::OtherAfterLapse
         }
     })
 }

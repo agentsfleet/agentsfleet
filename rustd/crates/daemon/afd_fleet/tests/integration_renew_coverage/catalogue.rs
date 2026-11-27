@@ -1,6 +1,6 @@
 //! Rate catalogue outages preserve unpriced token observations.
 
-use crate::integration_held_sandbox::report::processed;
+use crate::integration_parked_sandbox::report::processed;
 use crate::report_seed::{self, Held, held_in};
 use crate::seed::{MODEL, PROVIDER};
 use crate::support::Fixtures;

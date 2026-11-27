@@ -45,7 +45,7 @@ async fn finish_head(case: &Case) {
     alter(
         case,
         "UPDATE thread.threads SET run_expires_at = clock_timestamp() - interval '1 second', \
-         hold_expires_at = NULL WHERE fleet_id = $1",
+         park_expires_at = NULL WHERE fleet_id = $1",
         &case.held.fleet,
     )
     .await;

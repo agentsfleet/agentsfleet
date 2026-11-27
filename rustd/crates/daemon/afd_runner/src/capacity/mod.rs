@@ -16,13 +16,13 @@ mod guard;
 pub use guard::{Guard, proof};
 mod sql;
 
-/// Which work the census is read for, and so which idle holds it reports;
+/// Which work the census is read for, and so which idle parks it reports;
 /// this never grants connection authority.
 #[derive(Debug, Clone, Copy)]
 pub enum Work<'a> {
-    /// New work for this fleet: the census reports every other fleet's hold.
+    /// New work for this fleet: the census reports every other fleet's park.
     Fleet(&'a Uuid7),
-    /// Current work renewing its live run: the census reports no hold.
+    /// Current work renewing its live run: the census reports no park.
     Existing,
 }
 
@@ -40,7 +40,7 @@ pub struct Capacity {
     now: Timestamp,
     workers: i32,
     occupied: i64,
-    held: i64,
+    parked: i64,
     assignments_allowed: bool,
     renewals_allowed: bool,
     run_version: i64,
@@ -56,7 +56,7 @@ impl Capacity {
     /// Whether one additional run fits the currently assigned worker limit.
     ///
     /// Live runs alone fill a worker, as in the fleet issue's census
-    /// (`afd_fleet`'s `insert_run_with_turn.sql`): an idle hold takes none.
+    /// (`afd_fleet`'s `insert_run_with_turn.sql`): an idle park takes none.
     #[must_use]
     pub fn can_assign(self) -> bool {
         self.assignments_allowed && self.occupied < i64::from(self.workers)
@@ -68,10 +68,10 @@ impl Capacity {
         self.occupied
     }
 
-    /// Idle holds on the host the census was asked to report ([`Work`]).
+    /// Idle parks on the host the census was asked to report ([`Work`]).
     #[must_use]
-    pub const fn held(self) -> i64 {
-        self.held
+    pub const fn parked(self) -> i64 {
+        self.parked
     }
 
     /// The host's assigned worker limit.
@@ -107,7 +107,7 @@ struct Census {
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     checked_at: Timestamp,
     occupied: i64,
-    held: i64,
+    parked: i64,
 }
 
 /// The host row as [`lock_host`] holds it: what the assignment checks before the
@@ -235,7 +235,7 @@ async fn locked<'g>(
         .map(|host| (runner_id.clone(), host)))
 }
 
-/// Lock a host and count live work and applicable holds using a fresh snapshot.
+/// Lock a host and count live work and applicable parks using a fresh snapshot.
 ///
 /// `None` means the authenticated host was removed. Cordoned/draining hosts
 /// may finish current work but cannot take more; revoked/degraded hosts do
@@ -268,7 +268,7 @@ pub async fn lock<'a>(
         now: census.checked_at,
         workers: host.worker_count,
         occupied: census.occupied,
-        held: census.held,
+        parked: census.parked,
         assignments_allowed: !host.degraded
             && host.cordon_reason.is_none()
             && host.status == crate::sql::RUNNER_STATUS_ACTIVE,

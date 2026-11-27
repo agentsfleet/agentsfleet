@@ -5,7 +5,10 @@
 //! S6 ran this by hand and lost every sandbox: `/tmp` was a tmpfs larger than
 //! the run's memory, so filling it ended in the out-of-memory killer. The
 //! single-run trials beside this one prove each repair; this one proves they
-//! hold when four guests contend for one host's disk at once.
+//! hold when four guests contend for one host's disk at once. The host's
+//! cache of each guest's unsaved image writes is charged to its monitor's
+//! cgroup, which throttles at `memory.high` and leaves room for that cache
+//! below `memory.max`, so no monitor is killed for it.
 
 use std::fs;
 use std::time::Duration;
@@ -29,8 +32,8 @@ const DISK: u64 = 1 << 30;
 /// limit, the ratio that killed S6's sandboxes through a tmpfs `/tmp`.
 const MEMORY: u64 = DISK / 2;
 /// How long each fill may run before the trial calls it hung. Four runs
-/// fill one host disk at once, each slowed by its tenant throttle while its
-/// pages are written back: minutes under load, where a command gets one.
+/// fill one host disk at once, each slowed by its monitor's throttle while
+/// its pages are written back: minutes under load, where a command gets one.
 const FILL_TIMEOUT: Duration = Duration::from_secs(300);
 /// Fills `/tmp` past the disk.
 // pin test: literal is the contract

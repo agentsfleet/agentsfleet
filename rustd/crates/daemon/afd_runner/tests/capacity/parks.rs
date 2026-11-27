@@ -1,4 +1,4 @@
-//! Idle holds take no worker from new work and never renew an existing run.
+//! Idle parks take no worker from new work and never renew an existing run.
 
 use std::sync::Arc;
 
@@ -9,11 +9,11 @@ use super::{Fixture, fixture::LIVE_FOR};
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn test_a_run_and_a_hold_leave_a_third_fleet_its_worker() {
+async fn test_a_run_and_a_park_leave_a_third_fleet_its_worker() {
     let fixture = Fixture::create(2).await;
     let now = clock::now();
     fixture.runtime(clock::after(now, LIVE_FOR)).await;
-    fixture.hold(clock::after(now, LIVE_FOR)).await;
+    fixture.park(clock::after(now, LIVE_FOR)).await;
     let other = afd_db::test_util::mint_id();
 
     assert!(fixture.capacity(Work::Fleet(&other)).await.can_assign());
@@ -27,11 +27,11 @@ async fn test_a_run_and_a_hold_leave_a_third_fleet_its_worker() {
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn test_a_renewal_counts_no_holds() {
+async fn test_a_renewal_counts_no_parks() {
     let fixture = Fixture::create(1).await;
     let now = clock::now();
     fixture.runtime(clock::after(now, LIVE_FOR)).await;
-    fixture.hold(clock::after(now, LIVE_FOR)).await;
+    fixture.park(clock::after(now, LIVE_FOR)).await;
 
     let other = afd_db::test_util::mint_id();
     assert!(fixture.capacity(Work::Existing).await.can_renew());
@@ -41,9 +41,9 @@ async fn test_a_renewal_counts_no_holds() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn test_concurrent_assignments_fill_every_worker_beside_a_live_hold() {
+async fn test_concurrent_assignments_fill_every_worker_beside_a_live_park() {
     let fixture = Arc::new(Fixture::create(2).await);
-    fixture.hold(clock::after(clock::now(), LIVE_FOR)).await;
+    fixture.park(clock::after(clock::now(), LIVE_FOR)).await;
     let barrier = Arc::new(tokio::sync::Barrier::new(100));
     let mut assignments = tokio::task::JoinSet::new();
     for _ in 0..100 {
@@ -61,7 +61,7 @@ async fn test_concurrent_assignments_fill_every_worker_beside_a_live_hold() {
         }
     }
 
-    assert_eq!(accepted, 2, "the idle hold takes neither worker");
+    assert_eq!(accepted, 2, "the idle park takes neither worker");
     Arc::try_unwrap(fixture)
         .ok()
         .expect("assignments finished")

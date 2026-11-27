@@ -24,7 +24,7 @@ use afd_db::test_util::mint_id;
 use afd_fleet::run::Renewed;
 use afd_fleet::run::sql::meter::Metering;
 
-use crate::integration_held_sandbox::report::processed;
+use crate::integration_parked_sandbox::report::processed;
 use crate::report_seed::{Held, held};
 
 /// A host's degraded verdict, which bars it from assigning and renewing alike.
@@ -249,7 +249,7 @@ async fn test_a_runner_with_no_run_or_no_host_row_gets_no_work() {
         .assign_with(
             afd_fleet::run::AssignRequest {
                 runner: &stranger,
-                held: &[],
+                parked: &[],
                 degraded: false,
                 credits: 1,
                 now: held.now,

@@ -7,9 +7,9 @@
 -- fence, a moved placement choice or a stopped head writes nothing.
 --
 -- The census counts live runs only, so it admits what the runner's credits
--- offer. A sandbox hold takes no worker: the runner keeps its holds below its
+-- offer. A sandbox park takes no worker: the runner keeps its parks below its
 -- free workers and drops one when a run starts, while the heartbeat clears a
--- dropped hold a beat later, so a recorded hold may sit on a free worker.
+-- dropped park a beat later, so a recorded park may sit on a free worker.
 WITH instant AS MATERIALIZED (
   SELECT clock_timestamp() AS checked_at
 ), host AS MATERIALIZED (
@@ -22,7 +22,7 @@ WITH instant AS MATERIALIZED (
       < r.worker_count
 ), held AS (
   UPDATE thread.threads
-  SET hold_expires_at = NULL, updated_at = now()
+  SET park_expires_at = NULL, updated_at = now()
   WHERE fleet_id = $3 AND fencing_token = $10
     AND run_expires_at > (SELECT checked_at FROM instant)
     -- The deadline the assignment answered, which a pass that outlived it misses.

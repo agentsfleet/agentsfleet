@@ -10,8 +10,8 @@ use super::activity::Target;
 pub struct AssignRequest<'a> {
     /// Enrolled host receiving the assignment.
     pub runner: &'a Uuid7,
-    /// Fleets whose existing sandboxes this host holds.
-    pub held: &'a [Uuid7],
+    /// Fleets whose existing sandboxes this host keeps parked.
+    pub parked: &'a [Uuid7],
     /// An unreadable or degraded capability verdict refuses new work.
     pub degraded: bool,
     /// Free workers the runner advertised for this pass. A full census while

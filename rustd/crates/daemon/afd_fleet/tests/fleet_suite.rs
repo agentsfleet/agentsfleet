@@ -51,7 +51,6 @@ mod integration_credential_mint;
 mod integration_effect_items;
 #[path = "integration_gate_grants.rs"]
 mod integration_gate_grants;
-mod integration_held_sandbox;
 #[path = "integration_issue_host.rs"]
 mod integration_issue_host;
 #[path = "integration_item_retention.rs"]
@@ -65,6 +64,7 @@ mod integration_memory_load_order;
 mod integration_money_gates;
 #[path = "integration_money_gates_debt.rs"]
 mod integration_money_gates_debt;
+mod integration_parked_sandbox;
 #[path = "integration_renew_batch.rs"]
 mod integration_renew_batch;
 #[path = "integration_renew_caches.rs"]

@@ -59,7 +59,7 @@ pub(super) fn terminal<'a>(
         },
         last_turn_id: run.last_event,
         last_response: request.checkpoint.last_response.as_ref(),
-        held_until: request.parked_until,
+        parked_until: request.parked_until,
         durable_task_settlement: None,
         folded_through_sequence: request.folded_through_sequence,
         now,
@@ -88,7 +88,7 @@ pub(super) fn reconciled(
     completed_at: Option<Timestamp>,
 ) -> Reconciled {
     Reconciled {
-        hold: None,
+        park: None,
         tokens,
         fleet_id: run.fleet_id,
         workspace_id: run.workspace_id,

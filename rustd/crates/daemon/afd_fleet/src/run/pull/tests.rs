@@ -16,7 +16,7 @@ async fn should_answer_a_degraded_runner_without_touching_a_datastore() {
         .assign_fleet_with(
             &mut crate::run::AssignRequest {
                 runner: &test_dead::id(9),
-                held: &[],
+                parked: &[],
                 degraded: true,
                 credits: 1,
                 now: test_dead::AT,

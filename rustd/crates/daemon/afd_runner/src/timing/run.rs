@@ -52,7 +52,7 @@ pub struct RunSettings {
     pub healthy_before_uncordon_seconds: u64,
     /// Maximum idle reservation for a frozen sandbox after a completed run.
     #[garde(range(min = 1, max = DAY.as_secs()))]
-    pub sandbox_idle_hold_seconds: u64,
+    pub sandbox_idle_park_seconds: u64,
 }
 
 impl RunSettings {
@@ -78,7 +78,7 @@ impl Default for RunSettings {
             heartbeat_interval_seconds: super::HEARTBEAT_INTERVAL.as_secs(),
             offline_after_seconds: None,
             healthy_before_uncordon_seconds: super::UNCORDON_AFTER.as_secs(),
-            sandbox_idle_hold_seconds: super::SANDBOX_HOLD_IDLE.as_secs(),
+            sandbox_idle_park_seconds: super::SANDBOX_PARK_IDLE.as_secs(),
         }
     }
 }
@@ -90,7 +90,7 @@ pub struct RunClock {
     heartbeat: u64,
     offline_after: u64,
     uncordon_after: u64,
-    sandbox_idle_hold: u64,
+    sandbox_idle_park: u64,
 }
 
 impl Default for RunClock {
@@ -106,7 +106,7 @@ impl RunClock {
         heartbeat: super::HEARTBEAT_INTERVAL.as_secs(),
         offline_after: super::RUNNER_OFFLINE_AFTER.as_secs(),
         uncordon_after: super::UNCORDON_AFTER.as_secs(),
-        sandbox_idle_hold: super::SANDBOX_HOLD_IDLE.as_secs(),
+        sandbox_idle_park: super::SANDBOX_PARK_IDLE.as_secs(),
     };
 
     /// Keeps validated values without exposing an unchecked constructor.
@@ -117,7 +117,7 @@ impl RunClock {
             heartbeat: settings.heartbeat_interval_seconds,
             offline_after: settings.offline_seconds(),
             uncordon_after: settings.healthy_before_uncordon_seconds,
-            sandbox_idle_hold: settings.sandbox_idle_hold_seconds,
+            sandbox_idle_park: settings.sandbox_idle_park_seconds,
         }
     }
 
@@ -147,8 +147,8 @@ impl RunClock {
 
     /// Maximum reservation for a frozen sandbox after a completed run.
     #[must_use]
-    pub const fn sandbox_idle_hold(self) -> Duration {
-        Duration::from_secs(self.sandbox_idle_hold)
+    pub const fn sandbox_idle_park(self) -> Duration {
+        Duration::from_secs(self.sandbox_idle_park)
     }
 }
 

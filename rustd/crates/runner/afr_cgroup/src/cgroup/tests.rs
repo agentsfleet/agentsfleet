@@ -35,7 +35,8 @@ fn test_run_cgroup_writes_every_limit() {
     let made = RunCgroup::create(root.path(), "run-1", &LIMITS).unwrap();
 
     let dir = root.path().join("run-1");
-    assert_eq!(read(&dir, "memory.max"), "268435456");
+    assert_eq!(read(&dir, "memory.high"), "268435456");
+    assert_eq!(read(&dir, "memory.max"), "536870912");
     // pin test: literal is the contract
     assert_eq!(read(&dir, "cpu.max"), "150000 100000");
     assert_eq!(read(&dir, "pids.max"), "64");
@@ -82,6 +83,25 @@ fn test_the_tenant_leaf_throttles_an_eighth_below_its_limit() {
         read(&tenant, "memory.high"),
         (limit - limit / 8).to_string()
     );
+}
+
+/// Without room above the throttle, the host's cache of a guest's unsaved
+/// image writes fills the monitor's cgroup and the kernel kills the monitor
+/// at its cap.
+#[test]
+fn test_the_run_cgroup_caps_its_memory_the_writeback_headroom_above_its_throttle() {
+    let root = tempfile::tempdir().unwrap();
+
+    RunCgroup::create(root.path(), "run-12", &LIMITS).unwrap();
+
+    let dir = root.path().join("run-12");
+    let max: u64 = read(&dir, "memory.max").parse().unwrap();
+    let high: u64 = read(&dir, "memory.high").parse().unwrap();
+    assert_eq!(
+        high, LIMITS.memory_bytes,
+        "the run's memory is its throttle"
+    );
+    assert_eq!(max, high + super::WRITEBACK_HEADROOM_BYTES);
 }
 
 #[test]

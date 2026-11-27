@@ -15,7 +15,7 @@ use af_wire::runner::{
 };
 use afd_db::config::DbRole;
 use afd_db::test_util::mint_id;
-use afd_runner::heartbeat::holds::prove;
+use afd_runner::heartbeat::parked::prove;
 use afd_runner::reconcile::REASON_ENGINE_NOT_THE_TIERS;
 use afd_runner::{Beat, NO_REPORT};
 use jiff::Timestamp;
@@ -25,23 +25,23 @@ use super::requests::{ONE_BEAT, capable, enrolment};
 use super::support::Fixtures;
 use crate::rows::Row;
 
-/// What a hold reconcile that did not land is logged under.
-const HOLDS_RECONCILE_FAILED: &str = "runner_holds_reconcile_failed";
+/// What a park reconcile that did not land is logged under.
+const PARKS_RECONCILE_FAILED: &str = "runner_parks_reconcile_failed";
 
 /// Moves the table the release read joins out of its way, in a database of
 /// the test's own; the beat's other statements never read it.
 const MOVE_FLEETS: &str = "ALTER TABLE fleet.fleets RENAME TO fleets_moved";
 
-/// `runner` beats once at `now`, listing `fleet` as held.
-async fn beats_holding(fixtures: &Fixtures, runner: &Uuid7, fleet: &str, now: Timestamp) -> Beat {
+/// `runner` beats once at `now`, listing `fleet` as parked.
+async fn beats_parking(fixtures: &Fixtures, runner: &Uuid7, fleet: &str, now: Timestamp) -> Beat {
     let request = HeartbeatRequest {
         parked: ParkedFleets(vec![Cow::Borrowed(fleet)]),
         ..NO_REPORT
     };
-    let held = prove(request.parked.clone());
+    let parked = prove(request.parked.clone());
     fixtures
         .runners()
-        .heartbeat(runner, &request, held.as_ref(), now)
+        .heartbeat(runner, &request, parked.as_ref(), now)
         .await
         .expect("a release read that fails does not fail the beat")
 }
@@ -194,7 +194,7 @@ async fn test_a_vanished_runner_is_its_own_failure() {
 }
 
 /// A release read that fails answers no release, and says why: the runner
-/// keeps its holds one beat longer while the beat itself lands. The same
+/// keeps its parks one beat longer while the beat itself lands. The same
 /// listed fleet, which no thread of this runner's holds, is answered back for
 /// release while the read works, so the empty answer is the failure's.
 #[tokio::test]
@@ -212,27 +212,27 @@ async fn test_a_release_read_that_fails_releases_nothing_and_warns() {
         .expect("enrolment must succeed");
     let runner = &enrolled.runner_id;
     let fleet = mint_id();
-    let working = beats_holding(&fixtures, runner, fleet.as_str(), fixtures.after(ONE_BEAT)).await;
+    let working = beats_parking(&fixtures, runner, fleet.as_str(), fixtures.after(ONE_BEAT)).await;
     // Renaming a table is the owner's right; the beat under test keeps the
     // api pool.
     move_fleets(&fixtures).await;
 
     let log = Capture::install();
-    let failed = beats_holding(
+    let failed = beats_parking(
         &fixtures,
         runner,
         fleet.as_str(),
         fixtures.after(ONE_BEAT * 2),
     )
     .await;
-    let warned = log.only(HOLDS_RECONCILE_FAILED).fields;
+    let warned = log.only(PARKS_RECONCILE_FAILED).fields;
     drop(log);
 
-    assert_eq!(working.release_holds, [fleet], "the read works first");
+    assert_eq!(working.release_parked, [fleet], "the read works first");
     assert!(
-        failed.release_holds.is_empty(),
+        failed.release_parked.is_empty(),
         "{:?}",
-        failed.release_holds
+        failed.release_parked
     );
     assert_eq!(
         warned.get("error_code").map(String::as_str),

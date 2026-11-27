@@ -28,13 +28,13 @@ impl Default for Health {
 #[derive(Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub(super) struct Sandboxes {
-    pub max_idle_hold_seconds: u64,
+    pub max_idle_park_seconds: u64,
 }
 
 impl Default for Sandboxes {
     fn default() -> Self {
         Self {
-            max_idle_hold_seconds: RunSettings::default().sandbox_idle_hold_seconds,
+            max_idle_park_seconds: RunSettings::default().sandbox_idle_park_seconds,
         }
     }
 }
@@ -46,7 +46,7 @@ pub(super) fn settings(runner: &super::settings::Runner) -> RunSettings {
         heartbeat_interval_seconds: runner.health.heartbeat_interval,
         offline_after_seconds: runner.health.offline_after,
         healthy_before_uncordon_seconds: runner.health.healthy_before_uncordon,
-        sandbox_idle_hold_seconds: runner.sandboxes.max_idle_hold_seconds,
+        sandbox_idle_park_seconds: runner.sandboxes.max_idle_park_seconds,
     }
 }
 
@@ -63,7 +63,7 @@ mod tests {
         let mut file = tempfile::NamedTempFile::new()?;
         let contents = "[runner.run]\nttl_seconds=40\n\
             [runner.health]\nheartbeat_interval_seconds=7\noffline_after_seconds=90\n\
-            healthy_before_uncordon_seconds=21\n[runner.sandboxes]\nmax_idle_hold_seconds=45";
+            healthy_before_uncordon_seconds=21\n[runner.sandboxes]\nmax_idle_park_seconds=45";
         file.write_all(contents.as_bytes())?;
         let environment = MapEnv::from_pairs([("AGENTSFLEET_RUN_TTL_SECONDS", "invalid")]);
         let config = ConfigBuilder::new(&environment)
@@ -74,12 +74,12 @@ mod tests {
         assert_eq!(clock.heartbeat_interval(), Duration::from_secs(7));
         assert_eq!(clock.offline_after(), Duration::from_secs(90));
         assert_eq!(clock.uncordon_after(), Duration::from_secs(21));
-        assert_eq!(clock.sandbox_idle_hold(), Duration::from_secs(45));
+        assert_eq!(clock.sandbox_idle_park(), Duration::from_secs(45));
         Ok(())
     }
 
     #[test]
-    fn conflicting_health_runtime_and_hold_settings_refuse_startup() -> Checked {
+    fn conflicting_health_runtime_and_park_settings_refuse_startup() -> Checked {
         for contents in [
             "[runner.run]\nttl_seconds=3601",
             "[runner.run]\nmax_runtime_seconds=43200",
@@ -88,7 +88,7 @@ mod tests {
             "[runner.health]\noffline_after_seconds=34",
             "[runner.health]\nhealthy_before_uncordon_seconds=10",
             "[runner.health]\nhealthy_before_uncordon_seconds=114",
-            "[runner.sandboxes]\nmax_idle_hold_seconds=0",
+            "[runner.sandboxes]\nmax_idle_park_seconds=0",
         ] {
             let mut file = tempfile::NamedTempFile::new()?;
             file.write_all(contents.as_bytes())?;

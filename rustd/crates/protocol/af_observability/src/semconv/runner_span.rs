@@ -52,7 +52,7 @@ pub const ATTR_RUNNER_MODEL_MS: &str = "agentsfleet.runner.model_ms";
 /// The tools the model's turns called.
 pub const ATTR_RUNNER_TOOLS_MS: &str = "agentsfleet.runner.tools_ms";
 
-/// The settle, from hold-or-destroy to the posted report.
+/// The settle, from park-or-destroy to the posted report.
 pub const ATTR_RUNNER_REPORT_MS: &str = "agentsfleet.runner.report_ms";
 
 /// Inside the model segment: the run's first answer chunk.

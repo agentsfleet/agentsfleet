@@ -4,7 +4,7 @@
 //! The run's cgroup holds the limits and no process. The engine's own
 //! processes run in its `sandbox` leaf; every process the executor starts runs
 //! in its `tenant` leaf, whose memory limit sits [`SANDBOX_MEMORY_RESERVE_BYTES`]
-//! below the run's, so the kernel's out-of-memory killer chooses among
+//! below the run's throttle, so the kernel's out-of-memory killer chooses among
 //! tenant processes and never the sandbox's own — systemd's `Delegate=` shape,
 //! where a manager's processes and the subtree it hands out never share a leaf.
 //!
@@ -91,6 +91,14 @@ pub const DEFAULT_IO_BYTES_PER_SECOND: u64 = 200 * 1024 * 1024;
 ///
 /// Kept: without it the out-of-memory killer may pick the executor and end the sandbox.
 pub const SANDBOX_MEMORY_RESERVE_BYTES: u64 = 64 * 1024 * 1024;
+/// Room above a run's memory throttle for the host's cache of its unsaved
+/// disk writes: the run's `memory.max` sits this far above its `memory.high`.
+///
+/// Indy's number (Nov 27, 2026, "256 MiB"). The kernel lane's first run
+/// measured the burst it holds: a 512 MiB guest's monitor killed at its cap
+/// with `memory: usage 589824kB, limit 589824kB` and `file_dirty 194134016`.
+/// Admission reserves the throttle, not this room.
+pub const WRITEBACK_HEADROOM_BYTES: u64 = 256 * 1024 * 1024;
 
 /// One run's cgroup. Removing it is the only cleanup, and it consumes it.
 #[derive(Debug)]
@@ -140,9 +148,16 @@ impl RunCgroup {
         refusal
     }
 
+    /// Writes the run's limits: its memory throttled at `limits`' memory and
+    /// capped [`WRITEBACK_HEADROOM_BYTES`] above it. The host's cache of a
+    /// guest's unsaved image writes is charged here, so past the throttle the
+    /// kernel slows the writer and writes the pages back rather than killing
+    /// the monitor.
     fn limit(&self, limits: &Limits) -> Result<()> {
         let quota = (u64::from(limits.cpu_millis) * CPU_PERIOD_MICROS).div_euclid(MILLIS_PER_CORE);
-        self.write(MEMORY_MAX, &limits.memory_bytes.to_string())?;
+        let cap = limits.memory_bytes.saturating_add(WRITEBACK_HEADROOM_BYTES);
+        self.write(MEMORY_MAX, &cap.to_string())?;
+        self.write(MEMORY_HIGH, &limits.memory_bytes.to_string())?;
         self.write(CPU_MAX, &format!("{quota} {CPU_PERIOD_MICROS}"))?;
         self.write(PIDS_MAX, &limits.pids.to_string())?;
         // Present only where the kernel accounts swap; absent, there is no swap

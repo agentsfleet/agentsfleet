@@ -2,7 +2,7 @@
 -- and tool records in the same statement.
 --
 -- A terminal report in one statement: every write the report's
--- transaction made under the run's own lock. A potential sandbox hold
+-- transaction made under the run's own lock. A potential sandbox park
 -- shares the host lock through commit to serialize with worker placement.
 --
 -- Lock the fleet's scope before the optional host, thread and run.
@@ -30,7 +30,7 @@
 -- $29 tokens · $30 wall time ·
 -- $31 failure label · $32 failure detail · $33 tool calls · $34 the status an
 -- open event holds · $35 the pending gate status · $36 the session document ·
--- $37 the hold the runner asked for · $38 the hold's idle cap ·
+-- $37 the park the runner asked for · $38 the park's idle cap ·
 -- $39 the delivery's id · $40 its receipt ·
 -- $41 the connectors an answer can be owed to · $42 the audit row's id ·
 -- $43 its event type · $44 its metadata · $45 the fleet · $46 its workspace ·
@@ -45,7 +45,7 @@ WITH scope AS MATERIALIZED (
   JOIN identity.lock_workspace($46) w ON w.id = f.workspace_id
   WHERE f.id = $45
   FOR KEY SHARE OF f
-), hold_host AS MATERIALIZED (
+), park_host AS MATERIALIZED (
   SELECT r.id
   FROM scope
   JOIN runner.runners r ON r.id = $2
@@ -55,18 +55,18 @@ WITH scope AS MATERIALIZED (
   FOR SHARE OF r
 ), locked_thread AS MATERIALIZED (
   SELECT s.fleet_id, s.fencing_token, s.run_expires_at AS thread_expires_at,
-         h.id IS NOT NULL AS hold_authorized
+         h.id IS NOT NULL AS park_authorized
   FROM thread.threads s
   JOIN scope sc ON sc.id = s.fleet_id
   JOIN thread.runs l ON l.fleet_id = s.fleet_id
-  LEFT JOIN hold_host h ON h.id = l.runner_id
+  LEFT JOIN park_host h ON h.id = l.runner_id
   WHERE l.id = $1 AND l.runner_id = $2 AND l.status = $4
   FOR NO KEY UPDATE OF s
 ), probe AS MATERIALIZED (
   SELECT l.id, l.fleet_id, l.workspace_id, l.tenant_id, l.turn_id, l.fencing_token,
          l.created_at, l.run_expires_at, l.last_metered_at,
          l.posture, l.provider, l.model, l.durable_task_id, a.fencing_token AS live_fence,
-         a.thread_expires_at, a.hold_authorized
+         a.thread_expires_at, a.park_authorized
   FROM thread.runs l
   JOIN locked_thread a ON a.fleet_id = l.fleet_id
   WHERE l.id = $1 AND l.runner_id = $2 AND l.status = $4
@@ -160,7 +160,7 @@ WITH scope AS MATERIALIZED (
   FROM measured m
   WHERE l.id = m.id
   RETURNING l.id, l.fleet_id, l.turn_id, l.fencing_token, l.workspace_id,
-            m.run_expires_at, m.thread_expires_at, m.hold_authorized,
+            m.run_expires_at, m.thread_expires_at, m.park_authorized,
             (SELECT checked_at FROM instant) AS checked_at
 ), settled AS (
   -- Settles the turn and, while its event is still open, closes it with the run's answer:
@@ -197,13 +197,13 @@ WITH scope AS MATERIALIZED (
   UPDATE thread.threads s
   SET run_expires_at = clock_timestamp() - interval '1 millisecond', updated_at = now(),
       resume_context = $36::jsonb,
-      hold_expires_at = CASE WHEN m.run_expires_at > m.checked_at AND m.thread_expires_at > m.checked_at
-                             AND m.hold_authorized
+      park_expires_at = CASE WHEN m.run_expires_at > m.checked_at AND m.thread_expires_at > m.checked_at
+                             AND m.park_authorized
                              AND $37::timestamptz > clock_timestamp()
                              THEN LEAST($37::timestamptz, clock_timestamp() + $38::interval) END
   FROM moved m
   WHERE s.fleet_id = m.fleet_id AND s.fencing_token = m.fencing_token
-  RETURNING s.hold_expires_at
+  RETURNING s.park_expires_at
 ), owed AS (
   INSERT INTO thread.deliveries
     (id, fleet_id, workspace_id, provider, destination, turn_id, answer,
@@ -224,7 +224,7 @@ WITH scope AS MATERIALIZED (
 )
 SELECT
     (SELECT count(*) FROM moved)::bigint AS moved_runs,
-    (SELECT hold_expires_at FROM released) AS accepted_hold,
+    (SELECT park_expires_at FROM released) AS accepted_park,
     -- A locking read answers the latest committed version, so a copy that
     -- waited behind the one that settled sees it settled, not its snapshot.
     (SELECT l.status FROM thread.runs l WHERE l.id = $1 AND l.runner_id = $2 FOR SHARE)

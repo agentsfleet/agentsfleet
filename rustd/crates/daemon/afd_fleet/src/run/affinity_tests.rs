@@ -1,4 +1,4 @@
-//! The assignment's token and its reading of a held thread, without a datastore.
+//! The assignment's token and its reading of a parked thread, without a datastore.
 
 #![expect(
     clippy::expect_used,
@@ -8,7 +8,7 @@ use af_core::id::ENTROPY_LEN;
 
 use super::*;
 
-/// The assignment's instant, and a hold that is live at it.
+/// The assignment's instant, and a park that is live at it.
 const NOW: Timestamp = Timestamp::constant(1_767_225_600, 0);
 
 /// A runner, distinct per `seed`.
@@ -16,32 +16,32 @@ fn runner(seed: u8) -> Uuid7 {
     Uuid7::encode(NOW, [seed; ENTROPY_LEN]).expect("a fixed instant encodes")
 }
 
-/// Who `winner` won a thread from, the thread last run by `holder`.
-fn won(held: bool, holder: &Uuid7, winner: &Uuid7) -> Option<HeldAssignment> {
-    held_assignment(held, Some(holder.as_str()), winner)
+/// Who `winner` won a thread from, the thread last run by `keeper`.
+fn won(parked: bool, keeper: &Uuid7, winner: &Uuid7) -> Option<ParkedAssignment> {
+    parked_assignment(parked, Some(keeper.as_str()), winner)
 }
 
-/// A live hold is the holder's to resume, and another runner's win over it
+/// A live park is the keeper's to resume, and another runner's win over it
 /// is counted as one.
 #[test]
-fn test_an_assignment_on_a_live_hold_counts_by_who_won() {
-    let (holder, other) = (runner(1), runner(2));
+fn test_an_assignment_on_a_live_park_counts_by_who_won() {
+    let (keeper, other) = (runner(1), runner(2));
 
-    assert_eq!(won(true, &holder, &holder), Some(HeldAssignment::Holder));
+    assert_eq!(won(true, &keeper, &keeper), Some(ParkedAssignment::Keeper));
     assert_eq!(
-        won(true, &holder, &other),
-        Some(HeldAssignment::OtherAfterLapse)
+        won(true, &keeper, &other),
+        Some(ParkedAssignment::OtherAfterLapse)
     );
 }
 
-/// A hold at or past its deadline binds nobody at the assignment's predicate,
-/// so it is no hold here either: nobody resumes it and nothing counts.
+/// A park at or past its deadline binds nobody at the assignment's predicate,
+/// so it is no park here either: nobody resumes it and nothing counts.
 #[test]
-fn test_a_lapsed_or_absent_hold_is_no_hold() {
-    let (holder, other) = (runner(1), runner(2));
+fn test_a_lapsed_or_absent_park_is_no_park() {
+    let (keeper, other) = (runner(1), runner(2));
 
-    assert_eq!(won(false, &holder, &holder), None);
-    assert_eq!(won(false, &holder, &other), None);
+    assert_eq!(won(false, &keeper, &keeper), None);
+    assert_eq!(won(false, &keeper, &other), None);
 }
 
 /// A fence only ever moves through the column's own type.

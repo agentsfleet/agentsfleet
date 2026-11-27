@@ -11,7 +11,7 @@ use af_core::id::Uuid7;
 use af_wire::runner::{HeartbeatRequest, NetworkPolicy, ParkedFleets, SandboxTier};
 use afd_db::test_util::mint_id;
 use afd_fleet::run::{Acquired, Runs};
-use afd_runner::heartbeat::holds::prove;
+use afd_runner::heartbeat::parked::prove;
 
 use crate::requests::{capable, enrolment_tagged, placement_tag};
 use crate::support::Fixtures;
@@ -102,10 +102,10 @@ pub(crate) async fn reports_capable(fixtures: &Fixtures, runner: &Uuid7) {
         closing: false,
         host: af_wire::runner::HostFacts::default(),
     };
-    let held = prove(request.parked.clone());
+    let parked = prove(request.parked.clone());
     fixtures
         .runners()
-        .heartbeat(runner, &request, held.as_ref(), fixtures.enrolled_at())
+        .heartbeat(runner, &request, parked.as_ref(), fixtures.enrolled_at())
         .await
         .expect("the first beat lands");
 }

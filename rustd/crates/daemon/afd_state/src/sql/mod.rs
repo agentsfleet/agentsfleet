@@ -47,7 +47,7 @@ pub const RUN_STATUS_ACTIVE: &str = "active";
 ///
 /// Declared here, beside the run statuses, because two crates compare
 /// against it: the run pass, which assigns only active fleets, and the
-/// heartbeat, which tells a runner to drop the sandbox it holds for a fleet
+/// heartbeat, which tells a runner to drop the sandbox it keeps parked for a fleet
 /// that is no longer active (RULE UFS).
 pub const FLEET_STATUS_ACTIVE: &str = "active";
 

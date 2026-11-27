@@ -121,7 +121,7 @@ impl Runs {
     }
 
     /// Lock the runner row through this transaction and count its occupied
-    /// workers, and the idle holds `work` reports. Stream grants also recheck
+    /// workers, and the idle parks `work` reports. Stream grants also recheck
     /// the opening credential and connection owner.
     pub(crate) async fn lock_host_capacity(
         &self,

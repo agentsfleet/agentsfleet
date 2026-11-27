@@ -73,7 +73,7 @@ pub(in super::super) async fn expire(case: &Case) {
         .acquire()
         .await
         .expect("elapsed fixture clock");
-    sqlx::query("UPDATE thread.threads SET run_expires_at=clock_timestamp()-interval '1 second',hold_expires_at=NULL WHERE fleet_id=$1")
+    sqlx::query("UPDATE thread.threads SET run_expires_at=clock_timestamp()-interval '1 second',park_expires_at=NULL WHERE fleet_id=$1")
         .bind(&case.held.fleet).execute(&mut *connection).await.expect("prior thread elapsed");
     sqlx::query("UPDATE thread.runs SET status='expired' WHERE id=$1")
         .bind(&case.held.run_key)

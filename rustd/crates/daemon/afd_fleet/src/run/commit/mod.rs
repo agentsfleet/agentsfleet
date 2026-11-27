@@ -59,9 +59,9 @@ pub struct TerminalReport<'a> {
     pub last_turn_id: &'a Uuid7,
     /// The answer that run resumes from.
     pub last_response: &'a str,
-    /// When the sandbox the run left held for the fleet's next event lapses;
-    /// none when the runner holds nothing.
-    pub held_until: Option<Timestamp>,
+    /// When the sandbox the run left parked for the fleet's next event lapses;
+    /// none when the runner parks nothing.
+    pub parked_until: Option<Timestamp>,
     /// Native task participant, prepared before taking report locks.
     pub durable_task_settlement: Option<crate::durable_task::DurableTaskSettlement<'a>>,
     /// The last folded message a completed model call read; its messages
@@ -77,7 +77,7 @@ pub enum Committed {
     /// The report won its fence and every write committed.
     Settled {
         /// Authoritative retained sandbox deadline, absent for late reports.
-        accepted_hold: Option<Timestamp>,
+        accepted_park: Option<Timestamp>,
         /// What the report's lines charged, its runtime line included.
         charged: Nanos,
         /// The run's token sums, this report's lines included.
@@ -221,8 +221,8 @@ impl Runs {
             failure_detail: outcome.verdict.detail(),
             tool_calls: outcome.tool_calls,
             checkpoint: &checkpoint,
-            held_until: report.held_until,
-            sandbox_idle_hold: self.clock().sandbox_idle_hold(),
+            parked_until: report.parked_until,
+            sandbox_idle_park: self.clock().sandbox_idle_park(),
             host_digest,
             host_connection,
             delivery_id: &delivery_id,
@@ -307,7 +307,7 @@ impl Runs {
         transaction.commit().await.map_err(query(CONTEXT_COMMIT))?;
         runner_runs::reported(report.runner_id, succeeded);
         Ok(Committed::Settled {
-            accepted_hold: settled.accepted_hold,
+            accepted_park: settled.accepted_park,
             charged: settled.charged,
             tokens: settled.tokens,
             closed: settled.closed.map(Box::new),

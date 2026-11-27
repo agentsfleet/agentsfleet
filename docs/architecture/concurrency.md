@@ -159,7 +159,7 @@ Boot arms one more, at the latest outstanding run deadline (`afd_gateway`'s `sch
 A task that misses the join deadline is detached and reported as abandoned.
 It keeps its references until it ends, so treat that report as an incomplete shutdown.
 
-The runner joins its heartbeat and worker pool, then destroys every held sandbox.
+The runner joins its heartbeat and worker pool, then destroys every parked sandbox.
 Tests use handshakes, not sleeps; `#[tokio::test(start_paused)]` makes the join timeout cost no wall-clock time.
 `test_task_inventory_and_cancellation` proves cancellation interrupts a blocked `accept()`.
 

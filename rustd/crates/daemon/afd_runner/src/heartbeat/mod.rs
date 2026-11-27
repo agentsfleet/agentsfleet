@@ -70,8 +70,8 @@ pub struct Beat {
     /// ask, so echoing it back would tell the host to immediately re-run the
     /// probe it has this second finished.
     pub selftest_requested: bool,
-    /// Fleets the beat listed as held that the runner should let go of.
-    pub release_holds: Vec<String>,
+    /// Fleets the beat listed as parked that the runner should let go of.
+    pub release_parked: Vec<String>,
     /// Whether this beat cleared a degradation the row still held: the one
     /// moment work the issue refused on that row can be assigned.
     pub recovered: bool,
@@ -81,9 +81,9 @@ use crate::capacity::authority::{Authority, Decision, Refusal};
 use policy::PolicyRow;
 
 impl Runners {
-    /// Records a beat and answers what the host must apply. `held` is the
-    /// beat's holds list as its handler proved it; `None` holds nothing. A
-    /// beat whose `closing` is set clears every hold the list leaves out at
+    /// Records a beat and answers what the host must apply. `parked` is the
+    /// beat's parked list as its handler proved it; `None` parks nothing. A
+    /// beat whose `closing` is set clears every park the list leaves out at
     /// once, since a closing runner's list is final. `now` mints the
     /// transition event's identifier and dates the liveness gauge; every row
     /// this beat writes is stamped by the database.
@@ -98,7 +98,7 @@ impl Runners {
         &self,
         runner: &Uuid7,
         beat: &HeartbeatRequest<'_>,
-        held: Option<&Valid<ParkedFleets<'_>>>,
+        parked: Option<&Valid<ParkedFleets<'_>>>,
         now: Timestamp,
     ) -> Result<Beat> {
         let mut connection = self.pool().acquire().await?;
@@ -107,7 +107,7 @@ impl Runners {
             Decision::Refused(_) => return Err(runner_vanished()),
         };
         match self
-            .record_beat(&mut connection, runner, beat, held, now, row)
+            .record_beat(&mut connection, runner, beat, parked, now, row)
             .await?
         {
             Decision::Allowed(beat) => Ok(beat),
@@ -123,7 +123,7 @@ impl Runners {
         &self,
         authority: &Authority,
         beat: &HeartbeatRequest<'_>,
-        held: Option<&Valid<ParkedFleets<'_>>>,
+        parked: Option<&Valid<ParkedFleets<'_>>>,
         now: Timestamp,
     ) -> Result<Decision<Beat>> {
         let mut connection = self.pool().acquire().await?;
@@ -131,7 +131,7 @@ impl Runners {
             Decision::Allowed(row) => row,
             Decision::Refused(refusal) => return Ok(Decision::Refused(refusal)),
         };
-        self.record_beat(&mut connection, authority.runner(), beat, held, now, row)
+        self.record_beat(&mut connection, authority.runner(), beat, parked, now, row)
             .await
     }
 
@@ -157,7 +157,7 @@ impl Runners {
             assignment: row.assignment,
             verdict,
             selftest_requested: row.selftest_requested,
-            release_holds: Vec::new(),
+            release_parked: Vec::new(),
             recovered: false,
         }))
     }
@@ -167,7 +167,7 @@ impl Runners {
         connection: &mut PgConnection,
         runner: &Uuid7,
         beat: &HeartbeatRequest<'_>,
-        held: Option<&Valid<ParkedFleets<'_>>>,
+        parked: Option<&Valid<ParkedFleets<'_>>>,
         now: Timestamp,
         row: PolicyRow,
     ) -> Result<Decision<Beat>> {
@@ -208,10 +208,10 @@ impl Runners {
         {
             return Ok(Decision::Refused(Refusal::Superseded));
         }
-        let release_holds = holds::reconcile(
+        let release_parked = parked::reconcile(
             connection,
             runner,
-            held,
+            parked,
             beat.closing,
             self.heartbeat_interval(),
         )
@@ -224,7 +224,7 @@ impl Runners {
 
         Ok(Decision::Allowed(Beat {
             selftest_requested: row.selftest_requested && !reported,
-            release_holds,
+            release_parked,
             assignment: row.assignment,
             verdict,
             recovered: row.stored.cleared_by(verdict),
@@ -332,8 +332,8 @@ fn report(event: &'static str, runner: &Uuid7, error: &Error) {
 }
 
 mod cordon;
-pub mod holds;
 mod host;
+pub mod parked;
 pub(crate) use host::RefusedFacts;
 mod policy;
 mod verdict;

@@ -7,6 +7,7 @@ use std::fs;
 use std::sync::Arc;
 use std::time::Duration;
 
+use afr_cgroup::RunCgroup;
 use afr_engine::Limits;
 use afr_executor::Sizes;
 use afr_image::{HostTools, Toolbox};
@@ -63,4 +64,39 @@ fn a_second_engine_over_a_held_state_directory_is_refused_and_sweeps_nothing() {
     drop(first);
     drop(FirecrackerEngine::new(config).unwrap());
     assert!(!live.exists(), "a directory nobody holds is a leftover");
+}
+
+/// A monitor is throttled at its guest memory plus the 64 MiB reserve, what
+/// admission reserves, and capped 256 MiB above for the host's cache of the
+/// guest's unsaved image writes: the throttle sits above the guest's own
+/// memory, and a write burst is written back before the cap kills it.
+#[test]
+fn a_monitors_cgroup_throttles_at_its_reservation_and_caps_above_it() {
+    const MIB: u64 = 1024 * 1024;
+    // pin test: the values Indy ruled for a 2 GiB and a 512 MiB guest
+    for (guest, high, max) in [(2_048, 2_112, 2_368), (512, 576, 832)] {
+        let root = tempfile::tempdir().unwrap();
+        let granted = Limits {
+            memory_bytes: guest * MIB,
+            ..Limits::DEFAULT
+        };
+        let monitor = super::build::monitor_limits(&granted);
+
+        RunCgroup::create(root.path(), LIVE, &monitor).unwrap();
+
+        let dir = root.path().join(LIVE);
+        let read =
+            |file: &str| -> u64 { fs::read_to_string(dir.join(file)).unwrap().parse().unwrap() };
+        assert_eq!(
+            read("memory.high"),
+            high * MIB,
+            "{guest} MiB guest's throttle"
+        );
+        assert_eq!(read("memory.max"), max * MIB, "{guest} MiB guest's cap");
+        assert_eq!(
+            monitor.memory_bytes,
+            high * MIB,
+            "admission reserves the throttle"
+        );
+    }
 }

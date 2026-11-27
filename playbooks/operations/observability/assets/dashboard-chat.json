@@ -492,7 +492,7 @@
       "id": 46,
       "title": "Runner cleanup time",
       "type": "stat",
-      "description": "Runner work after execution and before preparing its report: sandbox hold-or-destroy, tool-record posts, any fallback memory capture and pending usage flush. Selected fleet; p95/p99 use at most 1,000 returned delivery spans. Missing segments have no samples. Timings overlap; do not add them.",
+      "description": "Runner work after execution and before preparing its report: sandbox park-or-destroy, tool-record posts, any fallback memory capture and pending usage flush. Selected fleet; p95/p99 use at most 1,000 returned delivery spans. Missing segments have no samples. Timings overlap; do not add them.",
       "gridPos": {
         "x": 0,
         "y": 24,

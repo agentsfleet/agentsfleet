@@ -53,8 +53,8 @@ pub(crate) struct ReportStatement<'a> {
     pub(crate) failure_detail: Option<&'a str>,
     pub(crate) tool_calls: Option<&'a str>,
     pub(crate) checkpoint: &'a str,
-    pub(crate) held_until: Option<Timestamp>,
-    pub(crate) sandbox_idle_hold: std::time::Duration,
+    pub(crate) parked_until: Option<Timestamp>,
+    pub(crate) sandbox_idle_park: std::time::Duration,
     pub(crate) host_digest: Option<&'a str>,
     pub(crate) host_connection: Option<&'a Uuid7>,
     pub(crate) delivery_id: &'a Uuid7,
@@ -99,8 +99,8 @@ impl<'a> ReportStatement<'a> {
             .bind(af_core::turn::status::RECEIVED)
             .bind(afd_api_wire::approval::status::PENDING)
             .bind(self.checkpoint)
-            .bind(self.held_until.map(Timestamp::to_sqlx))
-            .bind(self.sandbox_idle_hold)
+            .bind(self.parked_until.map(Timestamp::to_sqlx))
+            .bind(self.sandbox_idle_park)
             .bind(self.delivery_id)
             .bind(self.delivery_receipt)
             .bind(
@@ -121,7 +121,7 @@ impl<'a> ReportStatement<'a> {
             .bind(self.host_digest)
             .bind(self.host_connection)
             .bind(
-                self.held_until
+                self.parked_until
                     .map(|_| afd_runner::capacity::renewable_states()),
             )
             .bind(af_core::turn::status::CANCELLED)
@@ -170,7 +170,7 @@ impl<'a> ReportStatement<'a> {
 #[derive(Debug, sqlx::FromRow)]
 struct AnswerRow {
     moved_runs: i64,
-    accepted_hold: Option<jiff_sqlx::Timestamp>,
+    accepted_park: Option<jiff_sqlx::Timestamp>,
     run_status: Option<String>,
     held_posture: Option<String>,
     held_provider: Option<String>,
@@ -206,7 +206,7 @@ pub(crate) enum ReportAnswer {
 /// A settled report's answers.
 #[derive(Debug)]
 pub(crate) struct SettledReport {
-    pub(crate) accepted_hold: Option<Timestamp>,
+    pub(crate) accepted_park: Option<Timestamp>,
     /// Whether the run runs a durable task, whose usage and settlement
     /// follow in the same transaction.
     pub(crate) has_durable_task: bool,
@@ -239,7 +239,7 @@ impl ReportAnswer {
         };
         let tokens = tokens_of(&answer, run_id);
         Ok(Self::Settled(Box::new(SettledReport {
-            accepted_hold: answer.accepted_hold.map(Into::into),
+            accepted_park: answer.accepted_park.map(Into::into),
             has_durable_task: answer.has_durable_task.unwrap_or(false),
             closed,
             owed: answer.owed_id,

@@ -168,23 +168,23 @@ agentsfleet platform runners show <RUNNER_ID>
 
 `<RUNNER_ID>` comes from `agentsfleet platform runners list`. `history <RUNNER_ID> --event-type runner_cordoned,runner_uncordoned` lists events, and `runs <RUNNER_ID>` lists runs.
 
-### Capacity and sandbox holds
+### Capacity and parked sandboxes
 
-An assignment locks the runner row, counts live runs, and inserts the run in that transaction. A sandbox hold takes no worker, so the issue admits the free workers the runner's credits offer. The daemon owns `worker_count`, from 1 to 64 (`af_core::limits::MAX_WORKERS`).
+An assignment locks the runner row, counts live runs, and inserts the run in that transaction. A parked sandbox takes no worker, so the issue admits the free workers the runner's credits offer. The daemon owns `worker_count`, from 1 to 64 (`af_core::limits::MAX_WORKERS`).
 
 A runner's credits are the least of `worker_count`, its engine's `sandboxes_max` and the frame's run limit ([credits](../../rustd/crates/runner/afr_supervisor/src/downlink/running.rs)). A Firecracker host thus stops taking runs at its memory bound, even with workers free.
 
 Lowering the count below current occupancy stops new assignments and refuses renewals until occupancy fits. [Concurrency](concurrency.md) owns the lock order.
 
-A run that ends processed leaves its sandbox held for the same fleet's next run ([held sandboxes](runner_execution.md#workspace-between-runs)). The report's acceptance narrows the hold to `[runner.sandboxes] max_idle_hold_seconds`, 600 seconds by default.
+A run that ends processed leaves its sandbox parked for the same fleet's next run ([parked sandboxes](runner_execution.md#workspace-between-runs)). The report's acceptance narrows the park to `[runner.sandboxes] max_idle_park_seconds`, 600 seconds by default.
 
-Every heartbeat lists the fleets the runner still holds. Other runners skip a fleet held by an active, non-degraded runner seen within the offline window.
+Every heartbeat lists the fleets the runner still keeps parked. Other runners skip a fleet parked by an active, non-degraded runner seen within the offline window.
 
-The holder reuses its hold only when the fleet's last run ran there, the hold is unexpired and the turn is not a reclaim. Otherwise any eligible runner takes the turn in a fresh sandbox.
+The keeper reuses its park only when the fleet's last run ran there, the park is unexpired and the turn is not a reclaim. Otherwise any eligible runner takes the turn in a fresh sandbox.
 
 ### Placement
 
-The candidate query prefers held fleets, then a recent wake hint, then the runner's previous fleet. The rest go by how long each head has waited while its thread was free. That age is the later of its queued time and its thread's last release.
+The candidate query prefers parked fleets, then a recent wake hint, then the runner's previous fleet. The rest go by how long each head has waited while its thread was free. That age is the later of its queued time and its thread's last release.
 
 A head a pass freed without a run, after a fault or a refusal, so waits behind turns queued before that release. Runners that read the same order skip each other's locked rows at the assignment.
 

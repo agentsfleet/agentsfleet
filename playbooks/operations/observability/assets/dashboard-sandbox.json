@@ -268,7 +268,7 @@
       "id": 154,
       "title": "Sandbox reuse results",
       "type": "timeseries",
-      "description": "Held sandbox lifecycle, including parked, reused and reasons for release.",
+      "description": "Parked sandbox lifecycle, including parked, reused and reasons for release.",
       "datasource": {
         "type": "prometheus",
         "uid": "__PROMETHEUS_UID__"

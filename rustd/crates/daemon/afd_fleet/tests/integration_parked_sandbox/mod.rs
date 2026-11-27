@@ -1,9 +1,9 @@
-//! A fleet whose runner holds its sandbox, against live datastores: the report
-//! records the hold under its fence, the heartbeat keeps it honest, and the
-//! assignment lets only the holder in while the hold is live.
+//! A fleet whose runner parks its sandbox, against live datastores: the report
+//! records the park under its fence, the heartbeat keeps it honest, and the
+//! assignment lets only the keeper in while the park is live.
 //!
-//! Each hold is made the way production makes one, through the assignment and the
-//! report's release, never by writing the row: a test that wrote `hold_expires_at`
+//! Each park is made the way production makes one, through the assignment and the
+//! report's release, never by writing the row: a test that wrote `park_expires_at`
 //! by hand would prove the predicates against a row no runner could produce.
 //!
 //! Marked `#[ignore]` so `make test-unit-rustd` compiles these without
@@ -27,7 +27,7 @@ pub(crate) mod report;
 mod resume;
 mod unleasable;
 
-use afd_runner::timing::{HEARTBEAT_INTERVAL, RUN_TTL, SANDBOX_HOLD_IDLE};
+use afd_runner::timing::{HEARTBEAT_INTERVAL, RUN_TTL, SANDBOX_PARK_IDLE};
 use std::borrow::Cow;
 
 use af_core::id::Uuid7;
@@ -35,7 +35,7 @@ use af_core::id::Uuid7;
 use af_wire::runner::{HeartbeatRequest, ParkedFleets};
 use afd_fleet::run::Runs;
 use afd_runner::Beat;
-use afd_runner::heartbeat::holds::prove;
+use afd_runner::heartbeat::parked::prove;
 use jiff::Timestamp;
 
 use crate::requests::capable;
@@ -46,18 +46,18 @@ use crate::support::Fixtures;
 /// A fleet status other than active: what an owner's stop leaves.
 const ARCHIVED: &str = "archived";
 
-/// The thread's hold and its last runner, as stored.
+/// The thread's park and its last runner, as stored.
 async fn thread(fixtures: &Fixtures, fleet: &Uuid7) -> (Option<Timestamp>, Option<Uuid7>) {
     (
         fixtures
-            .instant(Row::Thread(fleet), "hold_expires_at")
+            .instant(Row::Thread(fleet), "park_expires_at")
             .await,
         fixtures.value(Row::Thread(fleet), "last_runner_id").await,
     )
 }
 
-/// `runner` beats once as a host proving its whole assignment, holding
-/// nothing yet, which is what makes its holds bind: a runner enrolled and
+/// `runner` beats once as a host proving its whole assignment, parking
+/// nothing yet, which is what makes its parks bind: a runner enrolled and
 /// never heard from is silent, and one that reported nothing reads degraded
 /// and runs nothing.
 async fn live(fixtures: &Fixtures, runner: &Uuid7) {
@@ -68,7 +68,7 @@ async fn live(fixtures: &Fixtures, runner: &Uuid7) {
     beats_at(fixtures, runner, &request, fixtures.enrolled_at()).await;
 }
 
-/// `runner` beats `request` at `now`, its holds list proved as the handler
+/// `runner` beats `request` at `now`, its parks list proved as the handler
 /// proves it.
 async fn beats_at(
     fixtures: &Fixtures,
@@ -76,17 +76,17 @@ async fn beats_at(
     request: &HeartbeatRequest<'_>,
     now: Timestamp,
 ) -> Beat {
-    let held = prove(request.parked.clone());
+    let parked = prove(request.parked.clone());
     fixtures
         .runners()
-        .heartbeat(runner, request, held.as_ref(), now)
+        .heartbeat(runner, request, parked.as_ref(), now)
         .await
         .expect("a beat lands")
 }
 
-/// `runner` is assigned `fleet`, and its report releases the thread holding the
+/// `runner` is assigned `fleet`, and its report releases the thread parking the
 /// sandbox until `until`.
-async fn hold(runs: &Runs, fixtures: &Fixtures, fleet: &Uuid7, runner: &Uuid7, until: Timestamp) {
+async fn park(runs: &Runs, fixtures: &Fixtures, fleet: &Uuid7, runner: &Uuid7, until: Timestamp) {
     let assigned = runs
         .assign(fleet, runner, RUN_TTL)
         .await
@@ -98,8 +98,8 @@ async fn hold(runs: &Runs, fixtures: &Fixtures, fleet: &Uuid7, runner: &Uuid7, u
         .expect("the report's release lands");
 }
 
-/// Ages each of `fleets`' threads a full beat interval, as if their holds were
-/// reported that long ago: a beat may then clear a hold its list leaves out.
+/// Ages each of `fleets`' threads a full beat interval, as if their parks were
+/// reported that long ago: a beat may then clear a park its list leaves out.
 async fn settle(fixtures: &Fixtures, fleets: &[&Uuid7]) {
     for fleet in fleets {
         fixtures
@@ -108,13 +108,13 @@ async fn settle(fixtures: &Fixtures, fleets: &[&Uuid7]) {
     }
 }
 
-/// A beat listing `holds` as the runner spells them on the wire: text, so a
+/// A beat listing `parks` as the runner spells them on the wire: text, so a
 /// test can list an entry that is no identifier.
-fn beat<'a>(holds: &'a [&'a str]) -> HeartbeatRequest<'a> {
+fn beat<'a>(parks: &'a [&'a str]) -> HeartbeatRequest<'a> {
     HeartbeatRequest {
         capability_report: None,
         selftest: None,
-        parked: ParkedFleets(holds.iter().map(|fleet| Cow::Borrowed(*fleet)).collect()),
+        parked: ParkedFleets(parks.iter().map(|fleet| Cow::Borrowed(*fleet)).collect()),
         closing: false,
         host: af_wire::runner::HostFacts::default(),
     }
@@ -122,11 +122,11 @@ fn beat<'a>(holds: &'a [&'a str]) -> HeartbeatRequest<'a> {
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_report_stores_hold_under_fencing() {
+async fn test_report_stores_park_under_fencing() {
     let fixtures = Fixtures::create().await;
     let (fleet, _workspace, _tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
     let runs = fixtures.runs();
-    let until = fixtures.after(SANDBOX_HOLD_IDLE);
+    let until = fixtures.after(SANDBOX_PARK_IDLE);
 
     let first = runs
         .assign(&fleet, &runner, RUN_TTL)
@@ -164,15 +164,15 @@ async fn test_report_stores_hold_under_fencing() {
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_heartbeat_clears_dropped_holds() {
+async fn test_heartbeat_clears_dropped_parks() {
     let fixtures = Fixtures::create().await;
     let (kept, _workspace, _tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
     let (dropped, ..) = seeded_parts::<1>(&fixtures).await;
     let runs = fixtures.runs();
-    let until = fixtures.after(SANDBOX_HOLD_IDLE);
+    let until = fixtures.after(SANDBOX_PARK_IDLE);
     live(&fixtures, &runner).await;
-    hold(&runs, &fixtures, &kept, &runner, until).await;
-    hold(&runs, &fixtures, &dropped, &runner, until).await;
+    park(&runs, &fixtures, &kept, &runner, until).await;
+    park(&runs, &fixtures, &dropped, &runner, until).await;
     settle(&fixtures, &[&kept, &dropped]).await;
     let now = fixtures.after(HEARTBEAT_INTERVAL);
 
@@ -185,7 +185,7 @@ async fn test_heartbeat_clears_dropped_holds() {
     .await;
     let one = beats_at(&fixtures, &runner, &beat(&[kept.as_str()]), now).await;
 
-    assert!(both.release_holds.is_empty() && one.release_holds.is_empty());
+    assert!(both.release_parked.is_empty() && one.release_parked.is_empty());
     assert_eq!(thread(&fixtures, &kept).await.0, Some(until));
     assert_eq!(thread(&fixtures, &dropped).await.0, None);
     fixtures.cleanup().await;
@@ -193,18 +193,18 @@ async fn test_heartbeat_clears_dropped_holds() {
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_inactive_fleet_hold_destroyed() {
+async fn test_inactive_fleet_park_destroyed() {
     let fixtures = Fixtures::create().await;
     let (fleet, _workspace, _tenant, [runner, other]) = seeded_parts::<2>(&fixtures).await;
     let (foreign, ..) = seeded_parts::<1>(&fixtures).await;
     let runs = fixtures.runs();
     live(&fixtures, &runner).await;
-    hold(
+    park(
         &runs,
         &fixtures,
         &fleet,
         &runner,
-        fixtures.after(SANDBOX_HOLD_IDLE),
+        fixtures.after(SANDBOX_PARK_IDLE),
     )
     .await;
     let mut connection = fixtures.database.acquire().await.expect("a connection");
@@ -220,11 +220,11 @@ async fn test_inactive_fleet_hold_destroyed() {
     let stopped = beats_at(&fixtures, &runner, &beat(&[fleet.as_str()]), now).await;
     let stranger = beats_at(&fixtures, &other, &beat(&[foreign.as_str()]), now).await;
 
-    assert_eq!(stopped.release_holds, [fleet]);
+    assert_eq!(stopped.release_parked, [fleet]);
     assert_eq!(
-        stranger.release_holds,
+        stranger.release_parked,
         [foreign],
-        "a fleet this runner never held is answered as one to drop"
+        "a fleet this runner never parked is answered as one to drop"
     );
     fixtures.cleanup().await;
 }

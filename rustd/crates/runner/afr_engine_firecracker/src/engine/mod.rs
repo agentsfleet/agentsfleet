@@ -227,9 +227,11 @@ struct Available {
 }
 
 /// The bound `available` makes under `tuning`, the lesser of what memory and
-/// disk admit. In memory, one microVM reserves what its monitor's cgroup
-/// holds: its guest's granted memory and `SANDBOX_MEMORY_RESERVE_BYTES`
-/// (64 MiB) beside it, which the kernel holds the monitor to. The spike
+/// disk admit. In memory, one microVM reserves its monitor's cgroup
+/// throttle: its guest's granted memory and `SANDBOX_MEMORY_RESERVE_BYTES`
+/// (64 MiB) beside it. The cgroup's cap sits `WRITEBACK_HEADROOM_BYTES`
+/// above for the host's cache of unsaved image writes, which the kernel
+/// writes back under the throttle, so admission does not reserve it. The spike
 /// measured a 2 GiB guest's idle monitor at 110.9 MiB resident with 46.2 MiB
 /// used inside the guest (`docs/v2/reviews/m258-firecracker-spike.md`), about
 /// 64.7 MiB its own. On disk, it reserves its workspace image's granted size.

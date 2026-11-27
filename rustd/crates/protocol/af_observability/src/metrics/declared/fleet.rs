@@ -33,10 +33,10 @@ pub const RUN_HISTORY_BYTES: Declared<HistogramKind> =
 pub const RUN_HISTORY_CUTS_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_run_history_cuts_total");
 
-/// Won assignments on a fleet whose thread named a sandbox held live at the
+/// Won assignments on a fleet whose thread named a sandbox parked live at the
 /// assignment, by who won.
-pub const RUN_HELD_ASSIGNMENTS_TOTAL: Declared<CounterKind> =
-    Declared::new("agentsfleet_run_held_assignments_total");
+pub const RUN_PARKED_ASSIGNMENTS_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_run_parked_assignments_total");
 
 /// Accepted steers, by where they went.
 pub const STEER_DISPOSITIONS_TOTAL: Declared<CounterKind> =

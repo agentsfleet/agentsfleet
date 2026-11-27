@@ -61,11 +61,11 @@ pub struct Acquired {
     /// An instant rather than a bare `i64`, because the run row binds four
     /// other integers beside it and two transposed compile clean.
     pub turn_created_at: Timestamp,
-    /// Whether the runner runs this event in the sandbox it holds for the
-    /// fleet. Only a fresh event whose assignment found this runner's hold live: a
+    /// Whether the runner runs this event in the sandbox it keeps parked for the
+    /// fleet. Only a fresh event whose assignment found this runner's park live: a
     /// reassigned event's first attempt may have run in that sandbox, so it
     /// starts clean.
-    pub resume_hold: bool,
+    pub resume_park: bool,
     /// Whether this turn was delivered on an earlier attempt.
     pub redelivered: bool,
     /// How many runs this turn was issued before this assignment. A report

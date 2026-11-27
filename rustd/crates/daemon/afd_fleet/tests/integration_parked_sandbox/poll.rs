@@ -1,40 +1,40 @@
-//! Held affinity and notification loss both use the authoritative ledger.
+//! Parked affinity and notification loss both use the authoritative ledger.
 #![expect(clippy::expect_used, reason = "test assertions")]
 
-use super::{hold, live};
+use super::{live, park};
 use crate::seed::{Seeded, seeded, seeded_parts};
 use crate::support::Fixtures;
-use afd_runner::timing::SANDBOX_HOLD_IDLE;
+use afd_runner::timing::SANDBOX_PARK_IDLE;
 
 use afd_bus::wake::Wake;
 use afd_db::test_util::mint_id;
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_naming_a_held_fleet_wins_another_runner_nothing() {
+async fn test_naming_a_parked_fleet_wins_another_runner_nothing() {
     let fixtures = Fixtures::create().await;
     let Seeded {
-        runners: [holder, other],
+        runners: [keeper, other],
         fleet,
         ..
     } = seeded::<2>(&fixtures).await;
     let runs = fixtures.runs();
-    live(&fixtures, &holder).await;
-    hold(
+    live(&fixtures, &keeper).await;
+    park(
         &runs,
         &fixtures,
         &fleet,
-        &holder,
-        fixtures.after(SANDBOX_HOLD_IDLE),
+        &keeper,
+        fixtures.after(SANDBOX_PARK_IDLE),
     )
     .await;
     let named = [fleet.clone()];
     assert!(runs.select(&other, &named).await.expect("poll").is_none());
     let acquired = runs
-        .select(&holder, &named)
+        .select(&keeper, &named)
         .await
         .expect("poll")
-        .expect("holder gets work");
+        .expect("keeper gets work");
     assert_eq!(acquired.fleet_id, fleet);
     fixtures.cleanup().await;
 }
@@ -43,10 +43,10 @@ async fn test_naming_a_held_fleet_wins_another_runner_nothing() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_an_idle_poll_examines_no_candidates() {
     let fixtures = Fixtures::create().await;
-    let (fleet, _, _, [holder]) = seeded_parts::<1>(&fixtures).await;
+    let (fleet, _, _, [keeper]) = seeded_parts::<1>(&fixtures).await;
     let (polled, cost) = fixtures
         .runs()
-        .select_measured(&holder, std::slice::from_ref(&fleet))
+        .select_measured(&keeper, std::slice::from_ref(&fleet))
         .await;
     assert!(polled.expect("poll").is_none());
     assert_eq!(cost.candidates_scanned, 0, "{cost:?}");

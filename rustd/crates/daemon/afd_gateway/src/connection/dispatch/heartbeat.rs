@@ -3,7 +3,7 @@
 use std::num::NonZeroU64;
 
 use af_wire::{protocol::Answer, runner::HeartbeatRequest};
-use afd_runner::heartbeat::holds;
+use afd_runner::heartbeat::parked;
 
 use super::super::{ConnectionServices, Message, context::answer, opening::allowed};
 use crate::{Operation, Result};
@@ -14,8 +14,8 @@ impl ConnectionServices {
         request_id: NonZeroU64,
         mut request: HeartbeatRequest<'_>,
     ) -> Result<()> {
-        let held = garde::Unvalidated::new(std::mem::take(&mut request.parked)).validate()?;
-        let listed = holds::fleets(&held);
+        let parked = garde::Unvalidated::new(std::mem::take(&mut request.parked)).validate()?;
+        let listed = parked::fleets(&parked);
         self.handle.liveness.received();
         let result = self
             .operation(Operation::Heartbeat, async {
@@ -27,7 +27,7 @@ impl ConnectionServices {
                         .heartbeat_connected(
                             &self.authority,
                             &request,
-                            Some(&held),
+                            Some(&parked),
                             self.gateway.inner.dependencies.wall_clock.now(),
                         )
                         .await?,
@@ -36,7 +36,7 @@ impl ConnectionServices {
             .await;
         match result {
             Ok(beat) => {
-                self.handle.snapshot.lock().held = listed;
+                self.handle.snapshot.lock().parked = listed;
                 self.apply_policy(&beat);
                 self.send(&Message::Heartbeat {
                     request_id,

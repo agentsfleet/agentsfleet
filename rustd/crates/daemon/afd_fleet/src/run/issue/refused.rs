@@ -74,8 +74,8 @@ impl Refused {
 pub struct Census {
     /// Live runs on the host.
     pub occupied: i64,
-    /// Other fleets' idle holds on the host, which take no worker.
-    pub held: i64,
+    /// Other fleets' idle parks on the host, which take no worker.
+    pub parked: i64,
     /// The host's assigned worker limit.
     pub worker_count: i32,
 }
@@ -105,7 +105,7 @@ impl Runs {
         Ok(census.map_or(Refused::HostUnproven, |capacity| {
             let counted = Census {
                 occupied: capacity.occupied(),
-                held: capacity.held(),
+                parked: capacity.parked(),
                 worker_count: capacity.workers(),
             };
             if capacity.can_assign() {

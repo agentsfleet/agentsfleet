@@ -35,7 +35,7 @@ async fn a_report_whose_kept_facts_name_no_catalogue_version_reads_the_book_and_
     kept.catalogue_version = None;
     let owner = held.fixtures.open(DbRole::Migrator).await;
     statements::install(&owner).await;
-    let request = crate::integration_held_sandbox::report::processed(&held, None);
+    let request = crate::integration_parked_sandbox::report::processed(&held, None);
     let mut untimed = af_observability::verb_span::VerbClock::untimed();
 
     let window = Counted::open(&owner).await;

@@ -71,7 +71,7 @@ impl ConnectionServices {
             degraded_reason: beat.verdict.reason().map(Cow::Borrowed),
             selftest_requested: beat.selftest_requested,
             release_parked: beat
-                .release_holds
+                .release_parked
                 .iter()
                 .map(|id| id.as_str().into())
                 .collect(),

@@ -29,27 +29,29 @@ impl Runs {
     ///
     /// # Errors
     /// Preserves database failures and malformed stored identifiers.
-    pub async fn select(&self, runner: &Uuid7, held: &[Uuid7]) -> Result<Option<Acquired>> {
-        self.select_ordered(runner, held, None).await
+    pub async fn select(&self, runner: &Uuid7, parked: &[Uuid7]) -> Result<Option<Acquired>> {
+        self.select_ordered(runner, parked, None).await
     }
 
     pub(crate) async fn select_ordered(
         &self,
         runner: &Uuid7,
-        held: &[Uuid7],
+        parked: &[Uuid7],
         recovery: Option<&mut RecoveryScan>,
     ) -> Result<Option<Acquired>> {
-        self.select_recording(runner, held, recovery).await.0
+        self.select_recording(runner, parked, recovery).await.0
     }
 
     async fn select_recording(
         &self,
         runner: &Uuid7,
-        held: &[Uuid7],
+        parked: &[Uuid7],
         recovery: Option<&mut RecoveryScan>,
     ) -> (Result<Option<Acquired>>, PollCost) {
         let mut cost = PollCost::default();
-        let selected = self.ledger_counted(runner, held, recovery, &mut cost).await;
+        let selected = self
+            .ledger_counted(runner, parked, recovery, &mut cost)
+            .await;
         producers::fleet::run_polled(cost.candidates_scanned);
         (selected, cost)
     }

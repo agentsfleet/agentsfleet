@@ -23,8 +23,8 @@ WITH instant AS MATERIALIZED (
     -- stale statistics cannot turn this probe into a walk of every unsettled turn.
     AND (SELECT true FROM thread.turns u WHERE u.thread_id = z.id AND u.settled_at IS NULL LIMIT 1)
     AND (s.run_expires_at IS NULL OR s.run_expires_at < instant.read_at)
-    AND (s.hold_expires_at IS NULL
-         OR s.hold_expires_at <= instant.read_at
+    AND (s.park_expires_at IS NULL
+         OR s.park_expires_at <= instant.read_at
          OR s.last_runner_id = $2
          OR NOT EXISTS (
            SELECT 1 FROM runner.runners r
@@ -57,7 +57,7 @@ WHERE ($12::timestamptz IS NULL OR (head.created_at, head.id)>($12, $13::uuid))
   -- A tenant runner skips a fleet that runs on the platform model.
   AND (z.host_platform OR z.model_ref <> $15::text)
 -- Recovery pages keep the oldest eligible head per fleet and ignore locality.
--- Ordinary passes take held fleets, the wake hint and this runner's last fleets
+-- Ordinary passes take parked fleets, the wake hint and this runner's last fleets
 -- first, then the head that has waited longest while its thread was free: the
 -- later of its queued time and the thread's last release. A head a pass freed
 -- without a run so waits behind turns queued before that release. Runners

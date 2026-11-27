@@ -204,6 +204,6 @@ The bench first prints what sealing and opening cost, with no datastore: one 8 M
 
 - [Runner fleet](runner_fleet.md): how a dead runner's turn is reassigned
 - [Durable tasks](durable_tasks.md): task lifecycle and guarded publication
-- [Runner runtime](runner_execution.md): the sandbox and the held workspace between runs
+- [Runner runtime](runner_execution.md): the sandbox and the parked workspace between runs
 - [Configuration reference](config_reference.md): `[checkpoint] cipher`, `[checkpoint.storage]`, `[turns.checkpoints]` and `[durable_tasks.checkpoints]`
 - [Sandbox evaluation](../reviews/space-sandbox/sandbox_evaluation.md): the design study that proposed this storage

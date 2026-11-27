@@ -103,7 +103,7 @@ impl ConfirmedConnection {
                 assignments_sent: 0,
                 assignments_seen: 0,
                 ready_revision: None,
-                held: Vec::new(),
+                parked: Vec::new(),
                 last_assignment: tokio::time::Instant::now(),
                 recovery_pending: None,
             }),

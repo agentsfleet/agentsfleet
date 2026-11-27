@@ -237,8 +237,8 @@ fn fleet_products() -> [(&'static str, usize); 9] {
             fleet_labels::HistoryCut::ALL.len(),
         ),
         (
-            fleet::RUN_HELD_ASSIGNMENTS_TOTAL.wire_name(),
-            fleet_labels::HeldAssignment::ALL.len(),
+            fleet::RUN_PARKED_ASSIGNMENTS_TOTAL.wire_name(),
+            fleet_labels::ParkedAssignment::ALL.len(),
         ),
     ]
 }

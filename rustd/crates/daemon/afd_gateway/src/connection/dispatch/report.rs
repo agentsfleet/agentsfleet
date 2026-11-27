@@ -39,7 +39,7 @@ impl ConnectionServices {
                 self.cache.forget(&id);
                 Ok(ReportResponse {
                     ok: true,
-                    park: settled.hold,
+                    park: settled.park,
                 })
             })
             .await;

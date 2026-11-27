@@ -73,7 +73,7 @@ pub(crate) fn report<'a>(
         },
         last_turn_id: crate::report_seed::resume_event(),
         last_response: RESUME_RESPONSE,
-        held_until: None,
+        parked_until: None,
         now,
     }
 }

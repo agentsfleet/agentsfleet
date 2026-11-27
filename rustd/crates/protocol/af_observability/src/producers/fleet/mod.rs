@@ -7,7 +7,7 @@
 pub mod cache;
 pub mod fold;
 pub mod history;
-pub mod hold;
+pub mod park;
 pub mod runner;
 pub mod turn;
 
@@ -42,7 +42,7 @@ pub struct Handles {
     history_bytes: Histogram<f64>,
     history_cuts: Counter<u64>,
     history_read_failures: Counter<u64>,
-    held_assignments: Counter<u64>,
+    parked_assignments: Counter<u64>,
     cache_lookups: Counter<u64>,
     steer_dispositions: Counter<u64>,
     run_folds: Counter<u64>,
@@ -86,7 +86,7 @@ impl Handles {
             history_cuts: instruments.counter_u64(&declared::RUN_HISTORY_CUTS_TOTAL)?,
             history_read_failures: instruments
                 .counter_u64(&declared::RUN_HISTORY_READ_FAILURES_TOTAL)?,
-            held_assignments: instruments.counter_u64(&declared::RUN_HELD_ASSIGNMENTS_TOTAL)?,
+            parked_assignments: instruments.counter_u64(&declared::RUN_PARKED_ASSIGNMENTS_TOTAL)?,
             cache_lookups: instruments.counter_u64(&declared::RUN_CACHE_LOOKUPS_TOTAL)?,
             steer_dispositions: instruments.counter_u64(&declared::STEER_DISPOSITIONS_TOTAL)?,
             run_folds: instruments.counter_u64(&declared::RUN_FOLDS_TOTAL)?,

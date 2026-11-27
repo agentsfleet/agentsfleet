@@ -131,7 +131,7 @@ pub const ATTR_DELIVERY_TOOLS_MS: &str = "agentsfleet.delivery.tools_ms";
 /// How long the run's sandbox calls waited on the build.
 pub const ATTR_DELIVERY_SANDBOX_WAIT_MS: &str = "agentsfleet.delivery.sandbox_wait_ms";
 
-/// The runner's hold-or-destroy up to the start of its report post.
+/// The runner's park-or-destroy up to the start of its report post.
 pub const ATTR_DELIVERY_SETTLE_MS: &str = "agentsfleet.delivery.settle_ms";
 
 /// The report's receipt to the `turn_complete` publish, on this daemon.

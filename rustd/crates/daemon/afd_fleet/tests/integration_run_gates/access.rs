@@ -141,7 +141,7 @@ async fn settle_and_lapse(fixtures: &Fixtures, ready: &Ready) {
     }
     sqlx::query(
         "UPDATE thread.threads SET run_expires_at = clock_timestamp() - interval '1 second', \
-         hold_expires_at = NULL WHERE fleet_id = $1",
+         park_expires_at = NULL WHERE fleet_id = $1",
     )
     .bind(&ready.fleet)
     .execute(&mut *connection)

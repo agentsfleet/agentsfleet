@@ -98,8 +98,8 @@ impl Registry {
                 {
                     return None;
                 }
-                let holds = state.held.iter().any(|fleet| fleets.contains(fleet));
-                let key = (!holds, state.last_assignment);
+                let parks = state.parked.iter().any(|fleet| fleets.contains(fleet));
+                let key = (!parks, state.last_assignment);
                 drop(state);
                 Some((key, connection))
             })

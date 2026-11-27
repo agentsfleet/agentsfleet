@@ -10,14 +10,14 @@ pub(super) const LOCK_HOST: &str = include_str!("lock_host.sql");
 /// The same host proof, shared with other continuing runs.
 pub(super) const SHARE_HOST: &str = include_str!("share_host.sql");
 
-/// Live runs and applicable idle holds, counted at one clock read.
+/// Live runs and applicable idle parks, counted at one clock read.
 ///
 /// A separate statement from [`LOCK_HOST`], run after it in the same
 /// transaction, so its `clock_timestamp()` is read once the host lock is held:
 /// a run that expired while this assignment waited for the lock no longer
 /// counts. `$1` runner, `$2` active status, `$3` the thread the assignment consumes
 /// (a fleet's thread is keyed by the fleet's id) or NULL, `$4` whether this is a
-/// new assignment that counts holds.
+/// new assignment that counts parks.
 pub(super) const CENSUS: &str = include_str!("census.sql");
 
 /// The host's run version. `$1` runner.

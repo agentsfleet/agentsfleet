@@ -146,7 +146,7 @@ impl Fixtures {
     /// passing would have.
     ///
     /// Every deadline the code under test checks is read on the database's
-    /// clock, so a test reaches a lapsed run, an expired hold, a silent
+    /// clock, so a test reaches a lapsed run, an expired park, a silent
     /// runner or a run at its hard cap by ageing the row it reads, never by
     /// handing the code a future instant.
     pub(crate) async fn age(&self, row: Row<'_>, column: &str, by: std::time::Duration) {

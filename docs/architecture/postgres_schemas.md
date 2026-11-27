@@ -141,7 +141,7 @@ A durable task's accepted plan is its source turn's `thread.turns.plan`, and its
 
 | Table | Purpose |
 |---|---|
-| `threads` | One conversation per fleet: fence, sticky runner, sandbox hold, resume state |
+| `threads` | One conversation per fleet: fence, sticky runner, sandbox park, resume state |
 | `turns` | One input on a thread and its answer; the fleet's work queue |
 | `runs` | One try at a turn by one runner; settled runs outlive a fleet purge |
 | `items` | Full arguments and output of each tool call a run made |

@@ -44,12 +44,12 @@ pub const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
 /// Continuous healthy native heartbeats required to lift automatic quarantine.
 pub const UNCORDON_AFTER: Duration = HEARTBEAT_INTERVAL.saturating_mul(3);
 
-/// The default of `[runner.sandboxes] max_idle_hold_seconds`.
+/// The default of `[runner.sandboxes] max_idle_park_seconds`.
 ///
 /// The longest a daemon lets a runner's frozen sandbox keep protecting its fleet after a
-/// run ends. A runner holds for its own span and reports it; a hold past this ceiling
+/// run ends. A runner parks for its own span and reports it; a park past this ceiling
 /// protects nothing.
-pub const SANDBOX_HOLD_IDLE: Duration = Duration::from_mins(10);
+pub const SANDBOX_PARK_IDLE: Duration = Duration::from_mins(10);
 
 /// How many renewal frames pass between funds checks of one payer.
 ///

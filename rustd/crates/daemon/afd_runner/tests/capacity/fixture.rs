@@ -107,10 +107,10 @@ impl Fixture {
         .await;
     }
 
-    /// A hold is a thread deadline, independent of the preceding run's status.
-    pub(super) async fn hold(&self, until: Timestamp) -> Uuid7 {
+    /// A park is a thread deadline, independent of the preceding run's status.
+    pub(super) async fn park(&self, until: Timestamp) -> Uuid7 {
         use jiff_sqlx::ToSqlx as _;
-        let mut connection = self.owner.acquire().await.expect("hold seed connection");
+        let mut connection = self.owner.acquire().await.expect("park seed connection");
         let fleet = mint_id();
         FleetSeed::new(
             &fleet,
@@ -118,25 +118,25 @@ impl Fixture {
             &self.tenant,
             afd_state::sql::FLEET_STATUS_ACTIVE,
         )
-        .name("Hold capacity")
+        .name("Park capacity")
         .insert(&mut *connection)
         .await
         .expect("seed a fleet distinct from the live run");
         sqlx::query(
             "INSERT INTO thread.threads \
              (id, fleet_id, last_runner_id, fencing_token, run_expires_at, \
-              hold_expires_at, created_at, updated_at) \
+              park_expires_at, created_at, updated_at) \
              VALUES ($1, $1, $2, 1, clock_timestamp(), $3, now(), now()) \
              ON CONFLICT (id) DO UPDATE SET last_runner_id = EXCLUDED.last_runner_id, \
                fencing_token = 1, run_expires_at = EXCLUDED.run_expires_at, \
-               hold_expires_at = EXCLUDED.hold_expires_at, updated_at = now()",
+               park_expires_at = EXCLUDED.park_expires_at, updated_at = now()",
         )
         .bind(&fleet)
         .bind(&self.runner)
         .bind(until.to_sqlx())
         .execute(&mut *connection)
         .await
-        .expect("seed this fleet's hold");
+        .expect("seed this fleet's park");
         fleet
     }
 
@@ -174,7 +174,7 @@ impl Fixture {
     pub(super) async fn try_assign(&self) -> bool {
         let mut connection = self.db.acquire().await.expect("assignment connection");
         let mut tx = connection.begin().await.expect("assignment transaction");
-        // A fleet with no hold on this host, so the assignment takes a worker.
+        // A fleet with no park on this host, so the assignment takes a worker.
         let fleet = mint_id();
         let capacity = afd_runner::capacity::lock(
             &mut tx,

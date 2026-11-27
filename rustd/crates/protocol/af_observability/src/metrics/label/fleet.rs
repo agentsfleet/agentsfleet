@@ -190,14 +190,14 @@ closed_set! {
 }
 
 closed_set! {
-    /// Who won the assignment on a fleet whose thread named a sandbox held live
-    /// at the assignment. A hold past its deadline is no hold, and counts nothing.
-    HeldAssignment {
-        /// The runner holding the fleet's sandbox, which continues in it.
-        /// Counted when its run resumes the hold, so a reassignment, which
+    /// Who won the assignment on a fleet whose thread named a sandbox parked live
+    /// at the assignment. A park past its deadline is no park, and counts nothing.
+    ParkedAssignment {
+        /// The runner keeping the fleet's sandbox parked, which continues in it.
+        /// Counted when its run resumes the park, so a reassignment, which
         /// starts clean, counts nothing.
-        Holder => "holder",
-        /// Another runner, once the holder fell silent or could no longer
+        Keeper => "keeper",
+        /// Another runner, once the keeper fell silent or could no longer
         /// run: degraded, or no longer active.
         OtherAfterLapse => "other_after_lapse",
     }

@@ -91,7 +91,7 @@ impl Lane {
             .assign_fleet_with(
                 &mut AssignRequest {
                     runner: &self.runner,
-                    held: &[],
+                    parked: &[],
                     degraded: false,
                     credits,
                     now: self.fixtures.enrolled_at(),

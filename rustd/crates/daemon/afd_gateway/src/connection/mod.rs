@@ -49,7 +49,7 @@ pub(crate) struct SchedulingState {
     pub(crate) assignments_sent: u64,
     pub(crate) assignments_seen: u64,
     pub(crate) ready_revision: Option<NonZeroU64>,
-    pub(crate) held: Vec<Uuid7>,
+    pub(crate) parked: Vec<Uuid7>,
     pub(crate) last_assignment: Instant,
     pub(crate) recovery_pending: Option<afd_bus::wake::Recovery>,
 }
@@ -250,7 +250,7 @@ impl ConnectionHandle {
                 assignments_sent: 0,
                 assignments_seen: 0,
                 ready_revision: None,
-                held: Vec::new(),
+                parked: Vec::new(),
                 last_assignment: Instant::now(),
                 recovery_pending: None,
             }),

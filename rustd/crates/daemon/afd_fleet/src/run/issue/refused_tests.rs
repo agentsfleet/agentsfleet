@@ -1,9 +1,9 @@
 use super::{Census, Refused};
 
-/// A census a refused insert read: three live runs on four workers, one hold.
+/// A census a refused insert read: three live runs on four workers, one park.
 const COUNTED: Census = Census {
     occupied: 3,
-    held: 1,
+    parked: 1,
     worker_count: 4,
 };
 

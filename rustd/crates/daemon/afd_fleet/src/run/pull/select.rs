@@ -40,7 +40,7 @@ impl RunService {
             .runs
             .select_ordered(
                 request.runner,
-                request.held,
+                request.parked,
                 request.recovery.as_deref_mut(),
             )
             .await?

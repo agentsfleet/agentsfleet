@@ -21,7 +21,7 @@ async fn test_completed_event_redelivery_does_not_execute() {
         .assign_fleet_with(
             &mut afd_fleet::run::AssignRequest {
                 runner: &run.spare,
-                held: &[fleet],
+                parked: &[fleet],
                 degraded: false,
                 credits: 1,
                 now: run.now,
@@ -145,7 +145,7 @@ async fn reassign_terminal(run: &Held) -> Option<()> {
         .assign_fleet_with(
             &mut afd_fleet::run::AssignRequest {
                 runner: &run.spare,
-                held: std::slice::from_ref(&run.fleet),
+                parked: std::slice::from_ref(&run.fleet),
                 degraded: false,
                 credits: 1,
                 now: run.now,

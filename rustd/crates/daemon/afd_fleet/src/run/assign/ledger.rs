@@ -2,7 +2,7 @@
 
 use af_core::id::Uuid7;
 
-use af_observability::metrics::label::fleet::HeldAssignment;
+use af_observability::metrics::label::fleet::ParkedAssignment;
 use af_observability::producers;
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
@@ -40,8 +40,8 @@ struct HeadTurn {
     fencing_token: i64,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     run_expires_at: Timestamp,
-    held: bool,
-    holder: Option<Uuid7>,
+    parked: bool,
+    keeper: Option<Uuid7>,
     reassigned: bool,
     earlier_runs: i64,
     tenant_id: Uuid7,
@@ -99,7 +99,7 @@ impl Runs {
     pub(super) async fn ledger_counted(
         &self,
         runner: &Uuid7,
-        held: &[Uuid7],
+        parked: &[Uuid7],
         recovery: Option<&mut RecoveryScan>,
         cost: &mut PollCost,
     ) -> Result<Option<Acquired>> {
@@ -108,7 +108,7 @@ impl Runs {
         } else {
             self.wake().take()
         };
-        let held: Vec<&Uuid7> = held.iter().collect();
+        let parked: Vec<&Uuid7> = parked.iter().collect();
         let mut connection = self.pool().acquire().await?;
         let after = recovery.as_ref().and_then(|scan| scan.after.as_ref());
         let candidates: Vec<Candidate> = sqlx::query_as(queue::SELECT_CANDIDATES)
@@ -117,7 +117,7 @@ impl Runs {
             .bind(i64::try_from(self.limits().assign_batch_size).unwrap_or(i64::MAX))
             .bind(self.clock().offline_after())
             .bind(sql::RUNNER_STATUS_ACTIVE)
-            .bind(&held)
+            .bind(&parked)
             .bind(hint.as_ref())
             .bind(af_wire::durable_task::CAPABILITY)
             .bind(af_wire::durable_task::DurableTaskState::Ready.as_str())
@@ -180,15 +180,15 @@ impl Runs {
             transaction.rollback().await.map_err(query(CONTEXT))?;
             return Ok(None);
         };
-        let displaced_hold = row.held && row.holder.as_ref() != Some(runner);
+        let displaced_park = row.parked && row.keeper.as_ref() != Some(runner);
         let expired = row.expired_runner_id.clone();
         let acquired = row.acquired(fleet, runner);
         transaction.commit().await.map_err(query(CONTEXT))?;
         if let Some(expired) = &expired {
             runner_runs::expired(expired);
         }
-        if displaced_hold {
-            producers::fleet::hold::assigned(HeldAssignment::OtherAfterLapse);
+        if displaced_park {
+            producers::fleet::park::assigned(ParkedAssignment::OtherAfterLapse);
         }
         Ok(Some(acquired))
     }
@@ -284,7 +284,7 @@ impl HeadTurn {
             request_json: self.request_json,
             workspace_id: self.workspace_id.clone(),
             turn_created_at: self.turn_created_at,
-            resume_hold: self.held && self.holder.as_ref() == Some(runner) && kind == Kind::Fresh,
+            resume_park: self.parked && self.keeper.as_ref() == Some(runner) && kind == Kind::Fresh,
             redelivered: self.redelivered,
             earlier_runs: self.earlier_runs,
             opened,

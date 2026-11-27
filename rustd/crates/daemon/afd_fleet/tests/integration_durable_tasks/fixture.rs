@@ -256,7 +256,7 @@ pub(super) async fn durable_task_capability(held: &Held, enabled: bool) {
     for runner in [&held.runner, &held.spare] {
         let mut capability = crate::requests::capable();
         capability.durable_tasks_v1 = enabled;
-        let holds = if runner == &held.runner {
+        let parked = if runner == &held.runner {
             ParkedFleets(vec![Cow::Borrowed(held.fleet.as_str())])
         } else {
             ParkedFleets::default()
@@ -264,17 +264,17 @@ pub(super) async fn durable_task_capability(held: &Held, enabled: bool) {
         let request = HeartbeatRequest {
             capability_report: Some(capability),
             selftest: None,
-            parked: holds,
+            parked,
             closing: false,
             host: af_wire::runner::HostFacts::default(),
         };
-        let held_fleets = afd_runner::heartbeat::holds::prove(request.parked.clone());
+        let parked_fleets = afd_runner::heartbeat::parked::prove(request.parked.clone());
         held.fixtures
             .runners()
             .heartbeat(
                 runner,
                 &request,
-                held_fleets.as_ref(),
+                parked_fleets.as_ref(),
                 jiff::Timestamp::now(),
             )
             .await

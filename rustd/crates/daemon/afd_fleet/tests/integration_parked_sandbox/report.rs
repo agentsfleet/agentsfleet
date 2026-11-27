@@ -1,4 +1,4 @@
-//! A hold as a runner reports it: the wire's `held_until`, through the
+//! A park as a runner reports it: the wire's `parked_until`, through the
 //! plane's report and its commit, to the fleet's thread, capped there at one
 //! idle window from the database's clock.
 
@@ -7,7 +7,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_runner::timing::{RUN_TTL, SANDBOX_HOLD_IDLE};
+use afd_runner::timing::{RUN_TTL, SANDBOX_PARK_IDLE};
 use std::borrow::Cow;
 
 use af_core::id::Uuid7;
@@ -21,9 +21,9 @@ use crate::report_seed::{Held, SLICE, SLICE_MS, held};
 use crate::seed::seeded_parts;
 use crate::support::Fixtures;
 
-/// A processed report on `held`'s run, asking to hold its sandbox until
-/// `held_until`.
-pub(crate) fn processed(held: &Held, held_until: Option<Timestamp>) -> ReportRequest<'_> {
+/// A processed report on `held`'s run, asking to park its sandbox until
+/// `parked_until`.
+pub(crate) fn processed(held: &Held, parked_until: Option<Timestamp>) -> ReportRequest<'_> {
     ReportRequest {
         folded_through_sequence: None,
         durable_task: None,
@@ -46,12 +46,12 @@ pub(crate) fn processed(held: &Held, held_until: Option<Timestamp>) -> ReportReq
             last_response: Cow::Borrowed(RESUME_RESPONSE),
         },
         tool_calls: None,
-        parked_until: held_until,
+        parked_until,
         memory: Vec::new(),
     }
 }
 
-/// Runs `write`, answering its output and the window a hold it stores may
+/// Runs `write`, answering its output and the window a park it stores may
 /// last: one idle window past the database clock before it, to one past the
 /// clock after it.
 async fn window_around<T>(
@@ -59,12 +59,12 @@ async fn window_around<T>(
     write: impl Future<Output = T>,
 ) -> (T, std::ops::RangeInclusive<Timestamp>) {
     let (output, clock) = fixtures.clock_around(write).await;
-    let idle = |at: &Timestamp| af_core::clock::after(*at, SANDBOX_HOLD_IDLE);
+    let idle = |at: &Timestamp| af_core::clock::after(*at, SANDBOX_PARK_IDLE);
     (output, idle(clock.start())..=idle(clock.end()))
 }
 
-/// `runner` is assigned `fleet` and releases it asking to hold its sandbox until
-/// `asked`; answers the hold the thread then stores.
+/// `runner` is assigned `fleet` and releases it asking to park its sandbox until
+/// `asked`; answers the park the thread then stores.
 async fn released(
     fixtures: &Fixtures,
     fleet: &Uuid7,
@@ -85,14 +85,14 @@ async fn released(
     thread(fixtures, fleet).await.0
 }
 
-/// A report that left its sandbox held records the hold on the fleet's thread,
+/// A report that left its sandbox parked records the park on the fleet's thread,
 /// in the report's own transaction, cut to one idle window from the commit.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_a_report_carrying_held_until_records_the_hold() {
+async fn test_a_report_carrying_parked_until_records_the_park() {
     let held = held().await;
     let reported_at = af_core::clock::after(held.now, SLICE);
-    let asked = af_core::clock::after(reported_at, SANDBOX_HOLD_IDLE.saturating_mul(3));
+    let asked = af_core::clock::after(reported_at, SANDBOX_PARK_IDLE.saturating_mul(3));
     let plane = held.fixtures.plane();
     let request = processed(&held, Some(asked));
 
@@ -109,16 +109,16 @@ async fn test_a_report_carrying_held_until_records_the_hold() {
     .await;
     let reported = reported.expect("the plane settles the report");
 
-    let (stored, holder) = thread(&held.fixtures, &held.fleet).await;
-    let stored = stored.expect("the report recorded a hold");
+    let (stored, keeper) = thread(&held.fixtures, &held.fleet).await;
+    let stored = stored.expect("the report recorded a park");
     assert!(
         window.contains(&stored),
-        "the thread holds the fleet one idle window and no longer: {stored} outside {window:?}"
+        "the thread parks the fleet one idle window and no longer: {stored} outside {window:?}"
     );
-    assert_eq!(holder, Some(held.runner.clone()));
+    assert_eq!(keeper, Some(held.runner.clone()));
     let receipt = reported
-        .hold
-        .expect("the native response names the accepted hold");
+        .park
+        .expect("the native response names the accepted park");
     assert_eq!(receipt.expires_at, stored);
     assert_eq!(receipt.run_id, held.issued.run_id.as_str());
     assert_eq!(receipt.fencing_token, held.fence.as_u64());
@@ -131,34 +131,34 @@ async fn test_a_report_carrying_held_until_records_the_hold() {
             &mut af_observability::verb_span::VerbClock::untimed(),
         )
         .await
-        .expect("replay reads the hold");
+        .expect("replay reads the park");
     assert!(repeated.repeated);
-    assert_eq!(repeated.hold, Some(receipt));
+    assert_eq!(repeated.park, Some(receipt));
     held.fixtures.cleanup().await;
 }
 
-/// What the release stores for each hold a runner may ask: an ask inside the
+/// What the release stores for each park a runner may ask: an ask inside the
 /// window is kept as asked, one past it is cut to the window's end, and one
-/// already behind the database clock, or none at all, holds nothing.
+/// already behind the database clock, or none at all, parks nothing.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_the_stored_hold_is_capped_at_one_idle_window() {
+async fn test_the_stored_park_is_capped_at_one_idle_window() {
     let fixtures = Fixtures::create().await;
     let (fleet, _workspace, _tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
 
-    let inside = af_core::clock::after(fixtures.database_now().await, SANDBOX_HOLD_IDLE / 2);
+    let inside = af_core::clock::after(fixtures.database_now().await, SANDBOX_PARK_IDLE / 2);
     assert_eq!(
         released(&fixtures, &fleet, &runner, Some(inside)).await,
         Some(inside),
         "an ask inside the window is kept as asked"
     );
     for asked in [
-        af_core::clock::after(inside, SANDBOX_HOLD_IDLE),
+        af_core::clock::after(inside, SANDBOX_PARK_IDLE),
         Timestamp::MAX,
     ] {
         let (stored, window) =
             window_around(&fixtures, released(&fixtures, &fleet, &runner, Some(asked))).await;
-        let stored = stored.expect("a far ask still holds");
+        let stored = stored.expect("a far ask still parks");
         assert!(
             window.contains(&stored),
             "asked {asked}, stored {stored}: past one idle window"
@@ -168,21 +168,21 @@ async fn test_the_stored_hold_is_capped_at_one_idle_window() {
     assert_eq!(
         released(&fixtures, &fleet, &runner, Some(behind)).await,
         None,
-        "an ask already behind the clock holds nothing"
+        "an ask already behind the clock parks nothing"
     );
     assert_eq!(
         released(&fixtures, &fleet, &runner, None).await,
         None,
-        "no ask holds nothing"
+        "no ask parks nothing"
     );
     fixtures.cleanup().await;
 }
 
 /// Expiry may free the worker before a late report settles completion/usage.
-/// The report must not turn that already-reusable worker into a future hold.
+/// The report must not turn that already-reusable worker into a future park.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_expired_late_report_settles_without_a_new_hold() {
+async fn test_expired_late_report_settles_without_a_new_park() {
     let held = held().await;
     held.fixtures
         .age(
@@ -200,7 +200,7 @@ async fn test_expired_late_report_settles_without_a_new_hold() {
         .await;
     let request = processed(
         &held,
-        Some(af_core::clock::after(held.now, SANDBOX_HOLD_IDLE)),
+        Some(af_core::clock::after(held.now, SANDBOX_PARK_IDLE)),
     );
     let result = held
         .fixtures
@@ -215,7 +215,7 @@ async fn test_expired_late_report_settles_without_a_new_hold() {
         .await
         .expect("late completion still settles");
     assert!(!result.repeated);
-    assert!(result.hold.is_none());
+    assert!(result.park.is_none());
     assert!(thread(&held.fixtures, &held.fleet).await.0.is_none());
     held.fixtures.cleanup().await;
 }

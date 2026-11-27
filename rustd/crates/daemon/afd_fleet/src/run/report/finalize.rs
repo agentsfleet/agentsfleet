@@ -35,11 +35,11 @@ impl RunService {
             Committed::AlreadySettled => {
                 Self::record_repeat(&run, run_id.as_str());
                 let mut result = reconciled(run, true, RunTokens::default(), None);
-                result.hold = self.replayed_hold(runner_id, run_id).await?;
+                result.park = self.replayed_park(runner_id, run_id).await?;
                 Ok(result)
             }
             Committed::Settled {
-                accepted_hold,
+                accepted_park,
                 charged,
                 tokens,
                 closed,
@@ -67,7 +67,7 @@ impl RunService {
                 self.announce_folds(&run, run_id.as_str(), folds, answer)
                     .await;
                 let mut result = reconciled(run, false, tokens, completed_at);
-                result.hold = accepted_hold.map(|expires_at| af_wire::report::AcceptedPark {
+                result.park = accepted_park.map(|expires_at| af_wire::report::AcceptedPark {
                     run_id: run_id.to_string(),
                     fencing_token: request.fencing_token,
                     expires_at,
@@ -76,20 +76,20 @@ impl RunService {
             }
         }
     }
-    async fn replayed_hold(
+    async fn replayed_park(
         &self,
         runner: &Uuid7,
         run: &Uuid7,
     ) -> Result<Option<af_wire::report::AcceptedPark>> {
         let mut connection = self.runs.pool().acquire().await?;
         let row: Option<(i64, jiff_sqlx::Timestamp)> =
-            sqlx::query_as(crate::run::sql::shared::REPORT_HOLD)
+            sqlx::query_as(crate::run::sql::shared::REPORT_PARK)
                 .bind(run)
                 .bind(runner)
                 .bind(crate::run::sql::RUN_STATUS_REPORTED)
                 .fetch_optional(&mut *connection)
                 .await
-                .map_err(crate::error::query("read current report hold receipt"))?;
+                .map_err(crate::error::query("read current report park receipt"))?;
         row.map(|(fence, until)| {
             Ok(af_wire::report::AcceptedPark {
                 run_id: run.to_string(),

@@ -29,13 +29,13 @@ Its `id` equals the fleet's id, and `ck_threads_id_is_fleet` holds that.
 |---|---|---|
 | `fleet_id` | no | Foreign key to `fleet.fleets`, `ON DELETE CASCADE`: a thread goes with its fleet |
 | `fencing_token` | no | Raised once per assignment; every write from a run must match it |
-| `last_runner_id` | yes | The sticky runner a held sandbox waits on; `ON DELETE SET NULL` |
+| `last_runner_id` | yes | The sticky runner a parked sandbox waits on; `ON DELETE SET NULL` |
 | `run_expires_at` | no | When the live run lapses; a new thread starts already lapsed |
-| `hold_expires_at` | yes | How long that runner keeps the sandbox for the fleet's next run |
+| `park_expires_at` | yes | How long that runner keeps the sandbox for the fleet's next run |
 | `resume_context` | yes | Conversation state the next run resumes from, set by the report |
 
 An assignment claims the row with one conditional upsert (`afd_fleet`'s `run/sql/shared/assign_thread.sql`).
-It raises the fence only when no live run or other runner's hold blocks it.
+It raises the fence only when no live run or other runner's park blocks it.
 
 ### thread.turns
 

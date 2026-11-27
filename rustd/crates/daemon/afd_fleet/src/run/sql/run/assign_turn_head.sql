@@ -19,7 +19,7 @@ WITH fleet AS MATERIALIZED (
   SELECT clock_timestamp() AS checked_at FROM (SELECT count(*) FROM locked_thread) locked
 ), won_thread AS (
   INSERT INTO thread.threads AS s
-    (id, fleet_id, last_runner_id, fencing_token, run_expires_at, hold_expires_at,
+    (id, fleet_id, last_runner_id, fencing_token, run_expires_at, park_expires_at,
      created_at, updated_at)
   SELECT $1, $1, $2, 1, instant.checked_at + $3::interval, NULL, now(), now()
   FROM instant
@@ -31,12 +31,12 @@ WITH fleet AS MATERIALIZED (
     SET last_runner_id = EXCLUDED.last_runner_id,
         fencing_token = s.fencing_token + 1,
         run_expires_at = clock_timestamp() + $3::interval,
-        hold_expires_at = CASE WHEN s.last_runner_id = EXCLUDED.last_runner_id
-                               THEN s.hold_expires_at END,
+        park_expires_at = CASE WHEN s.last_runner_id = EXCLUDED.last_runner_id
+                               THEN s.park_expires_at END,
         updated_at = now()
     WHERE s.run_expires_at < (SELECT checked_at FROM instant)
-      AND (s.hold_expires_at IS NULL
-           OR s.hold_expires_at <= (SELECT checked_at FROM instant)
+      AND (s.park_expires_at IS NULL
+           OR s.park_expires_at <= (SELECT checked_at FROM instant)
            OR s.last_runner_id = $2
            OR NOT EXISTS (
              SELECT 1 FROM runner.runners r
@@ -44,8 +44,8 @@ WITH fleet AS MATERIALIZED (
                AND r.last_seen_at > (SELECT checked_at FROM instant) - $4::interval
                AND r.status = $5 AND r.degraded_reason IS NULL))
   RETURNING WITH (OLD AS prior) s.fencing_token, s.run_expires_at,
-            prior.hold_expires_at > (SELECT checked_at FROM instant) AS held,
-            prior.last_runner_id AS holder
+            prior.park_expires_at > (SELECT checked_at FROM instant) AS parked,
+            prior.last_runner_id AS keeper
 ), first_head AS MATERIALIZED (
   SELECT a.id, a.durable_task_id, host.platform_owned AS host_platform FROM thread.turns a
   JOIN fleet f ON f.id = a.thread_id AND f.workspace_id = a.workspace_id
@@ -129,7 +129,7 @@ WITH fleet AS MATERIALIZED (
 SELECT a.id AS turn_id, a.workspace_id, a.actor, a.event_type,
        a.request_json, a.created_at AS turn_created_at, a.redelivered,
        won_thread.fencing_token, won_thread.run_expires_at,
-       COALESCE(won_thread.held, false) AS held, won_thread.holder,
+       COALESCE(won_thread.parked, false) AS parked, won_thread.keeper,
        b.id AS predecessor_run_id, b.id IS NOT NULL AS reassigned,
        -- The lapsed holder whose run this assignment expired, counted once it commits.
        (SELECT runner_id FROM bumped) AS expired_runner_id,

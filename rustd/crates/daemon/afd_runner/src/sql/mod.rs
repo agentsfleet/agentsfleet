@@ -22,7 +22,7 @@ pub(crate) use afd_state::sql::{FLEET_STATUS_ACTIVE, RUN_STATUS_ACTIVE, RUNNER_S
 /// that stopped.
 pub const NEVER_SEEN: Timestamp = Timestamp::UNIX_EPOCH;
 
-pub mod holds;
+pub mod parked;
 pub mod runner;
 pub mod runner_admin;
 pub mod runner_view;

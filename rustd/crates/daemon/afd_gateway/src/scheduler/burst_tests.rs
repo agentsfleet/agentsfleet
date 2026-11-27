@@ -142,7 +142,7 @@ async fn an_ordinary_ring_can_reach_a_free_host_while_recovery_is_waiting() -> T
         .handle
         .snapshot
         .lock()
-        .held
+        .parked
         .push(healthy.handle.runner.clone());
     let _slow = slow.register(&registry)?;
     let _healthy = healthy.register(&registry)?;

@@ -53,7 +53,7 @@ const POSTGRES: &str = "postgres";
 const SELECT_TURN_HEAD: &str = include_str!("sql/select_turn_head.sql");
 
 /// The serving candidate query's binds, as the run path sends them
-/// (`afd_fleet::run::assign::ledger`): no held fleets and no hint. One
+/// (`afd_fleet::run::assign::ledger`): no parked fleets and no hint. One
 /// place, so the timed query and its plan never drift apart.
 fn candidates<'q, O>(
     query: sqlx::query::QueryScalar<'q, sqlx::Postgres, O, sqlx::postgres::PgArguments>,
@@ -63,7 +63,7 @@ fn candidates<'q, O>(
         .bind(afd_state::sql::FLEET_STATUS_ACTIVE)
         .bind(runner)
         .bind(i64::try_from(MAX_CANDIDATES_PER_POLL).unwrap_or(i64::MAX))
-        // How long a silent holder binds, and the status a holder must be in
+        // How long a silent keeper binds, and the status a keeper must be in
         // to bind at all; the instant they compare against is the statement's.
         .bind(afd_runner::timing::RUNNER_OFFLINE_AFTER)
         .bind(afd_state::sql::RUNNER_STATUS_ACTIVE)

@@ -164,7 +164,7 @@ impl Keeper {
         self.cap(room - 1, Release::Capped);
         let since = self.clock.now();
         // The park asks for the most a daemon may grant, the ceiling of its
-        // `max_idle_hold_seconds`; the daemon commits its configured length and the
+        // `max_idle_park_seconds`; the daemon commits its configured length and the
         // report's acknowledgement narrows the park to it, so the setting is the one
         // source of how long a sandbox stays parked.
         let until = clock::after(since, af_core::timing::DAY);

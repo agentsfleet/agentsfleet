@@ -138,12 +138,12 @@ A push to the PR sends a `synchronize` event. Its body differs, so its digest an
 Only a person's message folds into a live run. An event such as `synchronize` never does (`afd_fleet`'s `assign_inputs.sql`).
 
 The next run's assignment prefers the last runner. Another eligible runner takes the turn that has waited longest first.
-A runner holding the fleet's sandbox checks that fleet first, and other runners skip it while the hold lasts ([sandbox holds](runner_fleet.md#capacity-and-sandbox-holds)).
+A runner keeping the fleet's sandbox parked checks that fleet first, and other runners skip it while the park lasts ([parked sandboxes](runner_fleet.md#capacity-and-parked-sandboxes)).
 
 | Carried to the next run | Not carried |
 |---|---|
 | Fleet memory: up to 256 KiB, with every `core` entry first ([memory](memory.md)) | The previous run's answer, for an event-triggered run |
-| The held sandbox, while its hold lasts and its key matches | A sandbox whose hold ended |
+| The parked sandbox, while its park lasts and its key matches | A sandbox whose park ended |
 
 A run started by a chat message also carries the thread's finished turns with their tool calls.
 An event-triggered run like this one carries none.

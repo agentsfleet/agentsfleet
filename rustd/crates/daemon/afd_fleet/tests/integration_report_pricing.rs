@@ -196,7 +196,7 @@ async fn a_warm_replica_report_reads_no_price_book() {
     let owner = held.fixtures.open(DbRole::Migrator).await;
     statements::install(&owner).await;
     let plane = held.fixtures.plane();
-    let request = crate::integration_held_sandbox::report::processed(&held, None);
+    let request = crate::integration_parked_sandbox::report::processed(&held, None);
     let mut untimed = af_observability::verb_span::VerbClock::untimed();
 
     let cold = Counted::open(&owner).await;

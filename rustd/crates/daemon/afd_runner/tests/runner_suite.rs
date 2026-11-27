@@ -2,8 +2,8 @@
 
 mod capacity;
 
-#[path = "integration_hold_plans.rs"]
-mod integration_hold_plans;
+#[path = "integration_park_plans.rs"]
+mod integration_park_plans;
 mod integration_runner_plane;
 mod rows;
 

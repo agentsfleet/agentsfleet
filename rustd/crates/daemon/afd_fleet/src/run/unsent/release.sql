@@ -32,7 +32,7 @@ WITH held AS MATERIALIZED (
 ), freed AS (
     UPDATE thread.threads s
     SET run_expires_at = clock_timestamp() - interval '1 millisecond', updated_at = now(),
-        last_runner_id = CASE WHEN s.hold_expires_at > clock_timestamp() THEN s.last_runner_id END
+        last_runner_id = CASE WHEN s.park_expires_at > clock_timestamp() THEN s.last_runner_id END
     FROM released r
     WHERE s.id = r.thread_id AND s.fencing_token = $3
     RETURNING s.id

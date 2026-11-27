@@ -1,6 +1,6 @@
-//! A holder that cannot run keeps no fleet closed. A degraded runner is
+//! A keeper that cannot run keeps no fleet closed. A degraded runner is
 //! answered no work, and one an operator drained is refused at
-//! authentication, so its hold binds nobody even while its last beat is
+//! authentication, so its park binds nobody even while its last beat is
 //! recent: another runner's poll is assigned the fleet and its assignment wins.
 
 #![expect(
@@ -9,19 +9,19 @@
 )]
 
 use af_core::id::Uuid7;
-use afd_runner::timing::SANDBOX_HOLD_IDLE;
+use afd_runner::timing::SANDBOX_PARK_IDLE;
 
 use afd_state::sql::RUNNER_STATUS_DRAINED;
 use jiff::Timestamp;
 
-use super::{hold, live, thread};
+use super::{live, park, thread};
 use crate::seed::{self, Seeded, seeded};
 use crate::support::Fixtures;
 
 /// Why a fixture runner reads degraded; nothing reads the words.
 const DEGRADED_REASON: &str = "fixture: degraded";
 
-/// What makes a beating holder one that cannot run.
+/// What makes a beating keeper one that cannot run.
 enum Unfit {
     /// Its verdict reads degraded.
     Degraded,
@@ -50,26 +50,26 @@ impl Unfit {
     }
 }
 
-/// Whether another runner's poll runs a fleet whose holder beat at
-/// enrolment, held it live, and then became `unfit`; and the thread after.
+/// Whether another runner's poll runs a fleet whose keeper beat at
+/// enrolment, parked it live, and then became `unfit`; and the thread after.
 async fn taken_from(unfit: Unfit) -> (bool, (Option<Timestamp>, Option<Uuid7>), Uuid7) {
     let fixtures = Fixtures::create().await;
     let Seeded {
-        runners: [holder, other],
+        runners: [keeper, other],
         fleet,
         ..
     } = seeded::<2>(&fixtures).await;
     let runs = fixtures.runs();
-    live(&fixtures, &holder).await;
-    hold(
+    live(&fixtures, &keeper).await;
+    park(
         &runs,
         &fixtures,
         &fleet,
-        &holder,
-        fixtures.after(SANDBOX_HOLD_IDLE),
+        &keeper,
+        fixtures.after(SANDBOX_PARK_IDLE),
     )
     .await;
-    unfit.apply(&fixtures, &holder).await;
+    unfit.apply(&fixtures, &keeper).await;
 
     let found = seed::select_fleet(&runs, &other, &fleet).await;
     let after = thread(&fixtures, &fleet).await;
@@ -80,32 +80,32 @@ async fn taken_from(unfit: Unfit) -> (bool, (Option<Timestamp>, Option<Uuid7>), 
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_a_degraded_holders_fleet_is_assigned_by_another_runner() {
+async fn test_a_degraded_keepers_fleet_is_assigned_by_another_runner() {
     let (taken, after, other) = taken_from(Unfit::Degraded).await;
 
     assert!(
         taken,
-        "a degraded holder is answered no work, so its hold binds nobody"
+        "a degraded keeper is answered no work, so its park binds nobody"
     );
     assert_eq!(
         after,
         (None, Some(other)),
-        "the winner's assignment clears the hold"
+        "the winner's assignment clears the park"
     );
 }
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_a_drained_holders_fleet_is_assigned_by_another_runner() {
+async fn test_a_drained_keepers_fleet_is_assigned_by_another_runner() {
     let (taken, after, other) = taken_from(Unfit::Drained).await;
 
     assert!(
         taken,
-        "a drained holder cannot run, so its hold binds nobody"
+        "a drained keeper cannot run, so its park binds nobody"
     );
     assert_eq!(
         after,
         (None, Some(other)),
-        "the winner's assignment clears the hold"
+        "the winner's assignment clears the park"
     );
 }

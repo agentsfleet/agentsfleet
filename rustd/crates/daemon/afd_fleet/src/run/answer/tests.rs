@@ -1,6 +1,6 @@
-//! What an issued run tells its runner about the sandbox the runner holds.
+//! What an issued run tells its runner about the sandbox the runner keeps parked.
 //!
-//! The assignment decides whether the holder resumes its hold; this proves the
+//! The assignment decides whether the keeper resumes its park; this proves the
 //! decision reaches the bytes the runner reads, in both directions, so a
 //! render that dropped it or spelled it constant fails here.
 #![expect(
@@ -19,7 +19,7 @@ use crate::run::envelope::Acquired;
 use crate::run::installed::{FRESH_CONTEXT, Installed};
 use crate::run::test_dead;
 
-/// Where the rendered answer says whether to resume the held sandbox.
+/// Where the rendered answer says whether to resume the parked sandbox.
 const RESUME_PARK: &str = "/run/resume_park";
 
 /// Where the rendered answer names the fleet to its runner.
@@ -65,12 +65,12 @@ fn policy() -> ExecutionPolicy<'static> {
     }
 }
 
-/// The answer a runner reads for an assignment that did, or did not, find its hold
+/// The answer a runner reads for an assignment that did, or did not, find its park
 /// live.
-fn rendered(resume_hold: bool) -> Value {
+fn rendered(resume_park: bool) -> Value {
     let acquired = Acquired {
         predecessor_run_id: None,
-        resume_hold,
+        resume_park,
         ..test_dead::acquired()
     };
     let installed = installed();
@@ -107,12 +107,12 @@ fn a_rendered_run_names_its_fleet() {
 }
 
 #[test]
-fn test_a_rendered_run_says_whether_the_assignment_resumes_the_hold() {
-    for resume_hold in [true, false] {
+fn test_a_rendered_run_says_whether_the_assignment_resumes_the_park() {
+    for resume_park in [true, false] {
         assert_eq!(
-            rendered(resume_hold).pointer(RESUME_PARK),
-            Some(&Value::Bool(resume_hold)),
-            "the assignment's resume_hold is {resume_hold}"
+            rendered(resume_park).pointer(RESUME_PARK),
+            Some(&Value::Bool(resume_park)),
+            "the assignment's resume_park is {resume_park}"
         );
     }
 }

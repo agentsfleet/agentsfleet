@@ -55,7 +55,7 @@ mod tests {
             .assign_with(
                 crate::run::AssignRequest {
                     runner: &test_dead::id(9),
-                    held: &[],
+                    parked: &[],
                     degraded: true,
                     credits: 1,
                     now: test_dead::AT,

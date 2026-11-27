@@ -40,10 +40,10 @@ async fn tenant_runner(case: &Case) -> Uuid7 {
         closing: false,
         host: af_wire::runner::HostFacts::default(),
     };
-    let held = afd_runner::heartbeat::holds::prove(beat.parked.clone());
+    let parked = afd_runner::heartbeat::parked::prove(beat.parked.clone());
     fixtures
         .runners()
-        .heartbeat(&runner, &beat, held.as_ref(), jiff::Timestamp::now())
+        .heartbeat(&runner, &beat, parked.as_ref(), jiff::Timestamp::now())
         .await
         .expect("the tenant runner reports");
     let row = fixtures
@@ -129,7 +129,7 @@ async fn lapse(case: &Case) {
     execute(
         case,
         "UPDATE thread.threads SET run_expires_at = clock_timestamp() - interval '1 second', \
-         hold_expires_at = NULL WHERE fleet_id = $1",
+         park_expires_at = NULL WHERE fleet_id = $1",
         &case.held.fleet,
     )
     .await;

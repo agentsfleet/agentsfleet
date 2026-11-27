@@ -169,7 +169,7 @@ async fn thread(fixtures: &Fixtures, fleet: &Uuid7) -> (i64, String, Option<Uuid
 /// Lapses `fleet`'s assignment, as an expired run leaves it.
 async fn lapse(fixtures: &Fixtures, fleet: &Uuid7) {
     sqlx::query(
-        "UPDATE thread.threads SET run_expires_at = now() - interval '1 hour', hold_expires_at = NULL WHERE fleet_id = $1",
+        "UPDATE thread.threads SET run_expires_at = now() - interval '1 hour', park_expires_at = NULL WHERE fleet_id = $1",
     )
     .bind(fleet)
     .execute(&mut *fixtures.database.acquire().await.expect("a connection"))

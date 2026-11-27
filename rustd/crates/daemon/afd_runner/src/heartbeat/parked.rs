@@ -1,12 +1,12 @@
-//! The sandboxes a runner says it holds, proved and reconciled on each beat.
+//! The sandboxes a runner says it keeps parked, proved and reconciled on each beat.
 //!
-//! A runner lists every fleet whose sandbox it holds frozen. Any hold its
+//! A runner lists every fleet whose sandbox it keeps parked, frozen. Any park its
 //! threads still record that the list leaves out is cleared, so that fleet is
 //! assignable everywhere again, and the reply names the listed fleets the
-//! runner should let go of. A closing runner's list is final, so even a hold
+//! runner should let go of. A closing runner's list is final, so even a park
 //! reported inside the last beat interval is cleared at once. A list that is unreadable, out of bounds or empty
-//! holds nothing: a standing hold keeps the fleet from every other runner,
-//! while a hold cleared by mistake costs only a cold start.
+//! parks nothing: a standing park keeps the fleet from every other runner,
+//! while a park cleared by mistake costs only a cold start.
 
 use af_core::error_code;
 use af_core::id::Uuid7;
@@ -17,53 +17,53 @@ use sqlx::PgConnection;
 use super::best_effort;
 use crate::sql;
 
-/// The event a hold reconcile that did not land is logged under.
-const EVENT_HOLDS_RECONCILE: &str = "runner_holds_reconcile_failed";
+/// The event a park reconcile that did not land is logged under.
+const EVENT_PARKS_RECONCILE: &str = "runner_parks_reconcile_failed";
 
-/// A runner's holds list proved inside the bounds its wire type declares, or
-/// `None`: a list past them is not proved, and holds nothing.
+/// A runner's parked list proved inside the bounds its wire type declares, or
+/// `None`: a list past them is not proved, and parks nothing.
 #[must_use]
-pub fn prove(holds: ParkedFleets<'_>) -> Option<Valid<ParkedFleets<'_>>> {
-    Unvalidated::new(holds).validate().ok()
+pub fn prove(parked: ParkedFleets<'_>) -> Option<Valid<ParkedFleets<'_>>> {
+    Unvalidated::new(parked).validate().ok()
 }
 
 /// The fleets a proved list names. An entry inside the bounds that still is
 /// not an identifier is dropped alone.
 #[must_use]
-pub fn fleets(holds: &Valid<ParkedFleets<'_>>) -> Vec<Uuid7> {
-    holds
+pub fn fleets(parked: &Valid<ParkedFleets<'_>>) -> Vec<Uuid7> {
+    parked
         .0
         .iter()
         .filter_map(|fleet| Uuid7::parse(fleet).ok())
         .collect()
 }
 
-/// Clears every hold `runner`'s threads record that `holds` leaves out, and
+/// Clears every park `runner`'s threads record that `parked` leaves out, and
 /// answers which listed fleets the runner should release: any that is no
-/// longer active, or that another runner has held since. No proved list
-/// holds nothing. A `closing` runner's list is final: a hold written inside
+/// longer active, or that another runner has run since. No proved list
+/// parks nothing. A `closing` runner's list is final: a park written inside
 /// the last beat interval is cleared too, rather than left to a next beat.
 pub(super) async fn reconcile(
     connection: &mut PgConnection,
     runner: &Uuid7,
-    holds: Option<&Valid<ParkedFleets<'_>>>,
+    parked: Option<&Valid<ParkedFleets<'_>>>,
     closing: bool,
     heartbeat_interval: std::time::Duration,
 ) -> Vec<String> {
-    let held = holds.map_or_default(fleets);
-    let listed: Vec<&Uuid7> = held.iter().collect();
-    let clear = sqlx::query(sql::holds::CLEAR_DROPPED_HOLDS)
+    let parked = parked.map_or_default(fleets);
+    let listed: Vec<&Uuid7> = parked.iter().collect();
+    let clear = sqlx::query(sql::parked::CLEAR_DROPPED_PARKS)
         .bind(runner)
         .bind(&listed)
         .bind(heartbeat_interval)
         .bind(closing);
-    best_effort(clear, connection, EVENT_HOLDS_RECONCILE, runner).await;
+    best_effort(clear, connection, EVENT_PARKS_RECONCILE, runner).await;
     if listed.is_empty() {
         return Vec::new();
     }
     // A row that will not decode fails the answer like a failed read: the
-    // runner keeps its holds one beat longer, and the warning says why.
-    let released = sqlx::query_scalar::<_, Uuid7>(sql::holds::SELECT_HOLDS_TO_RELEASE)
+    // runner keeps its parks one beat longer, and the warning says why.
+    let released = sqlx::query_scalar::<_, Uuid7>(sql::parked::SELECT_PARKS_TO_RELEASE)
         .bind(runner)
         .bind(&listed)
         .bind(sql::FLEET_STATUS_ACTIVE)
@@ -75,7 +75,7 @@ pub(super) async fn reconcile(
             let code = error_code::INTERNAL_DB_QUERY.as_str();
             let id = runner.as_str();
             let reason = error.to_string();
-            let event = EVENT_HOLDS_RECONCILE;
+            let event = EVENT_PARKS_RECONCILE;
             tracing::warn!(error_code = code, runner_id = id, reason, event);
             Vec::new()
         }
@@ -98,8 +98,8 @@ mod tests {
 
     /// What a list of `entries` reads as once proved, or `None` when it is not.
     fn read(entries: &[&str]) -> Option<Vec<String>> {
-        let holds = ParkedFleets(entries.iter().map(|entry| Cow::Borrowed(*entry)).collect());
-        prove(holds).map(|proved| {
+        let parked = ParkedFleets(entries.iter().map(|entry| Cow::Borrowed(*entry)).collect());
+        prove(parked).map(|proved| {
             fleets(&proved)
                 .iter()
                 .map(|fleet| fleet.as_str().to_owned())
@@ -115,7 +115,7 @@ mod tests {
         );
         assert_eq!(read(&vec![FLEET; PARKED_MAX + 1]), None, "past the count");
         assert_eq!(read(&[FLEET, "not-a-fleet"]), None, "an entry too short");
-        assert_eq!(read(&[]), Some(Vec::new()), "an empty list holds nothing");
+        assert_eq!(read(&[]), Some(Vec::new()), "an empty list parks nothing");
     }
 
     #[test]
@@ -130,7 +130,7 @@ mod tests {
     /// The wire states its two bounds itself, since it carries no `af_core`;
     /// this is where they are held to the numbers they copy.
     #[test]
-    fn test_the_wires_hold_bounds_are_the_cores() {
+    fn test_the_wires_park_bounds_are_the_cores() {
         assert_eq!(
             PARKED_MAX,
             usize::try_from(MAX_WORKERS).unwrap_or(usize::MAX)

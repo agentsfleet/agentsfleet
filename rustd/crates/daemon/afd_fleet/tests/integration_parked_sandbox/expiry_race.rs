@@ -1,4 +1,4 @@
-//! The capacity handoff is serialized before an expiring report decides its hold.
+//! The capacity handoff is serialized before an expiring report decides its park.
 
 use super::{report::processed, thread};
 use crate::{
@@ -20,29 +20,29 @@ struct Next {
     tenant: Uuid7,
 }
 
-// Pause once the report has decided its hold and before the statement's audit FK check.
-const HOLD_TRIGGER: &str = "
-CREATE FUNCTION runner.pause_hold_fixture() RETURNS trigger LANGUAGE plpgsql AS $$
+// Pause once the report has decided its park and before the statement's audit FK check.
+const PARK_TRIGGER: &str = "
+CREATE FUNCTION runner.pause_park_fixture() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
     PERFORM pg_advisory_xact_lock(hashtextextended(NEW.fleet_id::text, 0));
     RETURN NEW;
 END $$;
-CREATE TRIGGER pause_hold_fixture BEFORE UPDATE OF hold_expires_at ON thread.threads
-FOR EACH ROW WHEN (NEW.hold_expires_at IS NOT NULL)
-EXECUTE FUNCTION runner.pause_hold_fixture()";
+CREATE TRIGGER pause_park_fixture BEFORE UPDATE OF park_expires_at ON thread.threads
+FOR EACH ROW WHEN (NEW.park_expires_at IS NOT NULL)
+EXECUTE FUNCTION runner.pause_park_fixture()";
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_hold_decided_before_expiry_frees_the_worker_once_the_report_commits() -> Checked {
+async fn a_park_decided_before_expiry_frees_the_worker_once_the_report_commits() -> Checked {
     let held = held_in(Fixtures::create_isolated().await).await;
     let next = next_turn(&held).await?;
     let migrator = held.fixtures.open(DbRole::Migrator).await;
     let mut connection = migrator.acquire().await?;
-    sqlx::raw_sql(HOLD_TRIGGER)
+    sqlx::raw_sql(PARK_TRIGGER)
         .execute(&mut *connection)
         .await?;
     let mut blocker = connection.begin().await?;
-    let pid = pause_hold(&held, &mut blocker).await?;
+    let pid = pause_park(&held, &mut blocker).await?;
     let expiry = shorten_run(&held).await?;
     let plane = held.fixtures.plane();
     let request = processed(&held, Some(held.fixtures.after(Duration::from_mins(5))));
@@ -71,9 +71,9 @@ async fn a_hold_decided_before_expiry_frees_the_worker_once_the_report_commits()
     );
     assert!(
         issued.is_some(),
-        "a hold takes no worker, so the second fleet runs once the report commits"
+        "a park takes no worker, so the second fleet runs once the report commits"
     );
-    let receipt = report.hold.ok_or("the live report must retain its hold")?;
+    let receipt = report.park.ok_or("the live report must retain its park")?;
     assert_eq!(recorded, Some(receipt.expires_at));
     Ok(())
 }
@@ -98,7 +98,7 @@ async fn an_expired_report_can_settle_after_another_fleet_takes_the_worker() -> 
             &mut af_observability::verb_span::VerbClock::untimed(),
         )
         .await?;
-    assert!(report.hold.is_none(), "late settlement cannot add a hold");
+    assert!(report.park.is_none(), "late settlement cannot add a park");
     assert_eq!(thread(&held.fixtures, &held.fleet).await.0, None);
     held.fixtures.cleanup().await;
     Ok(())
@@ -131,7 +131,7 @@ async fn next_turn(held: &Held) -> Checked<Next> {
     })
 }
 
-async fn pause_hold(held: &Held, blocker: &mut Transaction<'_, Postgres>) -> Checked<i32> {
+async fn pause_park(held: &Held, blocker: &mut Transaction<'_, Postgres>) -> Checked<i32> {
     sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
         .bind(held.fleet.as_str())
         .execute(&mut **blocker)

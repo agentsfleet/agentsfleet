@@ -140,7 +140,7 @@ impl ConnectionServices {
     ) -> Result<Option<Encoded>> {
         let request = AssignRequest {
             runner: &self.handle.runner,
-            held: &state.held,
+            parked: &state.parked,
             degraded: state.degraded,
             credits: state.credits,
             now: self.gateway.inner.dependencies.wall_clock.now(),

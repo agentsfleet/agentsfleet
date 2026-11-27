@@ -1,16 +1,16 @@
-//! The heartbeat's hold reconcile reaches its threads through the partial index
+//! The heartbeat's park reconcile reaches its threads through the partial index
 //! `afd_db/schema/1820` builds for it, under the generic plan a prepared statement
 //! settles on.
 //!
-//! sqlx prepares `CLEAR_DROPPED_HOLDS` once per connection, and Postgres may
+//! sqlx prepares `CLEAR_DROPPED_PARKS` once per connection, and Postgres may
 //! then plan it once for every runner. A partial index serves that plan only
 //! when the statement's own predicate implies the index's whatever the binds
-//! are, which `hold_expires_at IS NOT NULL`, a literal in both, does. An index
+//! are, which `park_expires_at IS NOT NULL`, a literal in both, does. An index
 //! whose predicate drifted from the statement's would leave every beat of
 //! every runner reading each thread that runner was ever last on.
 //!
 //! The plan is asked of a database of this test's own, migrated from
-//! `afd_db/schema/`, seeded with mostly unheld threads in a transaction that rolls
+//! `afd_db/schema/`, seeded with mostly unparked threads in a transaction that rolls
 //! back, and analysed, so its statistics describe the spread and nothing else:
 //! the shape `afd_turns`' `integration_list_plans/mod.rs` set. That suite asks
 //! `EXPLAIN (GENERIC_PLAN)`, which cannot type every parameter; here the text
@@ -32,16 +32,16 @@ use afd_db::test_util::{
     FIXTURE_HTTP_EGRESS, FIXTURE_MODEL_REF, TenantSeed, TestDatabase, mint_id,
 };
 use afd_db::{Db, Migrator};
-use afd_runner::sql::holds::CLEAR_DROPPED_HOLDS;
+use afd_runner::sql::parked::CLEAR_DROPPED_PARKS;
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 use sqlx::{AssertSqlSafe, PgConnection, Row as _};
 
 /// The index under test.
-const HELD_INDEX: &str = "idx_threads_last_runner_id_held";
+const PARKED_INDEX: &str = "idx_threads_last_runner_id_parked";
 
 /// The spreads the plan is asked against, as `(runners, threads per runner, one
-/// thread in this many held)`: a small fleet and a larger one, because the
+/// thread in this many parked)`: a small fleet and a larger one, because the
 /// choice between an index and a scan turns on how many rows are expected.
 const SPREADS: [(i32, i32, i32); 2] = [(8, 125, 20), (40, 250, 50)];
 
@@ -49,19 +49,19 @@ const SPREADS: [(i32, i32, i32); 2] = [(8, 125, 20), (40, 250, 50)];
 const SEEDED_AT: Timestamp = Timestamp::constant(1_700_000_000, 0);
 
 /// Runners, a fleet per thread, and the threads, dealt round the runners, every
-/// `$5`th held: `$1` tenant, `$2` instant, `$3` runners, `$4` threads each, and
+/// `$5`th parked: `$1` tenant, `$2` instant, `$3` runners, `$4` threads each, and
 /// every fleet on model `$6` with network `$7`.
 const SEED_SPREAD: &str = "
 WITH workspace AS (
     INSERT INTO identity.workspaces (id, tenant_id, name, created_at)
-    VALUES (uuidv7(), $1, 'hold-plan', $2)
+    VALUES (uuidv7(), $1, 'park-plan', $2)
     RETURNING id
 ), runners AS (
     INSERT INTO runner.runners
       (id, host_id, token_hash, sandbox_tier, status, labels, network_policy,
        registry_allowlist, worker_count, last_seen_at, run_version, created_at, updated_at,
        platform_owned)
-    SELECT uuidv7(), 'hold-plan-' || r, 'hold-plan-' || r, 'dev_none', 'active',
+    SELECT uuidv7(), 'park-plan-' || r, 'park-plan-' || r, 'dev_none', 'active',
            '[]'::jsonb, 'deny_all_egress', '[]'::jsonb, 1, $2, 0, $2, $2, true
       FROM generate_series(1, $3) r
     RETURNING id
@@ -72,7 +72,7 @@ WITH workspace AS (
       (id, workspace_id, tenant_id, name, status, model_ref, http_egress, package_domains,
        required_tags, memory_reads_workspace, memory_publishes_workspace, resource_version,
        created_at, updated_at)
-    SELECT uuidv7(), workspace.id, $1, 'hold-plan-' || f, 'active', $6, $7, false, '{}',
+    SELECT uuidv7(), workspace.id, $1, 'park-plan-' || f, 'active', $6, $7, false, '{}',
            false, false, 1, $2, $2
       FROM workspace, generate_series(1, $3 * $4) f
     RETURNING id
@@ -80,7 +80,7 @@ WITH workspace AS (
     SELECT id, row_number() OVER (ORDER BY id) - 1 AS n FROM fleets
 )
 INSERT INTO thread.threads
-  (id, fleet_id, last_runner_id, fencing_token, run_expires_at, hold_expires_at,
+  (id, fleet_id, last_runner_id, fencing_token, run_expires_at, park_expires_at,
    created_at, updated_at)
 SELECT threads.id, threads.id, ranked.id, 1, $2,
        CASE WHEN threads.n % $5 = 0 THEN $2 + interval '1 millisecond' END,
@@ -96,14 +96,14 @@ const FORCE_GENERIC: &str = "SET LOCAL plan_cache_mode = force_generic_plan";
 /// The reconcile's text prepared with the types sqlx binds it with: the
 /// runner and the listed fleets as uuids, the beat interval as an interval,
 /// and whether the beat is closing.
-const PREPARE_CLEAR: &str = "PREPARE clear_dropped_holds (uuid, uuid[], interval, boolean) AS ";
+const PREPARE_CLEAR: &str = "PREPARE clear_dropped_parks (uuid, uuid[], interval, boolean) AS ";
 
 /// Its plan. The values are placeholders a generic plan never reads.
-const EXPLAIN_CLEAR: &str = "EXPLAIN EXECUTE clear_dropped_holds \
+const EXPLAIN_CLEAR: &str = "EXPLAIN EXECUTE clear_dropped_parks \
 ('01890a5d-ac96-774b-bcce-b302099a80a1', '{}', '10 seconds', false)";
 
 /// Drops the prepared text, which outlives the transaction.
-const DEALLOCATE_CLEAR: &str = "DEALLOCATE clear_dropped_holds";
+const DEALLOCATE_CLEAR: &str = "DEALLOCATE clear_dropped_parks";
 
 /// Runs one statement that returns nothing worth reading. Every text is this
 /// file's own constant, never input.
@@ -126,7 +126,7 @@ async fn private_database() -> (TestDatabase, Db, Uuid7) {
     let mut connection = db.acquire().await.expect("a private connection");
     // The one tenant every seeded row belongs to.
     TenantSeed::new(&tenant)
-        .name("hold-plan")
+        .name("park-plan")
         .at(SEEDED_AT)
         .insert(&mut *connection)
         .await
@@ -139,7 +139,7 @@ async fn private_database() -> (TestDatabase, Db, Uuid7) {
 async fn generic_plan(
     db: &Db,
     tenant: &Uuid7,
-    (runners, each, held_one_in): (i32, i32, i32),
+    (runners, each, parked_one_in): (i32, i32, i32),
 ) -> String {
     let mut connection = db.acquire().await.expect("a private connection");
     run(&mut connection, "BEGIN").await;
@@ -148,7 +148,7 @@ async fn generic_plan(
         .bind(SEEDED_AT.to_sqlx())
         .bind(runners)
         .bind(each)
-        .bind(held_one_in)
+        .bind(parked_one_in)
         .bind(FIXTURE_MODEL_REF)
         .bind(FIXTURE_HTTP_EGRESS)
         .execute(&mut *connection)
@@ -158,7 +158,7 @@ async fn generic_plan(
     run(&mut connection, FORCE_GENERIC).await;
     run(
         &mut connection,
-        &format!("{PREPARE_CLEAR}{CLEAR_DROPPED_HOLDS}"),
+        &format!("{PREPARE_CLEAR}{CLEAR_DROPPED_PARKS}"),
     )
     .await;
     let plan = sqlx::raw_sql(AssertSqlSafe(EXPLAIN_CLEAR))
@@ -176,7 +176,7 @@ async fn generic_plan(
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn test_the_hold_reconcile_clears_through_the_held_index() {
+async fn test_the_park_reconcile_clears_through_the_parked_index() {
     let (database, db, tenant) = private_database().await;
 
     for spread in SPREADS {
@@ -186,8 +186,8 @@ async fn test_the_hold_reconcile_clears_through_the_held_index() {
             "not a generic plan at {spread:?}:\n{plan}"
         );
         assert!(
-            plan.contains(HELD_INDEX),
-            "the reconcile does not use {HELD_INDEX} at {spread:?}:\n{plan}"
+            plan.contains(PARKED_INDEX),
+            "the reconcile does not use {PARKED_INDEX} at {spread:?}:\n{plan}"
         );
     }
     db.close().await;

@@ -253,7 +253,7 @@ async fn candidates_prefer_locality_then_the_longest_waiting_host() -> TestResul
         .handle
         .snapshot
         .lock()
-        .held
+        .parked
         .push(local.handle.runner.clone());
     let connections = registry.candidates(
         &HashSet::from([local.handle.runner.clone()]),

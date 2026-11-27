@@ -12,7 +12,7 @@ use afd_bus::Handle;
 use afd_db::Db;
 use afd_db::test_util::{FleetSeed, TenantSeed, WorkspaceSeed};
 use afd_runner::Runners;
-use afd_runner::heartbeat::holds::prove;
+use afd_runner::heartbeat::parked::prove;
 use afd_turns::{IncomingTurn, Key, Producer, Reply, Turns};
 use jiff::Timestamp;
 
@@ -295,9 +295,9 @@ pub(in crate::lane::runs) async fn runner_identity(
         closing: false,
         host: af_wire::runner::HostFacts::default(),
     };
-    let held = prove(beat.parked.clone());
+    let parked = prove(beat.parked.clone());
     runners
-        .heartbeat(&runner, &beat, held.as_ref(), now)
+        .heartbeat(&runner, &beat, parked.as_ref(), now)
         .await?;
     Ok(RunnerIdentity { id: runner, digest })
 }

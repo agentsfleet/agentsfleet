@@ -177,7 +177,9 @@ fn names(reach: &Reach) -> Option<String> {
 
 /// The monitor's cgroup: the guest's memory and the room a monitor's own
 /// resident set takes beside it, the guest's processors, and the run's
-/// process cap over the monitor's threads.
+/// process cap over the monitor's threads. `afr_cgroup` throttles the
+/// monitor at this memory and caps it `WRITEBACK_HEADROOM_BYTES` above, and
+/// admission reserves this memory, not the cap.
 pub(super) fn monitor_limits(granted: &Limits) -> Limits {
     Limits {
         memory_bytes: granted

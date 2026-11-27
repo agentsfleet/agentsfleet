@@ -59,7 +59,7 @@ pub(in crate::run) fn assignment_lost<T>(
     let reason = refused.as_str();
     let census = refused.census();
     let occupied = census.map(|counted| counted.occupied);
-    let held = census.map(|counted| counted.held);
+    let parked = census.map(|counted| counted.parked);
     let worker_count = census.map(|counted| counted.worker_count);
     {
         let (event, runner_id, fencing_token, message) = (
@@ -77,7 +77,7 @@ pub(in crate::run) fn assignment_lost<T>(
             fencing_token,
             reason,
             occupied,
-            held,
+            parked,
             worker_count
         );
     };
@@ -119,7 +119,7 @@ mod tests {
             .expect("a fixed instant encodes");
         let full = Refused::CensusFull(Census {
             occupied: 3,
-            held: 1,
+            parked: 1,
             worker_count: 4,
         });
         let step = super::assignment_lost::<()>(&runner, &test_dead::acquired(), full);
@@ -145,7 +145,7 @@ mod tests {
             [
                 line.field("reason"),
                 line.field("occupied"),
-                line.field("held"),
+                line.field("parked"),
                 line.field("worker_count"),
             ],
             [Some("census_full"), Some("3"), Some("1"), Some("4")]
@@ -154,7 +154,7 @@ mod tests {
             [
                 other.field("reason"),
                 other.field("occupied"),
-                other.field("held"),
+                other.field("parked"),
                 other.field("worker_count"),
             ],
             [Some("host_unproven"), None, None, None]
