@@ -10,8 +10,9 @@
 //!                  reaches the inner environment, downstream of this namespace
 //!               ─► fork ─► executor: root, never the out-of-memory killer's
 //!                          pick, its files as the sandbox user, on vsock
-//!                          ├─► the tenant leaf, its memory counted and its
-//!                          │   processes capped, opened as root
+//!                          ├─► the tenant leaf, its memory counted, its
+//!                          │   processes capped and frozen for a pin,
+//!                          │   opened as root
 //!                          └─► the inner environment every tenant process runs in,
 //!                              each placed in the tenant leaf
 //!               ─► reaps until the executor ends, then powers the guest off
@@ -29,7 +30,8 @@
 //! tenant process any out-of-memory killer ends, which is how the executor
 //! tells a run out of memory from any other kill. Its `pids.max` is the run's
 //! process cap: a fork bomb stops there, and the executor, outside the leaf,
-//! still answers.
+//! still answers. A save's pin pause freezes the leaf the same way: every
+//! tenant process stops, a detached one too, and the executor answers on.
 
 use std::ffi::CString;
 use std::fs::{self, DirBuilder, Permissions};
@@ -39,10 +41,11 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use afr_cgroup::{
-    CGROUP_PROCS, CGROUP_ROOT, MEMORY_EVENTS, PIDS_EVENTS, PIDS_MAX, SUBTREE_CONTROL, TENANT_LEAF,
+    CGROUP_PROCS, CGROUP_ROOT, Freezer, MEMORY_EVENTS, PIDS_EVENTS, PIDS_MAX, SUBTREE_CONTROL,
+    TENANT_LEAF,
 };
 use afr_engine::Result;
-use afr_executor::{InnerEnvironment, Tenant};
+use afr_executor::{InnerEnvironment, LeafFreezer, Tenant};
 use afr_guest::{Hardened, Namespaced};
 use rustix::fs::{Gid, Uid};
 use rustix::mount::{MountFlags, MountPropagationFlags, mount, mount_bind, mount_change};
@@ -248,9 +251,10 @@ fn leaf(root: &Path, pids_max: u32) -> Result<PathBuf> {
     Ok(leaf)
 }
 
-/// The tenant leaf `leaf`, its three files opened while the executor still
-/// acts on files as user 0: the kernel checks each move into it against
-/// these open-time credentials.
+/// The tenant leaf `leaf`, its three files and its freezer's two opened
+/// while the executor still acts on files as user 0: the kernel checks each
+/// move into it against these open-time credentials, and each freeze file's
+/// access at its open.
 fn tenant(leaf: &Path) -> Result<Tenant> {
     let procs = fs::OpenOptions::new()
         .read(true)
@@ -258,11 +262,28 @@ fn tenant(leaf: &Path) -> Result<Tenant> {
         .open(leaf.join(CGROUP_PROCS))?;
     let events = fs::File::open(leaf.join(MEMORY_EVENTS))?;
     let pids_events = fs::File::open(leaf.join(PIDS_EVENTS))?;
+    let freezer = LeafCgroup(Freezer::opened(leaf).map_err(afr_engine::Error::engine)?);
     Ok(Tenant::new(
         procs.into(),
         events.into(),
         pids_events.into(),
+        Arc::new(freezer),
     )?)
+}
+
+/// The tenant leaf's own cgroup freezer, its files opened as user 0: the
+/// executor freezes it for a save's pin pause from outside the leaf.
+#[derive(Debug)]
+struct LeafCgroup(Freezer);
+
+impl LeafFreezer for LeafCgroup {
+    fn freeze(&self) -> io::Result<()> {
+        self.0.freeze().map_err(io::Error::other)
+    }
+
+    fn thaw(&self) -> io::Result<()> {
+        self.0.thaw().map_err(io::Error::other)
+    }
 }
 
 /// The executor: outside the inner environment it builds before any thread

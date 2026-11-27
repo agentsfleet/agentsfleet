@@ -1,6 +1,11 @@
 //! A sandbox's workspace as a save reads it today: pinned by a whole export
 //! through its executor into one staging file, read back after resume.
 //!
+//! The pause freezes the guest's tenant leaf through the executor, which
+//! sits outside it and serves the export while every tenant process, a
+//! detached one too, is held; the VM never stops. An executor with no leaf
+//! holds nothing, so its sandbox must prove no tenant process runs.
+//!
 //! The export is the only work under the pause. The pin's file is unpacked
 //! into a stage beside it on the first read of its changes, which runs after
 //! the run resumed, and both go when the pin is released or dropped. A walk
@@ -9,7 +14,9 @@
 
 use af_chunk_store::Change;
 use af_core::id::Uuid7;
-use afr_engine::{Paused, Resumed, Sandbox, WorkspaceVolume};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use afr_engine::{Paused, Quiescence, Resumed, Sandbox, WorkspaceVolume};
 use futures_util::{StreamExt as _, TryStreamExt as _, stream::BoxStream};
 use tokio::sync::OnceCell;
 use tokio_util::sync::CancellationToken;
@@ -17,12 +24,18 @@ use tokio_util::sync::CancellationToken;
 use super::{Staged, Staging, spool_export};
 use crate::recovery::{ChangeSource, Tree};
 
+/// What an engine with no tenant leaf cannot do while a tenant process
+/// runs: the refusal a save reads as busy processes.
+pub(crate) const FREEZE_TENANT: &str = "freeze a running tenant process";
+
 /// The workspace `sandbox` serves, pinned through files under `staging`.
 #[derive(Debug)]
 pub(crate) struct ExportVolume<'a> {
     sandbox: &'a dyn Sandbox,
     staging: &'a Staging,
     stop: CancellationToken,
+    /// Whether the pause froze the tenant leaf, so the resume thaws it.
+    frozen: AtomicBool,
 }
 
 impl<'a> ExportVolume<'a> {
@@ -37,6 +50,7 @@ impl<'a> ExportVolume<'a> {
             sandbox,
             staging,
             stop,
+            frozen: AtomicBool::new(false),
         }
     }
 }
@@ -72,10 +86,32 @@ impl ExportPin {
 impl WorkspaceVolume for ExportVolume<'_> {
     type Pin = ExportPin;
 
-    /// Holds nothing: the save proved no tenant process remains before it
-    /// paused, and the run's loop waits on the save until it resumes.
+    /// Freezes the tenant leaf; the run's loop, which starts every call,
+    /// waits on the save until it resumes. An executor with no leaf holds
+    /// nothing, so a tenant process its sandbox reports running refuses it.
     async fn pause(&self) -> afr_engine::Result<()> {
-        Ok(())
+        let executor = self.sandbox.executor();
+        match executor.freeze_tenant().await {
+            Ok(()) => {
+                self.frozen.store(true, Ordering::SeqCst);
+                Ok(())
+            }
+            Err(failure) if failure.is_no_tenant_leaf() => match self.sandbox.quiesce().await? {
+                Quiescence::Quiet => Ok(()),
+                Quiescence::Busy => Err(afr_engine::error::unsupported(
+                    self.sandbox.environment().engine,
+                    FREEZE_TENANT,
+                )),
+            },
+            // The executor thaws a freeze it failed; one whose answer was
+            // lost may hold the leaf still.
+            Err(failure) => {
+                if let Err(stuck) = executor.thaw_tenant().await {
+                    unthawed(&stuck.into());
+                }
+                Err(failure.into())
+            }
+        }
     }
 
     /// Exports the whole workspace into the pin's file. The walk reads every
@@ -102,7 +138,11 @@ impl WorkspaceVolume for ExportVolume<'_> {
         })
     }
 
+    /// Thaws the leaf the pause froze, if it froze one.
     async fn resume(&self) -> afr_engine::Result<()> {
+        if self.frozen.swap(false, Ordering::SeqCst) {
+            self.sandbox.executor().thaw_tenant().await?;
+        }
         Ok(())
     }
 
@@ -124,4 +164,10 @@ impl WorkspaceVolume for ExportVolume<'_> {
             .close()
             .map_err(|failure| afr_engine::Error::engine(crate::Error::from(failure)))
     }
+}
+
+/// Logs a thaw that failed after a freeze whose answer was lost.
+fn unthawed(failure: &afr_engine::Error) {
+    let error_code = failure.code();
+    tracing::warn!(event = "checkpoint_tenant_unthawed", %error_code);
 }

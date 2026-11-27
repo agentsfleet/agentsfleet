@@ -2,6 +2,7 @@
 
 use super::super::launch::Inherit;
 use super::*;
+use crate::protocol::RecoveryParams;
 
 type TestResult<T = ()> = std::result::Result<T, Box<dyn std::error::Error>>;
 

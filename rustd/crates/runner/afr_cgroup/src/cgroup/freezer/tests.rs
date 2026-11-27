@@ -109,3 +109,39 @@ fn test_a_thaw_the_kernel_never_reports_is_refused_as_unsettled() {
 
     assert!(refused.contains("did not settle thawed"), "{refused}");
 }
+
+/// A freezer opened up front keeps its two files: the cgroup's directory
+/// moved away, it still writes the request and reads the tree settled.
+#[test]
+fn test_an_opened_freezer_freezes_and_thaws_through_the_files_it_holds() {
+    let dir = tempfile::tempdir().unwrap();
+    let cgroup = dir.path().join("tenant");
+    fs::create_dir(&cgroup).unwrap();
+    fs::write(cgroup.join("cgroup.freeze"), "0").unwrap();
+    fs::write(cgroup.join("cgroup.events"), SETTLED_FROZEN).unwrap();
+    let freezer = Freezer::opened(&cgroup).unwrap();
+    let moved = dir.path().join("moved");
+    fs::rename(&cgroup, &moved).unwrap();
+
+    freezer.freeze().unwrap();
+    let frozen = fs::read_to_string(moved.join("cgroup.freeze")).unwrap();
+    fs::write(moved.join("cgroup.events"), SETTLED_THAWED).unwrap();
+    freezer.thaw().unwrap();
+
+    assert_eq!(frozen, "1");
+    assert_eq!(
+        fs::read_to_string(moved.join("cgroup.freeze")).unwrap(),
+        "0"
+    );
+    assert!(!cgroup.exists());
+}
+
+/// A cgroup with no freezer file refuses the open, naming the file.
+#[test]
+fn test_a_freezer_is_not_opened_over_a_cgroup_without_its_files() {
+    let dir = tempfile::tempdir().unwrap();
+
+    let refused = Freezer::opened(dir.path()).unwrap_err().to_string();
+
+    assert!(refused.contains("cgroup.freeze"), "{refused}");
+}

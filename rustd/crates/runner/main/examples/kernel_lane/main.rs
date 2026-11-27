@@ -56,6 +56,8 @@ mod lane;
 #[cfg(target_os = "linux")]
 mod microvm_pool;
 #[cfg(target_os = "linux")]
+mod pin_pause;
+#[cfg(target_os = "linux")]
 mod release;
 #[cfg(target_os = "linux")]
 mod run;

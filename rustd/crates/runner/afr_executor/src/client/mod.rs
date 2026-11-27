@@ -37,11 +37,12 @@ use crate::api::{
 };
 use crate::error::{self, Result};
 use crate::protocol::{
-    CountParams, Counted, HostsParams, KillParams, METHOD_COUNT, METHOD_DELETE_FILE, METHOD_HOSTS,
-    METHOD_KILL, METHOD_LIST_DIR, METHOD_READ_FILE, METHOD_RECOVERY_IDLE, METHOD_RENEW,
-    METHOD_SEARCH, METHOD_SPAWN, METHOD_WRITE, METHOD_WRITE_FILE, PathParams, ReadParams,
-    ReadResult, RecoveryParams, RecoveryProof, RenewParams, RenewedWorkspace, SpawnParams,
-    WriteFileParams, WriteParams, decoded, request,
+    CountParams, Counted, HostsParams, KillParams, Leaf, LeafParams, METHOD_COUNT,
+    METHOD_DELETE_FILE, METHOD_FREEZE, METHOD_HOSTS, METHOD_KILL, METHOD_LIST_DIR,
+    METHOD_READ_FILE, METHOD_RECOVERY_IDLE, METHOD_RENEW, METHOD_SEARCH, METHOD_SPAWN, METHOD_THAW,
+    METHOD_WRITE, METHOD_WRITE_FILE, PathParams, ReadParams, ReadResult, RecoveryParams,
+    RecoveryProof, RenewParams, RenewedWorkspace, SpawnParams, WriteFileParams, WriteParams,
+    decoded, request,
 };
 use crate::sizes::Sizes;
 
@@ -200,6 +201,23 @@ impl Executor for Client {
             },
         )
         .await
+    }
+
+    async fn calls_idle(&self) -> Result<bool> {
+        let params = RecoveryParams {
+            proof: RecoveryProof::Calls,
+        };
+        self.fetch(METHOD_RECOVERY_IDLE, &params).await
+    }
+
+    async fn freeze_tenant(&self) -> Result<()> {
+        self.order(METHOD_FREEZE, &LeafParams { leaf: Leaf::Tenant })
+            .await
+    }
+
+    async fn thaw_tenant(&self) -> Result<()> {
+        self.order(METHOD_THAW, &LeafParams { leaf: Leaf::Tenant })
+            .await
     }
 
     async fn pids_refused(&self) -> Result<u64> {

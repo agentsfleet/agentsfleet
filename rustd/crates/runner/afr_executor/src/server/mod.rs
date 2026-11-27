@@ -29,7 +29,7 @@ use tokio::sync::mpsc;
 
 pub(crate) use self::files::MAX_LISTING_BYTES;
 use self::files::Workspace;
-pub use self::launch::{Entry, InnerEnvironment, Tenant};
+pub use self::launch::{Entry, InnerEnvironment, LeafFreezer, Tenant};
 use self::launch::{Inherit, Placement};
 use self::session::Session;
 use crate::client::route::ExecutorStream;

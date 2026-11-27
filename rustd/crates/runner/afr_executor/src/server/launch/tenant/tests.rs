@@ -3,28 +3,21 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the runner"
 )]
 
-use std::borrow::Cow;
-use std::collections::BTreeMap;
 use std::fs::{self, File, OpenOptions};
 use std::io;
 use std::os::fd::OwnedFd;
-use std::path::Path;
-use std::sync::Arc;
 
 use af_core::test_util::trace::Capture;
 use rustix::io::FdFlags;
-use tokio::sync::mpsc;
 use tracing::Level;
 
+use super::freeze_tests::Recorded;
 use super::{
     EVENT_EVENTS_UNREAD, Inherit, OOM_KILL, PIDS_REFUSED, Placement, SHELL_KILLED_EXIT, SIGKILL,
     Tenant, event_count,
 };
 use crate::api::Ending;
-use crate::error::{Result, tenant_unavailable};
-use crate::protocol::SpawnParams;
-use crate::server::files::Workspace;
-use crate::server::launch::{Plan, launcher};
+use crate::error::Result;
 
 /// `memory.events` as a kernel renders it, with `kills` processes killed.
 fn events(kills: u64) -> String {
@@ -88,61 +81,14 @@ impl Leaf {
         fs::write(self.dir.path().join(Self::EVENTS), events(kills)).unwrap();
     }
 
-    fn moved(&self) -> String {
-        fs::read_to_string(self.dir.path().join(Self::PROCS)).unwrap()
+    /// A tenant over this leaf's files, its `cgroup.procs` opened as `procs`.
+    fn over(&self, procs: OwnedFd) -> Result<Tenant> {
+        Tenant::new(procs, self.events(), self.pids_events(), Recorded::shared())
     }
 
     fn tenant(&self) -> Tenant {
-        Tenant::new(self.procs(), self.events(), self.pids_events()).unwrap()
+        self.over(self.procs()).unwrap()
     }
-}
-
-/// A placement that refuses where it is told to, standing in for a lost
-/// descriptor and for a kernel that refuses the move.
-#[derive(Debug)]
-enum Refusing {
-    BeforeTheFork,
-    InTheChild,
-}
-
-impl Placement for Refusing {
-    fn check(&self) -> Result<()> {
-        match self {
-            Self::BeforeTheFork => Err(tenant_unavailable(io::Error::from(
-                io::ErrorKind::PermissionDenied,
-            ))),
-            Self::InTheChild => Ok(()),
-        }
-    }
-
-    fn enter(&self) -> io::Result<()> {
-        Err(io::Error::from(io::ErrorKind::PermissionDenied))
-    }
-
-    fn judge(&self, ending: Ending) -> Ending {
-        ending
-    }
-
-    fn idle(&self) -> io::Result<bool> {
-        Ok(true)
-    }
-
-    fn pids_refused(&self) -> io::Result<u64> {
-        Ok(0)
-    }
-}
-
-/// A plan that would leave `marker` behind in `root` if it ever ran.
-fn marking(root: &Path, terminal: bool) -> (Plan, Workspace) {
-    let workspace = Workspace::open(root).unwrap();
-    let params = SpawnParams {
-        argv: Cow::Owned(vec!["touch".to_owned(), "marker".to_owned()]),
-        cwd: None,
-        env: Cow::Owned(BTreeMap::new()),
-        pty: terminal,
-        timeout_ms: None,
-    };
-    (Plan::new(params, &workspace).unwrap(), workspace)
 }
 
 #[test]
@@ -183,7 +129,7 @@ fn events_that_do_not_read_as_pids_events_are_refused() {
     let leaf = Leaf::new(0);
     fs::write(leaf.dir.path().join(Leaf::PIDS_EVENTS), "not events").unwrap();
 
-    let refused = Tenant::new(leaf.procs(), leaf.events(), leaf.pids_events());
+    let refused = leaf.over(leaf.procs());
 
     assert!(refused.is_err(), "no max line, no tenant");
 }
@@ -205,7 +151,7 @@ fn a_procs_descriptor_not_open_for_writing_is_refused_with_its_cause() {
     let leaf = Leaf::new(0);
     let read_only = File::open(leaf.dir.path().join(Leaf::PROCS)).unwrap();
 
-    let refused = Tenant::new(read_only.into(), leaf.events(), leaf.pids_events()).unwrap_err();
+    let refused = leaf.over(read_only.into()).unwrap_err();
 
     assert_eq!(refused.wire_message(), {
         let cause = io::Error::from(rustix::io::Errno::BADF);
@@ -227,7 +173,7 @@ fn a_leaf_is_idle_only_while_it_lists_no_process() {
     fs::write(&listed, "4242\n").unwrap();
     let holding = tenant.idle().unwrap();
     let unread = OpenOptions::new().write(true).open(&listed).unwrap();
-    let refused = Tenant::new(unread.into(), leaf.events(), leaf.pids_events());
+    let refused = leaf.over(unread.into());
 
     assert!(empty, "no process listed");
     assert!(!holding, "a process a call left behind");
@@ -240,7 +186,7 @@ fn events_that_do_not_read_as_memory_events_are_refused() {
     let leaf = Leaf::new(0);
     fs::write(leaf.dir.path().join(Leaf::EVENTS), "not events").unwrap();
 
-    let refused = Tenant::new(leaf.procs(), leaf.events(), leaf.pids_events());
+    let refused = leaf.over(leaf.procs());
 
     assert!(refused.is_err(), "no oom_kill line, no tenant");
 }
@@ -306,68 +252,5 @@ fn only_a_kill_is_judged() {
         tenant.judge(Ending::Signaled(SIGKILL)),
         Ending::OutOfMemory,
         "the kill was still there to be read"
-    );
-}
-
-#[test]
-fn a_process_writes_itself_into_the_leaf_before_it_runs() {
-    let leaf = Leaf::new(0);
-    let root = tempfile::tempdir().unwrap();
-    let (plan, _workspace) = marking(root.path(), false);
-    let placement: Arc<dyn Placement> = Arc::new(leaf.tenant());
-
-    let spawned = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .unwrap()
-        .block_on(async {
-            let (_input, queued) = mpsc::channel(1);
-            let spawned = launcher(false).launch(&plan, &placement, queued).unwrap();
-            spawned.exit.await
-        });
-
-    assert_eq!(spawned, Ending::Exited(0));
-    assert_eq!(leaf.moved(), "0", "the child wrote itself, as `0`");
-    assert!(root.path().join("marker").exists());
-}
-
-#[test]
-fn test_failed_tenant_move_refuses_the_spawn() {
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .unwrap();
-    for (refusing, terminal) in [
-        (Refusing::BeforeTheFork, false),
-        (Refusing::BeforeTheFork, true),
-        (Refusing::InTheChild, false),
-        (Refusing::InTheChild, true),
-    ] {
-        let root = tempfile::tempdir().unwrap();
-        let (plan, _workspace) = marking(root.path(), terminal);
-        let placement: Arc<dyn Placement> = Arc::new(refusing);
-
-        let refused = runtime.block_on(async {
-            let (_input, queued) = mpsc::channel(1);
-            launcher(terminal)
-                .launch(&plan, &placement, queued)
-                .map(drop)
-        });
-
-        assert!(refused.is_err(), "{placement:?} on terminal={terminal}");
-        assert!(
-            !root.path().join("marker").exists(),
-            "{placement:?} on terminal={terminal}: nothing ran unplaced"
-        );
-    }
-}
-
-#[test]
-fn processes_stay_where_the_executor_runs_without_a_leaf() {
-    Inherit.check().unwrap();
-    Inherit.enter().unwrap();
-    assert_eq!(
-        Inherit.judge(Ending::Signaled(SIGKILL)),
-        Ending::Signaled(SIGKILL)
     );
 }

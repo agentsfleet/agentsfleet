@@ -27,7 +27,9 @@ use jsonrpsee_types::error::{
     CALL_EXECUTION_FAILED_CODE, INTERNAL_ERROR_CODE, INVALID_PARAMS_CODE,
 };
 
-use crate::protocol::{FILE_NOT_FOUND_CODE, PATH_REFUSED_CODE, UNKNOWN_PROCESS_CODE};
+use crate::protocol::{
+    FILE_NOT_FOUND_CODE, NO_TENANT_LEAF_CODE, PATH_REFUSED_CODE, UNKNOWN_PROCESS_CODE,
+};
 
 mod raise;
 
@@ -36,8 +38,9 @@ mod tests;
 
 pub(crate) use self::raise::{
     connection_lost, file_calls_unsupported, inner_unavailable, input_backlog_full, input_closed,
-    invalid_params, launch_incomplete, no_inner_environment, not_a_file, not_found, path_refused,
-    redial_failed, refused, tenant_unavailable, unknown_process, unresponsive,
+    invalid_params, launch_incomplete, no_inner_environment, no_tenant_leaf, not_a_file, not_found,
+    path_refused, redial_failed, refused, tenant_unavailable, tenant_unfrozen, unknown_process,
+    unresponsive,
 };
 
 af_core::error_shell!(
@@ -144,6 +147,22 @@ pub(crate) enum ErrorKind {
         source: io::Error,
     },
 
+    /// A freeze or thaw reached an executor that places no process in a
+    /// tenant leaf: its processes run where it does, and it holds none.
+    #[error("this executor has no tenant leaf to freeze")]
+    NoTenantLeaf,
+
+    /// The tenant leaf would not freeze or thaw; a failed freeze was thawed
+    /// before it was answered.
+    #[error("the tenant leaf could not be {state}")]
+    TenantUnfrozen {
+        /// The state it never reached: `frozen` or `thawed`.
+        state: &'static str,
+        /// The operating system's reason.
+        #[source]
+        source: io::Error,
+    },
+
     /// The executor serves processes only: a stand-in that inherited the
     /// trait's file calls rather than serving them.
     #[error("this executor serves no file calls")]
@@ -214,6 +233,14 @@ impl Error {
         self.rpc_code() == UNKNOWN_PROCESS_CODE
     }
 
+    /// Whether a freeze or thaw reached an executor with no tenant leaf, on
+    /// either end of the socket: it holds no tenant process, so none is
+    /// frozen.
+    #[must_use]
+    pub fn is_no_tenant_leaf(&self) -> bool {
+        self.rpc_code() == NO_TENANT_LEAF_CODE
+    }
+
     /// Whether a process would not take what was written to it, on either
     /// end of the socket: it closed its input, or has not read what it was
     /// sent. The process runs on; the sandbox is not gone.
@@ -230,6 +257,7 @@ impl Error {
             ErrorKind::PathRefused => PATH_REFUSED_CODE,
             ErrorKind::UnknownProcess => UNKNOWN_PROCESS_CODE,
             ErrorKind::NotFound { .. } => FILE_NOT_FOUND_CODE,
+            ErrorKind::NoTenantLeaf => NO_TENANT_LEAF_CODE,
             ErrorKind::InputBacklogFull | ErrorKind::InputClosed => CALL_EXECUTION_FAILED_CODE,
             ErrorKind::InvalidParams { .. } | ErrorKind::Malformed { .. } | ErrorKind::NotAFile => {
                 INVALID_PARAMS_CODE
@@ -242,6 +270,7 @@ impl Error {
             | ErrorKind::Task { .. }
             | ErrorKind::LaunchIncomplete
             | ErrorKind::TenantUnavailable { .. }
+            | ErrorKind::TenantUnfrozen { .. }
             | ErrorKind::FileCallsUnsupported
             | ErrorKind::NoInnerEnvironment
             | ErrorKind::InnerUnavailable { .. } => INTERNAL_ERROR_CODE,
@@ -281,4 +310,11 @@ pub fn input_closed_refused() -> Error {
         CALL_EXECUTION_FAILED_CODE,
         &ErrorKind::InputClosed.to_string(),
     )
+}
+
+/// The refusal the client decodes for a freeze or thaw sent to an executor
+/// with no tenant leaf, as a stand-in executor answers one.
+#[must_use]
+pub fn no_tenant_leaf_refused() -> Error {
+    refused(NO_TENANT_LEAF_CODE, &ErrorKind::NoTenantLeaf.to_string())
 }

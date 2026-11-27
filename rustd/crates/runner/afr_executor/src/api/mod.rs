@@ -8,7 +8,7 @@ use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncWrite};
 
-use crate::error::{Result, file_calls_unsupported, no_inner_environment};
+use crate::error::{Result, file_calls_unsupported, no_inner_environment, no_tenant_leaf};
 use crate::events::Events;
 use crate::sizes::Sizes;
 
@@ -218,6 +218,33 @@ pub trait Executor: Send + Sync + fmt::Debug {
     /// Unsupported or unreachable executors cannot authorize a checkpoint.
     async fn recovery_idle(&self) -> Result<bool> {
         Err(file_calls_unsupported())
+    }
+
+    /// Whether no call it accepted still runs; a tenant process left behind
+    /// is not counted, since the pin pause freezes it.
+    ///
+    /// # Errors
+    /// As [`Executor::recovery_idle`].
+    async fn calls_idle(&self) -> Result<bool> {
+        Err(file_calls_unsupported())
+    }
+
+    /// Stops every tenant process where it stands, the executor answering
+    /// on; one with no tenant leaf refuses, as
+    /// [`Error::is_no_tenant_leaf`](crate::Error::is_no_tenant_leaf) reads.
+    ///
+    /// # Errors
+    /// It has no leaf, or the leaf did not freeze and was thawed again.
+    async fn freeze_tenant(&self) -> Result<()> {
+        Err(no_tenant_leaf())
+    }
+
+    /// Lets every tenant process run on.
+    ///
+    /// # Errors
+    /// It has no leaf, or the leaf did not thaw.
+    async fn thaw_tenant(&self) -> Result<()> {
+        Err(no_tenant_leaf())
     }
 
     /// The forks its sandbox's process cap has refused since the sandbox

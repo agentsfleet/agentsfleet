@@ -22,10 +22,10 @@ use super::launch::{InnerEnvironment, Placement, Plan};
 use super::process::ProcessRun;
 use crate::error::{self, Result};
 use crate::protocol::{
-    CountParams, Counted, DELIMITER, KillParams, METHOD_COUNT, METHOD_DELETE_FILE, METHOD_HOSTS,
-    METHOD_KILL, METHOD_LIST_DIR, METHOD_READ_FILE, METHOD_RECOVERY_IDLE, METHOD_RENEW,
-    METHOD_SEARCH, METHOD_SPAWN, METHOD_WRITE, METHOD_WRITE_FILE, PathParams, ReadParams,
-    RecoveryParams, SpawnParams, SpawnResult, WriteFileParams, WriteParams,
+    CountParams, Counted, DELIMITER, KillParams, METHOD_COUNT, METHOD_DELETE_FILE, METHOD_FREEZE,
+    METHOD_HOSTS, METHOD_KILL, METHOD_LIST_DIR, METHOD_READ_FILE, METHOD_RECOVERY_IDLE,
+    METHOD_RENEW, METHOD_SEARCH, METHOD_SPAWN, METHOD_THAW, METHOD_WRITE, METHOD_WRITE_FILE,
+    PathParams, ReadParams, SpawnParams, SpawnResult, WriteFileParams, WriteParams,
 };
 use crate::sizes::Sizes;
 
@@ -164,17 +164,9 @@ impl Session {
     fn route(&mut self, request: &Request<'_>) {
         let id = request.id.clone().into_owned();
         match request.method.as_ref() {
-            METHOD_RECOVERY_IDLE => {
-                let idle = params::<RecoveryParams>(request).and_then(|_params| {
-                    while let Some(served) = self.calls.try_join_next() {
-                        self.forget(served.ok().flatten());
-                    }
-                    // A process a call started and left behind is the
-                    // tenant's still, though no call of this session runs.
-                    Ok(self.calls.is_empty() && self.placement.idle()?)
-                });
-                self.answer(id, idle);
-            }
+            METHOD_RECOVERY_IDLE => self.recovery_idle(id, params(request)),
+            METHOD_FREEZE => self.on_leaf(id, params(request), |leaf| leaf.freeze()),
+            METHOD_THAW => self.on_leaf(id, params(request), |leaf| leaf.thaw()),
             METHOD_SPAWN => self.spawn(id, params::<SpawnParams<'static>>(request)),
             METHOD_WRITE => {
                 let written = params::<WriteParams>(request)
@@ -330,6 +322,8 @@ impl Session {
     }
 }
 
+#[path = "session_leaf.rs"]
+mod leaf;
 #[cfg(test)]
 #[path = "recovery_tests.rs"]
 mod recovery_tests;

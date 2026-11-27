@@ -1,6 +1,6 @@
 //! A fake executor has explicit recovery proof and no hidden host work.
 
-use super::{EXECUTOR_GONE, Parking};
+use super::{EXECUTOR_GONE, FREEZE, Parking, THAW};
 use afr_executor::{Executor, FileContent, Imported, Listing, Process, ProcessId, Spawn};
 use bytes::Bytes;
 use cap_std::ambient_authority;
@@ -27,6 +27,10 @@ pub(super) struct FakeExecutor {
     /// Whether a turn listed a directory through it: the last of the calls
     /// a fake turn makes.
     pub(super) served: AtomicBool,
+    /// Whether it has a tenant leaf to freeze.
+    pub(super) freezes: bool,
+    /// Where it reports each freeze and thaw.
+    pub(super) steps: Option<mpsc::UnboundedSender<&'static str>>,
 }
 
 #[async_trait::async_trait]
@@ -36,6 +40,20 @@ impl Executor for FakeExecutor {
             return Err(std::io::Error::other(EXECUTOR_GONE).into());
         }
         Ok(self.parking != Parking::BusyExecutor)
+    }
+
+    /// Its calls are what the busy-executor parking holds; a tenant process
+    /// is its sandbox's to report.
+    async fn calls_idle(&self) -> afr_executor::Result<bool> {
+        self.recovery_idle().await
+    }
+
+    async fn freeze_tenant(&self) -> afr_executor::Result<()> {
+        self.leaf(FREEZE)
+    }
+
+    async fn thaw_tenant(&self) -> afr_executor::Result<()> {
+        self.leaf(THAW)
     }
 
     async fn spawn(&self, _spawn: &Spawn) -> afr_executor::Result<Process> {
@@ -109,6 +127,18 @@ impl Executor for FakeExecutor {
 }
 
 impl FakeExecutor {
+    /// Reports `step` on its tenant leaf, or refuses it as an executor with
+    /// none does.
+    fn leaf(&self, step: &'static str) -> afr_executor::Result<()> {
+        if !self.freezes {
+            return Err(afr_executor::error::no_tenant_leaf_refused());
+        }
+        if let Some(steps) = &self.steps {
+            let _reader_gone = steps.send(step);
+        }
+        Ok(())
+    }
+
     /// The directory it serves, or the refusal an executor with no file
     /// calls answers.
     fn served(&self) -> afr_executor::Result<&Path> {

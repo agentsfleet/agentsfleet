@@ -13,6 +13,11 @@
 //! exits with the status it reports that kill under; that exit is judged the
 //! same way. The leaf's `pids.events` counts each fork refused at its process
 //! cap, which the host reads once a run ends.
+//!
+//! The leaf is also what a save's pin pause freezes: the guest hands in a
+//! [`LeafFreezer`] over it with the three descriptors, and the executor,
+//! outside the leaf, freezes every tenant process — a detached one too, as
+//! the leaf holds whatever a placed process forks — while it keeps answering.
 
 use std::fmt;
 use std::fs::File;
@@ -40,6 +45,30 @@ const PIDS_REFUSED: &str = "max";
 const EVENTS_MAX_BYTES: usize = 256;
 /// A `memory.events` read failed, so a kill reads as the ending reported.
 const EVENT_EVENTS_UNREAD: &str = "executor_memory_events_unread";
+/// A failed freeze could not be thawed either.
+const EVENT_UNTHAWED: &str = "executor_tenant_unthawed";
+
+/// The state a freeze reaches, and a thaw.
+const FROZEN: &str = "frozen";
+const THAWED: &str = "thawed";
+
+/// The cgroup freezer over the tenant leaf, handed in by the guest that made it.
+///
+/// It stops every process in the leaf where it stands and lets them run on;
+/// both block until the kernel reports the leaf settled.
+pub trait LeafFreezer: Send + Sync + fmt::Debug {
+    /// Returns once every process in the leaf is stopped.
+    ///
+    /// # Errors
+    /// The kernel refused the request, or the leaf did not settle.
+    fn freeze(&self) -> io::Result<()>;
+
+    /// Returns once no process in the leaf is stopped.
+    ///
+    /// # Errors
+    /// As [`LeafFreezer::freeze`].
+    fn thaw(&self) -> io::Result<()>;
+}
 
 /// Where the processes a session starts are placed.
 pub(crate) trait Placement: Send + Sync + fmt::Debug {
@@ -66,6 +95,24 @@ pub(crate) trait Placement: Send + Sync + fmt::Debug {
     /// # Errors
     /// The count could not be read.
     fn pids_refused(&self) -> io::Result<u64>;
+
+    /// Stops every process placed here, and every one they forked; a freeze
+    /// that fails is thawed before it is answered, so it holds nothing. A
+    /// placement with no leaf freezes nothing and says so.
+    ///
+    /// # Errors
+    /// Nothing here can be frozen, or the freeze failed.
+    fn freeze(&self) -> Result<()> {
+        Err(error::no_tenant_leaf())
+    }
+
+    /// Lets every process placed here run on.
+    ///
+    /// # Errors
+    /// Nothing here can be frozen, or the thaw failed.
+    fn thaw(&self) -> Result<()> {
+        Err(error::no_tenant_leaf())
+    }
 }
 
 /// Processes stay where the executor runs: an engine with no tenant leaf.
@@ -105,19 +152,27 @@ pub struct Tenant {
     pids_events: File,
     /// The leaf's `oom_kill` count when last read; it only rises.
     seen: AtomicU64,
+    /// The freezer over the leaf.
+    freezer: Arc<dyn LeafFreezer>,
 }
 
 impl Tenant {
     /// The leaf whose `cgroup.procs` is open for reading and writing as
     /// `procs`, whose `memory.events` is open for reading as `events` and
-    /// whose `pids.events` is open for reading as `pids_events`. All three
-    /// become close-on-exec here, so no process started inherits any.
+    /// whose `pids.events` is open for reading as `pids_events`, frozen by
+    /// `freezer`. All three become close-on-exec here, so no process started
+    /// inherits any.
     ///
     /// # Errors
     /// A descriptor refuses close-on-exec, `procs` is not open for both,
     /// `events` does not read as `memory.events`, or `pids_events` as
     /// `pids.events`.
-    pub fn new(procs: OwnedFd, events: OwnedFd, pids_events: OwnedFd) -> Result<Self> {
+    pub fn new(
+        procs: OwnedFd,
+        events: OwnedFd,
+        pids_events: OwnedFd,
+        freezer: Arc<dyn LeafFreezer>,
+    ) -> Result<Self> {
         let (procs, events, pids_events) = (
             File::from(procs),
             File::from(events),
@@ -137,6 +192,7 @@ impl Tenant {
             events,
             pids_events,
             seen: AtomicU64::new(seen),
+            freezer,
         })
     }
 }
@@ -176,6 +232,20 @@ impl Placement for Tenant {
     fn pids_refused(&self) -> io::Result<u64> {
         count(&self.pids_events, PIDS_REFUSED)
     }
+
+    fn freeze(&self) -> Result<()> {
+        self.freezer.freeze().map_err(|failure| {
+            // A freeze that did not settle may still hold some of the leaf.
+            if let Err(stuck) = self.freezer.thaw() {
+                unthawed(&stuck);
+            }
+            error::tenant_unfrozen(FROZEN)(failure)
+        })
+    }
+
+    fn thaw(&self) -> Result<()> {
+        self.freezer.thaw().map_err(error::tenant_unfrozen(THAWED))
+    }
 }
 
 /// Logs a `memory.events` read that failed: the kill it might have named
@@ -184,6 +254,15 @@ fn unread(failure: &io::Error) {
     let error_code = error_code::INTERNAL_OPERATION_FAILED.as_str();
     let reason = failure.to_string();
     let event = EVENT_EVENTS_UNREAD;
+    tracing::warn!(error_code, reason, event);
+}
+
+/// Logs a thaw that failed after a failed freeze: the leaf may still hold
+/// some tenant processes, and the next thaw is what frees them.
+fn unthawed(failure: &io::Error) {
+    let error_code = error_code::INTERNAL_OPERATION_FAILED.as_str();
+    let reason = failure.to_string();
+    let event = EVENT_UNTHAWED;
     tracing::warn!(error_code, reason, event);
 }
 
@@ -241,5 +320,9 @@ fn event_count(events: &[u8], key: &str) -> Option<u64> {
         .find_map(|line| line.strip_prefix(key)?.strip_prefix(' ')?.parse().ok())
 }
 
+#[cfg(test)]
+pub(super) mod freeze_tests;
+#[cfg(test)]
+mod spawn_tests;
 #[cfg(test)]
 mod tests;

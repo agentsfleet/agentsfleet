@@ -13,6 +13,7 @@ use tokio::io::AsyncReadExt as _;
 use tokio::net::UnixStream;
 use tokio::sync::mpsc;
 
+use super::launch::Recorded;
 use super::{Tenant, bind, write_lines};
 use crate::api::Ending;
 
@@ -101,6 +102,7 @@ fn a_listener_with_a_tenant_places_its_processes_in_the_leaf() {
             .into(),
         File::open(&events).unwrap().into(),
         File::open(&pids_events).unwrap().into(),
+        Recorded::shared(),
     )
     .unwrap();
     let bare = bind(&dir.path().join("bare.sock")).unwrap();
@@ -139,6 +141,7 @@ async fn the_host_reads_the_forks_the_leaf_refused_at_its_process_cap() {
             .into(),
         File::open(&events).unwrap().into(),
         File::open(&pids_events).unwrap().into(),
+        Recorded::shared(),
     )
     .unwrap();
     let root = dir.path().join("w");

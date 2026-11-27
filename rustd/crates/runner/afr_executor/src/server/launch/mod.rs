@@ -149,8 +149,10 @@ mod tenant;
 mod terminal;
 
 pub use self::inner::{Entry, InnerEnvironment};
-pub use self::tenant::Tenant;
+#[cfg(test)]
+pub(crate) use self::tenant::freeze_tests::{Recorded, tenant as recorded_tenant};
 pub(crate) use self::tenant::{Inherit, Placement};
+pub use self::tenant::{LeafFreezer, Tenant};
 use self::terminal::Terminal;
 
 /// The launcher for `terminal`.

@@ -34,7 +34,7 @@ use crate::error::{self, Result};
 mod bounded;
 mod volume;
 
-pub(crate) use self::volume::{ExportPin, ExportVolume};
+pub(crate) use self::volume::{ExportPin, ExportVolume, FREEZE_TENANT};
 
 /// Only the runner reads or writes a stage: a tenant's files pass through it.
 const STAGE_MODE: u32 = 0o700;

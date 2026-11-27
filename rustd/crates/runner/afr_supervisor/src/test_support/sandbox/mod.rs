@@ -148,6 +148,9 @@ pub(crate) struct FakeEngine {
     pub(crate) reallowed: Option<mpsc::UnboundedSender<(Allowlist, bool)>>,
     /// What its sandboxes do when parked and resumed.
     pub(crate) parking: Parking,
+    /// Whether its executors have a tenant leaf to freeze, each freeze and
+    /// thaw reported as a step; without one they refuse both.
+    pub(crate) freezes: bool,
 }
 
 impl FakeEngine {
@@ -258,6 +261,8 @@ impl Engine for FakeEngine {
                 parking: self.parking,
                 resumed: AtomicBool::default(),
                 served: AtomicBool::default(),
+                freezes: self.freezes,
+                steps: self.steps.clone(),
             },
         }))
     }
@@ -317,6 +322,8 @@ impl FakeSandbox {
 pub(crate) const KILL: &str = "kill";
 pub(crate) const DESTROY: &str = "destroy";
 pub(crate) const QUIESCE: &str = "quiesce";
+pub(crate) const FREEZE: &str = "freeze";
+pub(crate) const THAW: &str = "thaw";
 /// What a kill that cannot prove the tree empty says.
 pub(crate) const STILL_RUNNING: &str = "a process is stuck in the kernel";
 

@@ -134,6 +134,7 @@ pub(crate) fn run(arguments: &Arguments, lane: &Arc<Lane>) -> Conclusion {
     let microvms = crate::firecracker::TRIALS
         .iter()
         .chain(crate::microvm_pool::TRIALS)
+        .chain(crate::pin_pause::TRIALS)
         .chain(ENGINE_TRIALS)
         .chain(crate::egress::TRIALS)
         .chain(crate::supervisor_trials::TRIALS)

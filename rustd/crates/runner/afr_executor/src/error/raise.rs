@@ -77,6 +77,16 @@ pub(crate) fn tenant_unavailable(source: std::io::Error) -> Error {
     ErrorKind::TenantUnavailable { source }.into()
 }
 
+/// A freeze or thaw to an executor with no tenant leaf.
+pub(crate) fn no_tenant_leaf() -> Error {
+    ErrorKind::NoTenantLeaf.into()
+}
+
+/// The tenant leaf never reached `state`, for the reason `source` gives.
+pub(crate) fn tenant_unfrozen(state: &'static str) -> impl Fn(std::io::Error) -> Error {
+    move |source| ErrorKind::TenantUnfrozen { state, source }.into()
+}
+
 /// A file call to an executor that serves none.
 pub(crate) fn file_calls_unsupported() -> Error {
     ErrorKind::FileCallsUnsupported.into()

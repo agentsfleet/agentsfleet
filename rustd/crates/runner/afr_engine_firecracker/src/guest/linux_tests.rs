@@ -12,7 +12,7 @@ use super::{leaf, tenant};
 /// The leaf every tenant process is placed in sits under the guest's cgroup
 /// root, which hands it the memory and pids controllers; its process cap is
 /// the one the entry was told, and the executor takes it as its tenant from
-/// the three files the kernel publishes there.
+/// the three files the kernel publishes there and the freezer's two.
 #[test]
 fn every_tenant_process_is_placed_in_a_leaf_whose_memory_is_counted_and_processes_capped() {
     let root = tempfile::tempdir().unwrap();
@@ -33,5 +33,9 @@ fn every_tenant_process_is_placed_in_a_leaf_whose_memory_is_counted_and_processe
     fs::write(made.join(CGROUP_PROCS), "").unwrap();
     fs::write(made.join(MEMORY_EVENTS), "oom 0\noom_kill 0\n").unwrap();
     fs::write(made.join(PIDS_EVENTS), "max 0\n").unwrap();
+    // The two files the kernel publishes for the leaf's freezer, which the
+    // executor freezes it through for a save's pin pause.
+    fs::write(made.join("cgroup.freeze"), "0").unwrap();
+    fs::write(made.join("cgroup.events"), "populated 0\nfrozen 0\n").unwrap();
     tenant(&made).unwrap();
 }

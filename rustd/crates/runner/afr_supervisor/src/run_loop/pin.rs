@@ -1,16 +1,20 @@
 //! The pause a boundary's save holds, and the release that ends its pin.
 //!
 //! ```text
-//!   executor idle ─► tenant quiet ─► pause ─► pin ─► resume   the run waits
+//!   no call in flight ─► freeze tenant ─► pin ─► thaw tenant   the run waits
 //!   changes ─► register ─► seal ─► PUT ─► pages ─► commit ─► release   it does not
 //! ```
+//!
+//! A live tenant process no longer skips the save: the pause freezes it
+//! (`ExportVolume`). A call still in flight does, before any freeze or pin.
 
 use af_chunk_store::Change;
 use af_core::id::Uuid7;
 use afr_agent::RecoverySkip;
-use afr_engine::{Quiescence, Resumed, Sandbox, WorkspaceVolume};
+use afr_engine::{Resumed, Sandbox, WorkspaceVolume};
 use futures_util::{StreamExt as _, TryStreamExt as _, stream::BoxStream};
 
+use crate::staging::FREEZE_TENANT;
 use crate::{Result, error, recovery::ChangeSource};
 
 /// How a boundary's pause ended.
@@ -21,8 +25,9 @@ pub(crate) enum Pinning<P> {
     Pinned(Resumed<P>),
 }
 
-/// Proves `sandbox`'s executor and tenant idle, then pauses `volume`, pins it
-/// against `parent` and resumes it. Nothing here calls the daemon.
+/// Proves no call of `sandbox`'s executor in flight, then pauses `volume`,
+/// pins it against `parent` and resumes it, the resume running whether or
+/// not the pin was taken. Nothing here calls the daemon.
 ///
 /// # Errors
 /// The engine could not tell whether a tenant process runs.
@@ -31,7 +36,7 @@ pub(crate) async fn pin_sandbox<V: WorkspaceVolume>(
     volume: &V,
     parent: Option<&Uuid7>,
 ) -> Result<Pinning<V::Pin>> {
-    match executor_idle(sandbox).await {
+    match sandbox.executor().calls_idle().await {
         Ok(true) => {}
         Ok(false) => return Ok(Pinning::Skipped(RecoverySkip::BusyExecutor)),
         Err(failure) => {
@@ -39,13 +44,12 @@ pub(crate) async fn pin_sandbox<V: WorkspaceVolume>(
             return Ok(Pinning::Skipped(RecoverySkip::Unavailable));
         }
     }
-    let quiescence = sandbox
+    // Read for its refusal alone: a running tenant process is frozen by the
+    // pause, or refuses it where nothing can freeze it.
+    let _running = sandbox
         .quiesce()
         .await
         .map_err(|source| error::boundary("cannot prove live capture tenant quiescence", source))?;
-    if quiescence == Quiescence::Busy {
-        return Ok(Pinning::Skipped(RecoverySkip::BusyProcesses));
-    }
     if sandbox.environment().root.toolbox().is_none() {
         return Ok(Pinning::Skipped(RecoverySkip::Unavailable));
     }
@@ -56,6 +60,9 @@ pub(crate) async fn pin_sandbox<V: WorkspaceVolume>(
             let paused_ms = u64::try_from(paused.elapsed().as_millis()).unwrap_or(u64::MAX);
             tracing::info!(event = "checkpoint_paused", engine, paused_ms);
             Ok(Pinning::Pinned(pin))
+        }
+        Err(failure) if failure.unsupported_operation() == Some(FREEZE_TENANT) => {
+            Ok(Pinning::Skipped(RecoverySkip::BusyProcesses))
         }
         // A workspace that cannot be read out skips this save, as one the
         // host could not scan did: the run goes on.
@@ -99,3 +106,7 @@ impl<V: WorkspaceVolume> ChangeSource for Pinned<'_, V> {
             .boxed()
     }
 }
+
+#[cfg(test)]
+#[path = "tests/pin_pause.rs"]
+mod pause_tests;

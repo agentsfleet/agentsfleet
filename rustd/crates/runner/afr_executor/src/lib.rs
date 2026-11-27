@@ -50,7 +50,7 @@ pub use self::error::{Error, Result};
 pub use self::events::{Events, Feed};
 pub use self::protocol::{MAX_READ_BYTES, READ_CHUNK_BYTES, TRANSFER_CHUNK_BYTES};
 pub use self::server::{
-    Entry, InnerEnvironment, Server, Tenant, WORKSPACE_ROOT, bind, serve, streamed,
+    Entry, InnerEnvironment, LeafFreezer, Server, Tenant, WORKSPACE_ROOT, bind, serve, streamed,
 };
 pub use self::sizes::Sizes;
 pub use self::slot::{ExecutorSlot, ExecutorSource, Outcome, Unavailable};

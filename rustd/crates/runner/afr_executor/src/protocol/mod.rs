@@ -55,6 +55,10 @@ pub(crate) const METHOD_RENEW: &str = "env/renew";
 pub(crate) const METHOD_HOSTS: &str = "env/hosts";
 /// `env/count`: one count the tenant leaf keeps, as the kernel reports it.
 pub(crate) const METHOD_COUNT: &str = "env/count";
+/// `env/freeze`: hold every process in the tenant leaf where it stands.
+pub(crate) const METHOD_FREEZE: &str = "env/freeze";
+/// `env/thaw`: let every process in the tenant leaf run on.
+pub(crate) const METHOD_THAW: &str = "env/thaw";
 /// The notification carrying a chunk of a process's output.
 pub(crate) const NOTIFY_OUTPUT: &str = "process/output";
 /// The notification carrying a process's end; always its last.
@@ -80,6 +84,9 @@ pub(crate) const UNKNOWN_PROCESS_CODE: i32 = -32_011;
 /// A file or directory the workspace does not have: the one caller's mistake
 /// a handler names to the model, so it is told from the rest.
 pub(crate) const FILE_NOT_FOUND_CODE: i32 = -32_012;
+/// A freeze or thaw sent to an executor that places no process in a tenant
+/// leaf, so a caller can tell it holds nothing from a freeze that failed.
+pub(crate) const NO_TENANT_LEAF_CODE: i32 = -32_013;
 /// `process/spawn` parameters: borrowed where the client sends them, owned
 /// where the executor reads them.
 #[derive(Debug, Serialize, Deserialize)]
@@ -195,6 +202,21 @@ pub(crate) enum Counted {
     PidsRefused,
 }
 
+/// `env/freeze` and `env/thaw` parameters: which leaf.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct LeafParams {
+    pub(crate) leaf: Leaf,
+}
+
+/// The leaves a freeze or thaw names: the tenant's, the one leaf the executor
+/// was given.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum Leaf {
+    Tenant,
+}
+
 /// What a renewal leaves of the workspace: nothing, for a restore to import
 /// its tree into.
 #[derive(Debug, Serialize, Deserialize)]
@@ -207,7 +229,11 @@ pub(crate) enum RenewedWorkspace {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum RecoveryProof {
+    /// No call runs and no process placed in the tenant leaf remains.
     FileJobs,
+    /// No call runs; a tenant process left behind is not counted, since the
+    /// pin pause freezes it.
+    Calls,
 }
 
 /// `process/output` parameters.

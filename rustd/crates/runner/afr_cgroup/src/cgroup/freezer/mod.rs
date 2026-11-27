@@ -7,9 +7,18 @@
 //! the whole subtree settled through the `frozen` key of `cgroup.events`, and
 //! nothing is called frozen before it says so
 //! (<https://docs.kernel.org/admin-guide/cgroup-v2.html>, `cgroup.freeze`).
+//!
+//! Inside a microVM the guest's tenant leaf is frozen alone, by the executor
+//! beside it, which keeps answering while tenant code is held. The executor
+//! acts on files as the guest user, so its freezer, made by
+//! [`Freezer::opened`], holds both files open from the start: the kernel
+//! checks a cgroup file's access when it is opened.
 
-use std::fs;
+use std::fs::{self, File, OpenOptions};
+use std::io;
+use std::os::unix::fs::FileExt as _;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
 use backon::{BlockingRetryable as _, ConstantBuilder};
@@ -37,20 +46,52 @@ const SETTLE_POLL: Duration = Duration::from_millis(5);
 /// worth, since a freeze waits only for every task to reach a stop point.
 /// Kept: a task stuck in the kernel would otherwise block the freeze, and the worker, forever.
 const SETTLE_TRIES: usize = 200;
+/// Room for the whole of `cgroup.events`, two short lines: `populated` and
+/// `frozen`.
+const EVENTS_MAX_BYTES: usize = 256;
 
 /// Freezes and thaws one run's cgroup. A handle on its path alone, so it can
 /// be moved off the async runtime while the sandbox keeps the cgroup.
 #[derive(Debug, Clone)]
 pub struct Freezer {
     dir: PathBuf,
+    /// Its two files, when they were opened up front.
+    held: Option<Arc<Held>>,
+}
+
+/// `cgroup.freeze`, open for writing, and `cgroup.events`, for reading.
+#[derive(Debug)]
+struct Held {
+    freeze: File,
+    events: File,
 }
 
 impl Freezer {
-    /// The freezer of the cgroup at `dir`.
+    /// The freezer of the cgroup at `dir`, its files opened on each use.
     pub(crate) fn new(dir: &Path) -> Self {
         Self {
             dir: dir.to_owned(),
+            held: None,
         }
+    }
+
+    /// The freezer of the cgroup at `dir`, its `cgroup.freeze` and
+    /// `cgroup.events` opened now under the caller's present credentials,
+    /// which every later freeze and thaw goes through.
+    ///
+    /// # Errors
+    /// Either file could not be opened.
+    pub fn opened(dir: &Path) -> Result<Self> {
+        let freeze = OpenOptions::new()
+            .write(true)
+            .open(dir.join(CGROUP_FREEZE))
+            .map_err(cgroup(CGROUP_FREEZE))?;
+        let events =
+            File::open(dir.join(CGROUP_EVENTS)).map_err(cgroup_unreadable(CGROUP_EVENTS))?;
+        Ok(Self {
+            dir: dir.to_owned(),
+            held: Some(Arc::new(Held { freeze, events })),
+        })
     }
 
     /// Stops every process in the cgroup, and returns once the kernel reports
@@ -77,8 +118,7 @@ impl Freezer {
     /// # Errors
     /// `cgroup.events` cannot be read.
     pub fn is_frozen(&self) -> Result<bool> {
-        let events = fs::read_to_string(self.dir.join(CGROUP_EVENTS))
-            .map_err(cgroup_unreadable(CGROUP_EVENTS))?;
+        let events = self.events().map_err(cgroup_unreadable(CGROUP_EVENTS))?;
         Ok(events
             .lines()
             .any(|line| line.split_once(' ') == Some((FROZEN_KEY, FROZEN))))
@@ -88,7 +128,8 @@ impl Freezer {
     /// read it back. A read that fails ends the wait at once; only a state not
     /// yet reached is waited out.
     fn settle(&self, wanted: Settled) -> Result<()> {
-        fs::write(self.dir.join(CGROUP_FREEZE), wanted.value()).map_err(cgroup(CGROUP_FREEZE))?;
+        self.request(wanted.value())
+            .map_err(cgroup(CGROUP_FREEZE))?;
         let stopped = wanted == Settled::Frozen;
         let reached = || match self.is_frozen() {
             Ok(frozen) if frozen == stopped => Ok(()),
@@ -105,6 +146,26 @@ impl Freezer {
             .when(Option::is_none)
             .call()
             .map_err(|failed| failed.unwrap_or_else(|| cgroup_unsettled(&self.dir, wanted.name())))
+    }
+
+    /// Writes `value` to `cgroup.freeze`, through the held file when there
+    /// is one.
+    fn request(&self, value: &str) -> io::Result<()> {
+        let Some(held) = &self.held else {
+            return fs::write(self.dir.join(CGROUP_FREEZE), value);
+        };
+        held.freeze.write_all_at(value.as_bytes(), 0)
+    }
+
+    /// `cgroup.events`, whole, read from its start through the held file
+    /// when there is one: the kernel renders it afresh on each read there.
+    fn events(&self) -> io::Result<String> {
+        let Some(held) = &self.held else {
+            return fs::read_to_string(self.dir.join(CGROUP_EVENTS));
+        };
+        let mut buffer = [0; EVENTS_MAX_BYTES];
+        let read = held.events.read_at(&mut buffer, 0)?;
+        Ok(String::from_utf8_lossy(buffer.get(..read).unwrap_or_default()).into_owned())
     }
 }
 
