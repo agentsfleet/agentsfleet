@@ -16,15 +16,15 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Date:** Nov 26, 2026
 
-**Status:** PENDING
+**Status:** IN_PROGRESS
 
 **Priority:** P1, 13 of the 21 catalogue models offer no search, and every browser call is refused
 
 **Categories:** API, CLI, DOCS, INFRA, OBS, UI
 
-**Batch:** B1. Per Indy on Nov 27, all implementation starts after M258 merges. M259_002 follows as B2.
+**Batch:** B1. Per Indy on Nov 27, web tools (§§1–5) start on `feat/m259-web-tools` alongside M258. The Firecracker spike (§6) starts after M258 merges. M259_002 follows as B2.
 
-**Depends on:** M258_001 (Firecracker engine), M258_003 (production switch and bubblewrap retirement), and M258_002 (checkpoint behavior). Review the three active M258 specs against the merged compute layer before starting.
+**Depends on:** M258_001 (Firecracker engine), M258_003 (production switch and bubblewrap retirement), and M258_002 (checkpoint behavior). The dependency applies to the browser. Review the three active M258 specs against the merged compute layer before §6.
 
 **Provenance:** Originally drafted Nov 26, 2026. Readiness review on Nov 27 compared main at `ece273764` with the compute branch at `46723c018`.
 
@@ -82,7 +82,7 @@ browser_open · browser · screenshot ─► afr_tools RunBrowser ─► CDP ove
 
 | # | Ruling |
 |---|---|
-| Order | The engine is replaced first (M258); this milestone holds web search with Parallel and other vendors, and the browser decision. |
+| Order | Web tools can proceed alongside M258. The Firecracker spike uses the merged M258 engine. |
 | Search | Our own function tool `web_search` on every wire, as Amp does. No provider-hosted search is sent. |
 | Vendors | Parallel Fast first, Exa search fallback. The platform owns both keys. |
 | Private fleets | A `restricted` fleet can neither search nor use a vendor's page reader. |
@@ -110,7 +110,7 @@ browser_open · browser · screenshot ─► afr_tools RunBrowser ─► CDP ove
 
 | File | Action | Why |
 |------|--------|-----|
-| `docs/v2/pending/M259_001_P1_API_CLI_DOCS_INFRA_OBS_UI_ANY_MODEL_SEARCHES_READS_AND_BROWSES.md` | CREATE | this spec; moves to `active/`, then `done/` at close |
+| `docs/v2/active/M259_001_P1_API_CLI_DOCS_INFRA_OBS_UI_ANY_MODEL_SEARCHES_READS_AND_BROWSES.md` | CREATE | active implementation spec; moves to `done/` at close |
 | `rustd/guffbolt-ai/src/{types/model.rs,types/mod.rs,lib.rs,wire/request/mod.rs,wire/request/tests.rs,wire/route/tests/counting/unsupported.rs}`, `rustd/guffbolt-ai/README.md` | EDIT | §2: `Hosted`, `Request.hosted`, `WEB_SEARCH_MESSAGES` and `fn hosted` deleted |
 | `rustd/guffbolt/src/{lib.rs,tools/mod.rs,tools/code.rs,tools/web/**,tools/browser.rs,tools/env/mod.rs,tools/files/image.rs,tools/builder/**}`, `rustd/guffbolt/README.md`, `rustd/guffbolt/examples/fireworks_live.rs`, `rustd/guffbolt/tests/public_api/**` | EDIT/CREATE | §2, §3: `SearchBackend`, `web_search`, routed `web_fetch`; §7: `Backend::Browser`, typed verbs, the shared image fit |
 | `rustd/crates/harness/af_providers/src/web/**` | CREATE | §1: the `Vendor` trait, one module per vendor |
@@ -501,7 +501,7 @@ Same spelling, other meaning, kept: `afd_http/src/openapi/mod.rs` ("Hosted sched
 - > Owner (Indy, Nov 22, 2026): "the tool can be cut on the browser side keep it in the current form, to get the browser working what do we need to do" — context: the three tool names stay. M253_004's earlier fold into one `browser` was never built (`afr_tools/src/catalog/mod.rs:131-135`).
 - > Owner (Indy, Nov 26, 2026): "Essentially add missing features for guffbolt agent harness", "max 2 in 1 milestone for the guffbolt tool updates" and "I need the final scope to fix" — context: two Workstreams in this milestone.
 - **Owner decisions, Nov 26, 2026, on the gap matrix** — accepted: Gemini grounding off, and no search on a `restricted` fleet. Page reading goes through a vendor on public fleets only.
-- **Nov 27 owner decisions.** Firecracker only. Parallel Fast, Exa search fallback and platform-owned vendor keys. All implementation waits for M258 to merge.
+- **Nov 27 owner decisions.** Firecracker only. Parallel Fast, Exa search fallback and platform-owned vendor keys. Indy subsequently authorized §§1–5 on this branch alongside M258 and kept the browser spike after merge.
 - **Nov 27 owner direction.** The implementer decides the browser design after M258 merges, using the toolbox pipeline that lands and the Firecracker spike evidence. D1, D2 and D4 are post-merge implementation decisions. D3 concerns what the thread can disclose.
   - D1: choose browser confinement after reviewing the isolation trade-off. A disabled renderer sandbox is a proposal, not an accepted launch configuration.
   - D2: verify boundary save, final capture and restore preparation on merged M258. Claude reports that a boundary save freezes a live tenant on its local branch and final capture requires tenant processes to exit. Preserve the workspace save, reap Chromium for final capture, and invalidate browser references after restore.
@@ -520,7 +520,7 @@ Same spelling, other meaning, kept: `afd_http/src/openapi/mod.rs` ("Hosted sched
   - The blast list adds `afr_agent/src/router/tests.rs:173,233` and `afr_agent/tests/providers/main.rs:51,202`.
 - **Restructure record** — this spec takes §1 to §5 and §8 of the web search spec and the browser from the browser spec, both drafted on Nov 26, 2026 and removed by the Pull Request that adds this one. The web spec's §6, §7 and §9 moved to M259_002.
 - **Model review, Nov 27.** Fable 5.2 supplied eleven findings. Verified the key collision, retry and reservation boundaries, pending/covered ambiguity, redirect privacy, call history persistence, and compute prerequisites against `ece273764` and `46723c018`. The review also cites `680a26110`; recheck that revision or its successor after merge.
-- **Claude Code review, Nov 27.** Verified main and published M258 at `ece273764` and `46723c018`. Claude inspected the additional local-only revisions `680a26110` and `121dc6918`. Refresh the guest paths, runner policies, checkpoint behavior, image limits and wire version from merged main. The web tools can proceed independently of the browser spike after that merge.
-- **Delivery.** Sync the feature branch to merged main before implementing §§1–5. Reconcile shared route inventories, schema registration, error codes, protocol version, OpenAPI and acceptance setup there. Run §6 before §§7–8 and the live browser fixture.
+- **Claude Code review, Nov 27.** Verified main and published M258 at `ece273764` and `46723c018`. Claude inspected the additional local-only revisions `680a26110` and `121dc6918`. Refresh the guest paths, runner policies, checkpoint behavior, image limits and wire version from merged main. The web tools can proceed independently of the browser spike.
+- **Delivery.** Start §§1–5 on the current main baseline. Sync the feature branch with merged M258 before §6. Reconcile shared route inventories, schema registration, error codes, protocol version, OpenAPI and acceptance setup there. Run §6 before §§7–8 and the live browser fixture.
   Start with the reservation table and migration registration, vendor interface, and Dimension 1.1 against a fake vendor. The spike is ready once the merged engine is available. Shipping browser actions additionally requires confinement evidence, policy isolation, intact transport, successful final capture and §9.2.
 - **Deferrals and transfers** — none. Each one needs an owner quote below, as `> Owner (<name>, <MMM DD, YYYY HH:MM>): "<quote>" — context: <item, why>`.
