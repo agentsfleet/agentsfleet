@@ -8,7 +8,7 @@ use std::borrow::Cow;
 
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
-use af_wire::runner::NetworkPolicy;
+use af_wire::runner::{NetworkPolicy, SandboxTier};
 use af_wire::trigger_verb::TriggerKind;
 use afd_db::test_util::{FleetSeed, GrantSeed};
 use afd_runner::Runners;
@@ -259,9 +259,10 @@ async fn subscribe(
 }
 
 /// Enrols a runner labelled with every tag the installed fleet's row requires —
-/// a fleet is placed only on a runner carrying its `required_tags` — and with
-/// no egress control, since this runner reports none and the daemon withholds
-/// runs from a host that cannot enforce what its policy demands. Then points
+/// a fleet is placed only on a runner carrying its `required_tags` — as
+/// `dev_none` with no egress control, since this runner runs the unsandboxed
+/// engine and the daemon withholds runs from a host whose engine is not its
+/// tier's. Then points
 /// the fleet's affinity at it, so a ready mark another suite left behind cannot
 /// take its place.
 pub(super) async fn enrol(booted: &Booted, fleet: &Uuid7, now: Timestamp) -> (Uuid7, String) {
@@ -278,6 +279,7 @@ pub(super) async fn enrol(booted: &Booted, fleet: &Uuid7, now: Timestamp) -> (Uu
             .expect("the installed fleet's tags read");
     drop(connection);
     let mut request = enrolment();
+    request.assigned_policy.sandbox_tier = SandboxTier::DevNone;
     request.assigned_policy.network_policy = NetworkPolicy::AllowAll;
     request.labels.extend(required.into_iter().map(Cow::Owned));
     let enrolled = Runners::new(booted.database.clone(), Entropy::new())

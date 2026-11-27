@@ -8,7 +8,7 @@ use af_core::id::Uuid7;
 use af_crypto::aad::Aad;
 use af_crypto::envelope::Sealer;
 use af_crypto::secret::Kek;
-use af_wire::runner::NetworkPolicy;
+use af_wire::runner::{NetworkPolicy, SandboxTier};
 use afd_db::test_util::mint_id;
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::Value;
@@ -75,11 +75,12 @@ async fn seat_tenant_model(scene: &Scenario) {
 }
 
 /// A runner the scenario's tenant registers for its fleet through
-/// `POST /v1/tenants/me/runners`, with no egress control the scripted host
-/// would have to enforce. Answers its id and token.
+/// `POST /v1/tenants/me/runners`, as `dev_none` with no egress control: the
+/// scripted host runs the unsandboxed engine. Answers its id and token.
 async fn tenant_runner(scene: &Scenario, credential: &str) -> (Uuid7, String) {
     let mut request = scenario_enrolment(&scene.fleet);
     request.host_id = Cow::Borrowed("tenant-host-e2e.fixture.test");
+    request.assigned_policy.sandbox_tier = SandboxTier::DevNone;
     request.assigned_policy.network_policy = NetworkPolicy::AllowAll;
     request.assigned_policy.registry_allowlist = Vec::new();
     let response = afd_identity::direct(Duration::from_secs(5))

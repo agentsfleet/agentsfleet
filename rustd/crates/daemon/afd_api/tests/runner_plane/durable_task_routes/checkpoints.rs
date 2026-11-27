@@ -132,7 +132,7 @@ async fn commit(
         "pin_id": text(plan, "/pin/id"),
         "manifest_root": checkpoint_digest::manifest_root([(page, digest)]),
         "history_digest": checkpoint_digest::history_root([]),
-        "covered_input_sequence": 0, "effect_watermark": 0});
+        "covered_input_sequence": 0, "effect_watermark": 0, "uploaded": []});
     stale(fixture, Method::PATCH, route, &commit).await;
     let saved = call(fixture, Method::PATCH, route, &commit, StatusCode::OK).await;
     assert_eq!(

@@ -98,15 +98,17 @@ async fn checkpoint_objects_register_once_and_upload_at_their_length_over_http()
     fixture.finish().await;
 }
 
-/// One plaintext byte uploads as exactly 17 ciphertext bytes: a longer one is
-/// refused before signing and one under the floor is malformed, while that
-/// length reaches the store, which here cannot establish custody.
+/// One plaintext byte uploads as exactly 17 ciphertext bytes under the default
+/// `aes_256_gcm`: a longer or shorter one is refused before signing and an
+/// empty one is malformed, while that length reaches the store, which here
+/// cannot establish custody.
 async fn uploads(fixture: &Fixture, route: &str, upload: &Value) {
     let route = format!("{route}/uploads");
     let length = "/objects/0/ciphertext_length";
     for (bytes, status, code) in [
         (18, StatusCode::CONFLICT, "UZ-DT-003"),
-        (16, StatusCode::BAD_REQUEST, "UZ-REQ-001"),
+        (16, StatusCode::CONFLICT, "UZ-DT-003"),
+        (0, StatusCode::BAD_REQUEST, "UZ-REQ-001"),
     ] {
         let mut wrong = upload.clone();
         *wrong.pointer_mut(length).expect("the upload's length") = json!(bytes);

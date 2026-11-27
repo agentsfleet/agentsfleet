@@ -214,15 +214,15 @@ async fn assert_memory_pushed(scene: &crate::e2e::Scenario) {
     );
 }
 
-/// Reassigns the seeded runner a policy with no egress control: this runner
-/// reports none yet, and the daemon rightly withholds runs from a host that
-/// cannot enforce what its assignment demands.
+/// Reassigns the seeded runner `dev_none` with no egress control: this runner
+/// runs the unsandboxed engine, and the daemon rightly withholds runs from a
+/// host whose engine is not its tier's.
 pub(crate) async fn allow_all_egress(scene: &crate::e2e::Scenario) {
     use af_wire::runner::{AssignedPolicy, NetworkPolicy, SandboxTier};
     let policy = AssignedPolicy {
         durable_tasks_enabled: af_wire::test_util::DURABLE_TASKS_DEFAULT_ENABLED,
         decision_model_id: None,
-        sandbox_tier: SandboxTier::Firecracker,
+        sandbox_tier: SandboxTier::DevNone,
         network_policy: NetworkPolicy::AllowAll,
         registry_allowlist: Vec::new(),
         worker_count: 1,
