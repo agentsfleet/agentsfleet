@@ -52,7 +52,7 @@ backed! {
 
 impl Handler for WebSearch<'_> {
     const NAME: &'static str = "web_search";
-    const DESCRIPTION: &'static str = "Search the public web for a query. Returns links, dates and excerpts. Requires the fleet to allow public web access.";
+    const DESCRIPTION: &'static str = "Search the public web for a query. Returns links, dates and excerpts. Requires public web access under the run's network policy.";
     type Arguments = Query;
 
     async fn run(&self, arguments: Query, context: Context<'_>) -> ToolOutput {

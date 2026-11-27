@@ -62,7 +62,7 @@ impl Egressed<'_, '_> {
         };
         timeout(self.run.verbs.web_timeout(), query_allowed)
             .await
-            .map_err(|_| read_expired(WEB_SEARCH.name(), self.run.run_id))?
+            .map_err(|_elapsed| read_expired(WEB_SEARCH.name(), self.run.run_id))?
     }
 
     pub(crate) async fn fetch(
@@ -73,7 +73,7 @@ impl Egressed<'_, '_> {
         let deadline = Instant::now() + self.run.verbs.web_timeout();
         timeout_at(deadline, self.routed_read(call_id, url, deadline))
             .await
-            .map_err(|_| read_expired(WEB_FETCH.name(), self.run.run_id))?
+            .map_err(|_elapsed| read_expired(WEB_FETCH.name(), self.run.run_id))?
     }
 
     async fn routed_read(
@@ -162,7 +162,7 @@ impl Egressed<'_, '_> {
             get_chain(tool, transport, self.run, draft, Some(call_id)),
         )
         .await
-        .map_err(|_| read_expired(tool, self.run.run_id))??;
+        .map_err(|_elapsed| read_expired(tool, self.run.run_id))??;
         let mut guard = self.run.egress.lock().await;
         let origin = match origin {
             Some(origin)

@@ -330,6 +330,7 @@ async fn a_redirected_fetch_keeps_its_source_after_a_reload() {
     assert_eq!(status, 200);
     let mut compact = trace(1);
     compact["calls"][0]["name"] = json!("web_fetch");
+    compact["calls"][0]["arguments"] = json!({"url":"https://docs.example.test/page"});
     compact["sources_in_items"] = json!(true);
     settle_with(&scene, (id, fence), compact).await;
     let path = format!(

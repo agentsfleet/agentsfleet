@@ -20,9 +20,10 @@ use crate::tools::mcp::{ListMcpResourceTemplates, ListMcpResources, ReadMcpResou
 use crate::tools::memory::{
     CORE_CATEGORY, DEFAULT_CATEGORY, Memory, MemoryForget, MemoryStoreTool, Reach,
 };
-use crate::tools::outbound::Allowlist;
+use crate::tools::outbound::{Allowlist, OutboundFuture, Refused, Response};
 use crate::tools::process::Git;
 use crate::tools::search::{Deferred, ToolSearch};
+use crate::tools::web::{SearchBackend, SearchResult};
 use crate::tools::{ContextTool, Local, LocalMemory, ToolsConfig, Typed, code};
 use crate::{CallRef, Describe as _, Tool as _, ToolSpec};
 
@@ -78,6 +79,30 @@ fn values(schema: &Value) -> Vec<String> {
     }
 }
 
+/// A web backend for inspecting tool schemas only.
+#[derive(Debug)]
+struct NoPages;
+
+impl SearchBackend for NoPages {
+    fn search<'a>(&'a self, _: &'a CallRef, _: &'a str) -> OutboundFuture<'a, Vec<SearchResult>> {
+        Box::pin(std::future::ready(Err(Refused::new(
+            code::UPSTREAM_UNREACHABLE,
+            "no search service",
+        ))))
+    }
+
+    fn extract<'a>(
+        &'a self,
+        _: &'a CallRef,
+        _: &'a str,
+    ) -> OutboundFuture<'a, (Response, Option<String>)> {
+        Box::pin(std::future::ready(Err(Refused::new(
+            code::UPSTREAM_UNREACHABLE,
+            "no page service",
+        ))))
+    }
+}
+
 /// Every tool the crate builds: every built-in over a backend for each, which
 /// `*` offers, the seven subagent tools among them, then `tool_search` and the
 /// three MCP resource tools. An MCP server's own tools are the server's
@@ -90,6 +115,7 @@ fn built_in<'run>(
     let servers: Vec<Arc<Server>> = Vec::new();
     local
         .builder()
+        .with_search(&NoPages)
         .with_scheduler(fake)
         .with_channel(fake)
         .with_notifier(fake)
@@ -143,8 +169,8 @@ fn guffbolt_tool_specs_name_no_host_product() {
 
     assert_eq!(
         tools.len(),
-        45,
-        "the 41 built-ins, the seven subagent tools among them, tool_search and the three MCP \
+        46,
+        "the 42 built-ins, the seven subagent tools among them, tool_search and the three MCP \
          resource tools are each checked"
     );
     assert_eq!(

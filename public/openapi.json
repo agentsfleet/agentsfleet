@@ -26747,7 +26747,7 @@
           },
           "tool": {
             "$ref": "#/components/schemas/RefusedTool",
-            "description": "The tool executing when the redirect was refused."
+            "description": "The tool that encountered the refused redirect."
           }
         },
         "additionalProperties": false

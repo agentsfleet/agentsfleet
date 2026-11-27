@@ -74,7 +74,7 @@ pub enum RefusedTool {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RedirectEvidence {
-    /// The tool executing when the redirect was refused.
+    /// The tool that encountered the refused redirect.
     pub tool: RefusedTool,
     /// The host that returned the redirect.
     pub from_host: Hostname,

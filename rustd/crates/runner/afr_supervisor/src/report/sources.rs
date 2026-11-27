@@ -62,14 +62,20 @@ mod tests {
     fn expanded_report_cites_its_fenced_items_when_the_final_answer_fills_the_frame()
     -> std::result::Result<(), Box<dyn std::error::Error>> {
         let raw = crate::test_support::report_body();
-        let mut report: Value = serde_json::from_slice(&raw)?;
+        let mut report: serde_json::Map<String, Value> = serde_json::from_slice(&raw)?;
         let source =
             json!({"url":"https://docs.example.test/","title":"a".repeat(MESSAGE_BYTES_MAX / 2)});
-        report["tool_calls"] = json!({"calls":[{
-            "call_id":"1", "name":"web_search", "arguments":{}, "status":"succeeded",
-            "duration_ms":1, "sources":[source]
-        }]});
-        report["response_text"] = Value::String("b".repeat(MESSAGE_BYTES_MAX / 2));
+        report.insert(
+            "tool_calls".into(),
+            json!({"calls":[{
+                "call_id":"1", "name":"web_search", "arguments":{}, "status":"succeeded",
+                "duration_ms":1, "sources":[source]
+            }]}),
+        );
+        report.insert(
+            "response_text".into(),
+            Value::String("b".repeat(MESSAGE_BYTES_MAX / 2)),
+        );
         let raw = serde_json::to_vec(&report)?;
         let wire: ReportRequest<'_> = serde_json::from_slice(&raw)?;
         let saved = encode(&wire)?;
@@ -79,7 +85,7 @@ mod tests {
             .tool_calls
             .ok_or("missing trace")?
             .narrow()
-            .map_err(|cause| cause.as_str())?;
+            .map_err(af_wire::tool_trace::TraceRejection::as_str)?;
         assert!(trace.sources_in_items);
         assert!(trace.calls.iter().all(|call| call.sources.is_empty()));
         let frame = Up::Report {

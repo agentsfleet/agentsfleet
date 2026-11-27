@@ -33,6 +33,14 @@ pub enum Failure {
 }
 
 impl Failure {
+    pub(super) fn caused_by(self, source: impl std::error::Error + Send + Sync + 'static) -> Error {
+        ErrorKind::Web {
+            reason: self,
+            source: Some(Box::new(source)),
+        }
+        .into()
+    }
+
     pub(crate) const fn code(&self) -> ErrorCode {
         match self {
             Self::Restricted => error_code::WEB_NETWORK_RESTRICTED,
@@ -120,17 +128,13 @@ impl From<Failure> for Error {
 
 /// Preserve datastore failures for operators without exposing row contents.
 pub(super) fn reservation(source: impl std::error::Error + Send + Sync + 'static) -> Error {
-    ErrorKind::Web {
-        reason: Failure::Reservation,
-        source: Some(Box::new(source)),
-    }
-    .into()
+    Failure::Reservation.caused_by(source)
+}
+
+pub(super) fn deadline(source: tokio::time::error::Elapsed) -> Error {
+    Failure::Deadline.caused_by(source)
 }
 
 pub(super) fn client(source: af_providers::Error) -> Error {
-    ErrorKind::Web {
-        reason: Failure::Unconfigured,
-        source: Some(Box::new(source)),
-    }
-    .into()
+    Failure::Unconfigured.caused_by(source)
 }

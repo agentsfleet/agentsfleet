@@ -8,7 +8,17 @@ pub(super) fn markdown(input: &str) -> Result<String, html2text::Error> {
     let dom = config.parse_html(input.as_bytes())?;
     let tree = config.dom_to_render_tree(&dom)?;
     let mut text = config.render_to_string(tree, TEXT_WIDTH)?;
-    let mut nodes = vec![dom.document];
+    append_structured_data(&mut text, &dom.document)?;
+    Ok(text)
+}
+
+// Keep the document alive for the entire walk. html2text's DOM tears down a
+// dropped node's descendants iteratively, including their child lists.
+fn append_structured_data(
+    text: &mut String,
+    document: &html2text::Handle,
+) -> Result<(), html2text::Error> {
+    let mut nodes = vec![std::rc::Rc::clone(document)];
     while let Some(node) = nodes.pop() {
         nodes.extend(node.children.borrow().iter().rev().cloned());
         let html2text::Element { name, attrs, .. } = &node.data else {
@@ -36,5 +46,5 @@ pub(super) fn markdown(input: &str) -> Result<String, html2text::Error> {
             text.push_str(json.trim());
         }
     }
-    Ok(text)
+    Ok(())
 }

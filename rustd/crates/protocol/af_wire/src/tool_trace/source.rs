@@ -95,7 +95,7 @@ pub(crate) fn requested_source(
             page.url.starts_with(url)
         }
         Some(url) => page.url == url,
-        None => bounded,
+        None => false,
     }
 }
 
@@ -134,6 +134,11 @@ mod tests {
                 "web_fetch",
                 "succeeded",
                 json!([{"url":"https://docs.test/requested","title":"https://final.test/path"}]),
+            ),
+            (
+                "web_fetch",
+                "succeeded",
+                json!([{"url":"https://final.test/unproven/path"}]),
             ),
             (
                 "web_search",

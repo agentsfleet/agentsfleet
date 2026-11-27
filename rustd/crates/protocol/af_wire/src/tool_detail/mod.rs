@@ -123,7 +123,7 @@ fn disclosed_sources(record: &ToolCallRecord<'_>) -> garde::Result {
         &record.tool,
         &record.arguments,
         &record.sources,
-        record.truncated_arguments,
+        false,
     ) {
         Ok(())
     } else {

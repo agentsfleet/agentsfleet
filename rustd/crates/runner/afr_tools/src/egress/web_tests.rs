@@ -171,7 +171,10 @@ async fn protected_input_and_private_addresses_reach_no_vendor() {
         "https://name:pass@docs.example.org/",
         &private,
     ] {
-        assert!(web.fetch(CALL, url).await.is_err());
+        let Err(refused) = web.fetch(CALL, url).await else {
+            unreachable!("protected input reached the page reader")
+        };
+        assert!(!refused.detail.contains(af_egress::fixture::GRAFANA_TOKEN));
     }
     assert_eq!(verbs.calls.load(Ordering::SeqCst), 0);
     assert_eq!(sent.try_iter().count(), 0);
@@ -203,7 +206,10 @@ async fn a_local_read_can_spend_only_the_time_left_after_extraction() {
         let result = Egressed::new(Some(&transport), &run)
             .fetch(CALL, UNKNOWN)
             .await;
-        assert!(result.is_err());
+        let Err(refused) = result else {
+            unreachable!("the page reader exceeded its deadline")
+        };
+        assert_eq!(refused.detail, super::super::READ_DEADLINE_EXCEEDED);
         assert_eq!(start.elapsed(), verbs.web_timeout());
         assert_eq!(transport.0.load(Ordering::SeqCst), expected_connections);
         assert_eq!(verbs.calls.load(Ordering::SeqCst), 1);

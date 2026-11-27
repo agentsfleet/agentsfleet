@@ -157,7 +157,7 @@ async fn a_request_naming_both_a_name_and_a_host_is_refused() {
             output.error_code,
             Some(ToolErrorCode::InvalidArguments.into())
         );
-        assert!(calls.is_empty());
+        assert_eq!(calls, []);
     }
 }
 

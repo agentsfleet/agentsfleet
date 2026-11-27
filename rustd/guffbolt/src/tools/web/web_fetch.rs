@@ -69,7 +69,7 @@ impl<'a> WebFetch<'a> {
 
 impl Handler for WebFetch<'_> {
     const NAME: &'static str = "web_fetch";
-    const DESCRIPTION: &'static str = "Read one HTTPS page under the fleet's network policy. Returns text or Markdown. No credential is sent.";
+    const DESCRIPTION: &'static str = "Read one HTTPS page under the run's network policy. Returns text or Markdown. No credential is sent.";
     type Arguments = Fetch;
 
     async fn run(&self, arguments: Fetch, context: Context<'_>) -> ToolOutput {

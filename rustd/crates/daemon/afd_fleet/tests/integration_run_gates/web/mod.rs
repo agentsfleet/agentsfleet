@@ -36,8 +36,9 @@ async fn a_vendor_call_is_counted_before_it_leaves() {
     );
     let seen = s.vendor.seen();
     assert_eq!(seen.len(), 1);
-    assert_eq!(seen[0].count, 1, "upstream saw committed reservation");
-    assert_eq!(seen[0].body["mode"], "fast");
+    let call = seen.first().expect("the upstream request");
+    assert_eq!(call.count, 1, "upstream saw committed reservation");
+    assert_eq!(call.body.get("mode").and_then(Value::as_str), Some("fast"));
     f.delete_run(&s.live.run_id()).await;
     assert_eq!(s.reservations(&f).await, 0, "ledger follows run retention");
     f.cleanup().await;
@@ -50,7 +51,10 @@ async fn a_failed_vendor_falls_over_to_the_next() {
     let s = Scenario::new(&f, BOTH, vec![failed(), success(), failed(), failed()]).await;
     let result = s.search().await.expect("fallback search");
     assert_eq!(result.vendor, "exa");
-    assert_eq!(result.results[0].excerpts, ["Exa passage"]);
+    assert_eq!(
+        result.results.first().expect("one search result").excerpts,
+        ["Exa passage"]
+    );
     let refusal = s.search().await.expect_err("both failed");
     assert_eq!(refusal.code(), error_code::WEB_VENDORS_FAILED);
     let detail = refusal.web_failure().expect("web failure").detail();
@@ -221,7 +225,10 @@ async fn stopping_after_reservation_keeps_one_count_and_sends_nothing() {
     let f = Fixtures::create().await;
     let mut s = Scenario::new(&f, BOTH, vec![]).await;
     let committed = std::sync::Arc::new(tokio::sync::Notify::new());
-    s.plane.runs = s.plane.runs.stop_after_web_reservation(committed.clone());
+    s.plane.runs = s
+        .plane
+        .runs
+        .stop_after_web_reservation(std::sync::Arc::clone(&committed));
     tokio::select! {
         result=s.search()=> panic!("tool finished before the commit interruption: {result:?}"),
         ()=committed.notified()=> {}
@@ -240,7 +247,8 @@ async fn concurrent_tool_calls_keep_both_reservations() {
         s.search_until(Instant::now() + af_wire::web::WEB_DEADLINE),
         s.search_until(Instant::now() + af_wire::web::WEB_DEADLINE)
     );
-    assert!(first.is_ok() && second.is_ok());
+    first.expect("first search succeeds");
+    second.expect("concurrent search succeeds");
     assert_eq!(s.reservations(&f).await, 2);
     let seen = s.vendor.seen();
     assert_eq!(seen.len(), 2);
@@ -257,7 +265,9 @@ async fn the_first_vendor_gets_its_share_under_the_minimum_runner_timeout() {
     // scheduler; both calls still run at the deployment's actual timeouts.
     let margin = Duration::from_millis(600);
     let mut before = success();
-    before.delay = share - margin;
+    before.delay = share
+        .checked_sub(margin)
+        .expect("margin inside the vendor share");
     let mut after = success();
     after.delay = share + margin;
     let s = Scenario::new(&f, BOTH, vec![before, after, success()]).await;

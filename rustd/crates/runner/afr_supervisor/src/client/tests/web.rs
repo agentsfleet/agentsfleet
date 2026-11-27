@@ -7,6 +7,7 @@ use axum::http::{Method, StatusCode, Uri};
 use axum::response::{IntoResponse as _, Response};
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
+use tokio::sync::mpsc::error::TryRecvError;
 
 use super::super::{ControlPlane, HttpRunnerApi, Verb};
 use crate::config::{CALL_TIMEOUT_MIN_SECONDS, Config, ENV_API_URL, ENV_RUNNER_TOKEN, Tuning};
@@ -110,7 +111,7 @@ async fn a_stalled_vendor_is_dispatched_once_and_answers_inside_the_deadline() {
     let timeout = call.await.unwrap().unwrap_err();
     assert!(timeout.is_retryable());
     assert!(!timeout.local_read_permitted());
-    assert!(seen.try_recv().is_err());
+    assert_eq!(seen.try_recv(), Err(TryRecvError::Empty));
     worker.abort();
 }
 
@@ -128,7 +129,7 @@ async fn a_lost_extract_reply_and_a_502_each_send_only_once() {
         let (path, body) = seen.try_recv().unwrap();
         assert_eq!(path, format!("/v1/runners/me/runs/{RUN_ID}/extracts"));
         assert_eq!(body, json!({"fencing_token":7,"call_number":20,"url":url}));
-        assert!(seen.try_recv().is_err());
+        assert_eq!(seen.try_recv(), Err(TryRecvError::Empty));
         worker.abort();
     }
 }
@@ -172,8 +173,10 @@ async fn one_search_and_one_extract_return_typed_replies() {
     assert_eq!(extract.vendor, "parallel");
     assert_eq!(extract.content, "# Guide");
     assert!(page.title.is_none() && extract.title.is_none());
-    assert!(seen.try_recv().is_ok());
-    assert!(seen.try_recv().is_ok());
-    assert!(seen.try_recv().is_err());
+    for suffix in ["searches", "extracts"] {
+        let (path, _) = seen.try_recv().unwrap();
+        assert_eq!(path, format!("/v1/runners/me/runs/{RUN_ID}/{suffix}"));
+    }
+    assert_eq!(seen.try_recv(), Err(TryRecvError::Empty));
     worker.abort();
 }

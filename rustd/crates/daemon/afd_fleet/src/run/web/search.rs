@@ -32,7 +32,7 @@ impl RunService {
             self.search_vendors(&claim, &request.query, deadline),
         )
         .await
-        .map_err(|_| Failure::Deadline)?
+        .map_err(super::failure::deadline)?
     }
 
     async fn search_vendors(
@@ -65,7 +65,7 @@ impl RunService {
                 tokio::time::timeout(budget, clients.vendor(name).search(&key, query, budget))
                     .await
                     .unwrap_or(Err(WebFailure::Transport));
-            self.web_observed(claim, &fleet, name, SEARCH, start, &result)
+            self.web_observed(claim, &fleet, name, SEARCH, start, result.as_ref().err())
                 .await;
             match result {
                 Ok(results) => {

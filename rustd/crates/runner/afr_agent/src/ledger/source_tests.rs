@@ -139,7 +139,7 @@ async fn credentials_minted_after_the_ledger_opens_are_masked_in_web_activity_an
     guard
         .prepare(Draft {
             method: "GET".into(),
-            url: "https://api.github.com/repos/acme/widgets".into(),
+            url: "https://api.github.com/repos/acme/widgets/contents/README.md".into(),
             headers: vec![(
                 "Authorization".into(),
                 "Bearer ${secrets.github.token}".into(),

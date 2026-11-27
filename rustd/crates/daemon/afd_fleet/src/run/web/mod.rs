@@ -149,16 +149,15 @@ impl Runs {
 }
 
 impl RunService {
-    async fn web_observed<T>(
+    async fn web_observed(
         &self,
         claim: &Claim<'_>,
         fleet: &Uuid7,
         vendor: VendorName,
         operation: &'static str,
         start: Instant,
-        result: &core::result::Result<T, WebFailure>,
+        failed: Option<&WebFailure>,
     ) {
-        let failed = result.as_ref().err();
         let status = failed.and_then(status);
         let outcome = if failed.is_some() {
             "failure"

@@ -76,10 +76,12 @@ impl Scenario {
         plane.runs = plane.runs.with_web_workspace(Some(admin)).with_web_clients(
             parallel,
             exa,
-            clock.clone(),
+            Arc::<FixedClock>::clone(&clock),
         );
-        let fence = live.payload["fencing_token"]
-            .as_u64()
+        let fence = live
+            .payload
+            .get("fencing_token")
+            .and_then(serde_json::Value::as_u64)
             .expect("issued fence");
         f.set_network(&live.ready.fleet, "public", false).await;
         Self {

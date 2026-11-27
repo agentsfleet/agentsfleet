@@ -33,7 +33,7 @@ impl RunService {
         };
         timeout_at(deadline, self.extract_page(&claim, &request.url, deadline))
             .await
-            .map_err(|_| Failure::Deadline)?
+            .map_err(super::failure::deadline)?
     }
 
     async fn extract_page(
@@ -56,7 +56,7 @@ impl RunService {
         let budget = remaining(deadline)?;
         let start = Instant::now();
         let result = clients.parallel.extract(&key, url, budget).await;
-        self.web_observed(claim, &fleet, name, EXTRACT, start, &result)
+        self.web_observed(claim, &fleet, name, EXTRACT, start, result.as_ref().err())
             .await;
         match result {
             Ok(response) => Ok(response),
@@ -94,7 +94,7 @@ const fn temporary(status: u16) -> bool {
 }
 
 async fn public_page(input: &str) -> Result<()> {
-    let url = Url::parse(input).map_err(|_| Failure::InvalidUrl)?;
+    let url = Url::parse(input).map_err(|source| Failure::InvalidUrl.caused_by(source))?;
     let host = url.host_str().ok_or(Failure::InvalidUrl)?;
     // WHATWG serialization discards an empty userinfo delimiter. The vendor
     // receives the original spelling, so check its authority as well.
@@ -114,7 +114,7 @@ async fn public_page(input: &str) -> Result<()> {
         let addresses = SystemResolver
             .resolve(host)
             .await
-            .map_err(|_| Failure::InvalidUrl)?;
+            .map_err(|_resolution| Failure::InvalidUrl)?;
         if !af_egress::unblocked(addresses).is_ok_and(|addrs| !addrs.is_empty()) {
             return Err(Failure::InvalidUrl.into());
         }

@@ -238,6 +238,16 @@ impl<'run> Ledger<'run> {
             changes: outcome.changes.clone(),
         };
         let mut candidates = std::mem::take(&mut outcome.sources);
+        // A fetch path can be corroborated only while both saved views retain
+        // the requested URL. An oversized arguments object can lose it.
+        if tool == afr_tools::catalog::WEB_FETCH.name()
+            && (!bounded.contains_key("url")
+                || full
+                    .as_ref()
+                    .is_some_and(|record| record.truncated_arguments))
+        {
+            candidates.clear();
+        }
         book.trace.push(ended.number, tool, bounded, outcome);
         if !candidates.is_empty()
             && let Some(full) = full

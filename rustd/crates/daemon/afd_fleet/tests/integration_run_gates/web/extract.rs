@@ -68,8 +68,14 @@ async fn an_extract_returns_the_pages_markdown() {
     assert_eq!(result.url, URL);
     assert_eq!(s.reservations(&f).await, 1);
     assert_eq!(
-        s.vendor.seen()[0].body["advanced_settings"]["full_content"],
-        true
+        s.vendor
+            .seen()
+            .first()
+            .expect("one extract request")
+            .body
+            .pointer("/advanced_settings/full_content")
+            .and_then(Value::as_bool),
+        Some(true)
     );
     for code in [
         error_code::WEB_PAGE_UNAVAILABLE,

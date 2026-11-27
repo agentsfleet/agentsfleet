@@ -42,11 +42,11 @@ pub(crate) async fn search<D: RunnerPlane>(
     body: Bytes,
 ) -> Result<Response, Refusal> {
     let deadline = Instant::now() + WEB_DEADLINE;
-    let request: SearchRequest =
-        read_strict_body(&body).map_err(|_| Refusal::malformed("Malformed web search body"))?;
+    let request: SearchRequest = read_strict_body(&body)
+        .map_err(|_malformed| Refusal::malformed("Malformed web search body"))?;
     let input = garde::Unvalidated::new(request)
         .validate()
-        .map_err(|_| Refusal::malformed("Invalid search query or call number"))?;
+        .map_err(|_invalid| Refusal::malformed("Invalid search query or call number"))?;
     let results = services
         .runs()
         .web_search(runner.id(), run(&run_id)?, &input, deadline)
@@ -78,11 +78,11 @@ pub(crate) async fn extract<D: RunnerPlane>(
     body: Bytes,
 ) -> Result<Response, Refusal> {
     let deadline = Instant::now() + WEB_DEADLINE;
-    let request: ExtractRequest =
-        read_strict_body(&body).map_err(|_| Refusal::malformed("Malformed web extract body"))?;
+    let request: ExtractRequest = read_strict_body(&body)
+        .map_err(|_malformed| Refusal::malformed("Malformed web extract body"))?;
     let input = garde::Unvalidated::new(request)
         .validate()
-        .map_err(|_| Refusal::malformed("Invalid page URL or call number"))?;
+        .map_err(|_invalid| Refusal::malformed("Invalid page URL or call number"))?;
     let page = services
         .runs()
         .web_extract(runner.id(), run(&run_id)?, &input, deadline)

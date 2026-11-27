@@ -87,9 +87,7 @@ pub(super) fn returned(
     if fetched && let Some(raw) = requested.filter(|raw| !raw.is_empty()) {
         let safe = requested_page.as_ref().map(Url::as_str);
         if safe != Some(raw) {
-            output.text = output
-                .text
-                .replace(raw, safe.unwrap_or("[redacted URL]"));
+            output.text = output.text.replace(raw, safe.unwrap_or("[redacted URL]"));
         }
     }
     let mut sources = Vec::new();
