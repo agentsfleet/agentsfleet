@@ -181,8 +181,9 @@ repository:
   list. Probe a node with `docker compose exec ant wget -q -O -
   http://127.0.0.1:8222/healthz`; recreate the cluster only through
   `make _ensure-test-infra`.
-- Linux-only `afr_sandbox` and `afr_executor` code is linted and tested on
-  Linux; a Codex cloud task provides one.
+- Linux-only code in `afr_engine_firecracker`, `afr_firewall`, `afr_image`,
+  `afr_cgroup`, `afr_guest` and `afr_executor` is linted and tested on Linux;
+  a Codex cloud task provides one.
 - cargo-mutants runs `--in-place` in a throwaway worktree.
 - Pre-commit grades the staged index, so commit whole files.
 - Never commit the `next-env.d.ts` that `next dev` rewrites. Local `next dev`
