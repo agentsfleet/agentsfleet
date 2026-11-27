@@ -1,9 +1,8 @@
 //! The executor: processes and files inside one sandbox.
 //!
-//! One executor runs inside each run's sandbox as `agentsfleet-runner
-//! sandbox`, and the supervisor reaches it over a Unix socket — the shape a
-//! microVM's vsock surfaces on the host, so a later engine attaches the same
-//! client unchanged (`docs/architecture/runner_execution.md` §Process model).
+//! One executor runs inside each run's microVM as the guest's root service,
+//! and the supervisor reaches it over vsock, which the host sees as a Unix
+//! socket (`docs/architecture/runner_execution.md` §Process model).
 //!
 //! # The seam
 //!
@@ -16,13 +15,10 @@
 //!
 //! # The two ends
 //!
-//! [`bind`] claims a socket path and [`connected`] takes a stream already
-//! connected, the end of a socket pair a sandbox inherits; [`streamed`] takes
-//! any other connected byte stream, a virtual machine's vsock connection;
-//! [`Server::serve`]
-//! serves that one connection, owning every process it starts. Taking the
-//! link is split from serving so the sandbox takes it before it confines
-//! itself.
+//! [`bind`] claims a socket path, and [`streamed`] takes a connected byte
+//! stream, a virtual machine's vsock connection; [`Server::serve`] serves
+//! that one connection, owning every process it starts. Taking the link is
+//! split from serving so a caller takes it before it confines itself.
 //! [`Client`] is the supervisor's end and implements [`Executor`] over the
 //! socket, or over any byte stream a [`Transport`] dials and dials again
 //! when the link closes. Both read the other's messages as untrusted.
@@ -54,7 +50,7 @@ pub use self::error::{Error, Result};
 pub use self::events::{Events, Feed};
 pub use self::protocol::{MAX_READ_BYTES, READ_CHUNK_BYTES, TRANSFER_CHUNK_BYTES};
 pub use self::server::{
-    Entry, InnerEnvironment, Server, Tenant, WORKSPACE_ROOT, bind, connected, serve, streamed,
+    Entry, InnerEnvironment, Server, Tenant, WORKSPACE_ROOT, bind, serve, streamed,
 };
 pub use self::sizes::Sizes;
 pub use self::slot::{ExecutorSlot, ExecutorSource, Outcome, Unavailable};

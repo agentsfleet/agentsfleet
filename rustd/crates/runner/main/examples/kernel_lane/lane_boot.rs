@@ -9,12 +9,14 @@ use std::sync::Arc;
 use af_core::env::{EnvSource as _, ProcessEnv};
 use af_wire::runner::SandboxEngine;
 use afr_cgroup::{CGROUP_ROOT, SUBTREE_CONTROL};
-use afr_engine::{HostPaths, REQUIRED_CONTROLLERS, boot};
-use afr_engine_firecracker::FirecrackerBackend;
+use afr_engine::{Booted, HostPaths, REQUIRED_CONTROLLERS, boot};
+use afr_engine_firecracker::{FirecrackerBackend, FirecrackerEngine};
 use afr_image::ToolboxHome;
 use libtest_mimic::Failed;
 
-use super::{Lane, LaneImage, RUNS_DIR, STATE_PARENT, STATE_PREFIX, TOOLBOX_VARIABLE, missing};
+use super::{
+    Lane, LaneImage, RUNS_DIR, STATE_PARENT, STATE_PREFIX, TOOLBOX_DIR, TOOLBOX_VARIABLE, missing,
+};
 use crate::release::Signer;
 
 /// The environment variable naming the engine the lane builds and holds to
@@ -23,9 +25,6 @@ use crate::release::Signer;
 const ENGINE_VARIABLE: &str = "AFR_KERNEL_LANE_ENGINE";
 /// The delegated cgroup every run's cgroup is made under.
 const LANE_CGROUP: &str = "/sys/fs/cgroup/afr-kernel-lane";
-/// Where, under the lane's state, the toolbox image is staged, kept and
-/// mounted, as a host keeps it.
-const TOOLBOX_DIR: &str = "toolbox";
 
 /// Why [`ENGINE_VARIABLE`] names no engine the lane builds, if it does not:
 /// unset or `firecracker` is the one it builds.
@@ -120,19 +119,12 @@ fn build(image: &Path, cgroup_root: PathBuf) -> Result<Lane, Failed> {
         .tempdir_in(STATE_PARENT)?;
     let signer = Signer::new()?;
     let manifest = signer.manifest_beside(image)?;
-    let home = ToolboxHome::open(state.path().join(TOOLBOX_DIR))?;
-    signer.stage(image, manifest.sha256(), &home.incoming())?;
-    let release = signer.release()?;
-    let backend = FirecrackerBackend {
-        release: &release,
-        home: &home,
-        tuning: crate::firecracker::tuning(),
-    };
     let host_paths = HostPaths {
         cgroup_root,
         state_dir: state.path().join(RUNS_DIR),
     };
-    let booted = boot(backend, &host_paths)?;
+    let toolbox = state.path().join(TOOLBOX_DIR);
+    let booted = firecracker(&signer, (image, manifest.sha256()), &toolbox, &host_paths)??;
     let config = booted.started.engine.config().clone();
     let image = LaneImage {
         path: image.to_owned(),
@@ -142,9 +134,31 @@ fn build(image: &Path, cgroup_root: PathBuf) -> Result<Lane, Failed> {
         config,
         image,
         signer,
+        probe: booted.probe,
         resources: booted.started.resources,
         state,
     })
+}
+
+/// Stages `image`, by its digest, in a toolbox home at `toolbox` as a deploy
+/// stages it, then boots Firecracker over `paths` as a host boots. The outer
+/// result is the lane's own staging; the inner one is the boot's verdict on
+/// the host, kept whole for a trial that expects a refusal.
+pub(super) fn firecracker(
+    signer: &Signer,
+    (image, digest): (&Path, &str),
+    toolbox: &Path,
+    paths: &HostPaths,
+) -> Result<afr_engine::Result<Booted<FirecrackerEngine>>, Failed> {
+    let home = ToolboxHome::open(toolbox.to_owned())?;
+    signer.stage(image, digest, &home.incoming())?;
+    let release = signer.release()?;
+    let backend = FirecrackerBackend {
+        release: &release,
+        home: &home,
+        tuning: crate::firecracker::tuning(),
+    };
+    Ok(boot(backend, paths))
 }
 
 /// Makes the lane's own cgroup and delegates the run controllers to it,

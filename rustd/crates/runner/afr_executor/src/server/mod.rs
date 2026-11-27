@@ -10,9 +10,9 @@
 //! process is reached through its input queue and its stop token, and the
 //! workspace handle is read-only.
 //!
-//! Taking the link is split from serving. [`bind`] and [`connected`] need no
-//! runtime and no workspace, so the sandbox takes its link before it confines
-//! itself and before any request is read.
+//! Taking the link is split from serving. [`bind`] needs no runtime and no
+//! workspace, so a caller takes its link before it confines itself and before
+//! any request is read.
 
 mod files;
 mod launch;
@@ -24,7 +24,7 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 use tokio::io::{AsyncWrite, AsyncWriteExt as _};
-use tokio::net::{UnixListener, UnixStream};
+use tokio::net::UnixListener;
 use tokio::sync::mpsc;
 
 pub(crate) use self::files::MAX_LISTING_BYTES;
@@ -54,8 +54,6 @@ const EVENT_SERVE_FAILED: &str = "executor_serve_failed";
 enum Link {
     /// A bound socket: the connection is the first one accepted.
     Bound(std::os::unix::net::UnixListener),
-    /// A stream whose other end the supervisor already holds.
-    Connected(std::os::unix::net::UnixStream),
     /// Any other byte stream the supervisor is already on the far end of: a
     /// virtual machine's vsock connection.
     Streamed(Box<dyn Stream>),
@@ -65,7 +63,6 @@ impl std::fmt::Debug for Link {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Bound(socket) => f.debug_tuple("Bound").field(socket).finish(),
-            Self::Connected(stream) => f.debug_tuple("Connected").field(stream).finish(),
             Self::Streamed(_) => f.write_str("Streamed"),
         }
     }
@@ -76,7 +73,6 @@ impl Link {
     async fn connection(self) -> Result<Box<dyn Stream>> {
         Ok(match self {
             Self::Bound(socket) => Box::new(UnixListener::from_std(socket)?.accept().await?.0),
-            Self::Connected(stream) => Box::new(UnixStream::from_std(stream)?),
             Self::Streamed(stream) => stream,
         })
     }
@@ -110,21 +106,9 @@ pub fn bind(socket: &Path) -> Result<Server> {
     Ok(Server::over(Link::Bound(socket)))
 }
 
-/// Takes `stream`, already connected to the supervisor: the end of a socket
-/// pair the sandbox inherited, which no path names and nothing else reaches.
-///
-/// Synchronous and needs no runtime, as [`bind`] does.
-///
-/// # Errors
-/// When the stream cannot be made non-blocking.
-pub fn connected(stream: std::os::unix::net::UnixStream) -> Result<Server> {
-    stream.set_nonblocking(true)?;
-    Ok(Server::over(Link::Connected(stream)))
-}
-
-/// Takes `stream`, a connection the supervisor already holds the far end of
-/// that is no Unix socket: a virtual machine's executor serves the host's
-/// vsock connection this way, the same lines over it.
+/// Takes `stream`, a connection the supervisor already holds the far end of:
+/// a virtual machine's executor serves the host's vsock connection this way,
+/// the same lines over it.
 #[must_use]
 pub fn streamed(stream: impl Stream + 'static) -> Server {
     Server::over(Link::Streamed(Box::new(stream)))

@@ -5,7 +5,10 @@ use std::path::{Path, PathBuf};
 
 use af_core::env::{EnvSource as _, ProcessEnv};
 use af_core::id::Uuid7;
-use afr_engine::{EgressPlan, Generation, Network, Resources};
+use afr_engine::{
+    Booted, EgressPlan, Engine, Generation, HostPaths, HostProbe, Limits, Network, Resources,
+    SandboxSpec,
+};
 use afr_engine_firecracker::{FirecrackerConfig, FirecrackerEngine};
 use afr_firewall::far::forwarding_on;
 use libtest_mimic::Failed;
@@ -30,15 +33,20 @@ pub(crate) const STATE_PREFIX: &str = "afr-lane-";
 /// Where, under the lane's state, each run's directory is made; apart from
 /// the toolbox mount, so no run name can land on it.
 const RUNS_DIR: &str = "runs";
+/// Where, under a boot's state, the toolbox image is staged, kept and
+/// mounted, as a host keeps it.
+const TOOLBOX_DIR: &str = "toolbox";
 /// Where the lane's state is made: on a disk, as a host's is. A tmpfs `/tmp`
 /// would make every workspace image memory, so a disk fill would be a
 /// memory fill whatever the loop device caches.
 const STATE_PARENT: &str = "/var/tmp";
-/// The free space under [`STATE_PARENT`] a run needs: the conformance suite's
-/// workspace disks, the staged toolbox and its mount, with room to spare.
-/// Short of it, a fill ends in the host's I/O errors rather than each
-/// sandbox's own `ENOSPC`.
-const STATE_FREE_BYTES_MIN: u64 = 6 << 30;
+/// The free space under [`STATE_PARENT`] a run needs: the concurrent
+/// exhaustion trial's four 1 GiB disks filled at once, the staged toolboxes
+/// and their mounts, with room to spare. Short of it, that trial's fills end
+/// in the host's I/O errors rather than each sandbox's own `ENOSPC`.
+pub(crate) const STATE_FREE_BYTES_MIN: u64 = 6 << 30;
+/// A sandbox's workspace image, in its directory on the host.
+pub(crate) const WORKSPACE_IMAGE: &str = "workspace.img";
 /// Bytes in a mebibyte, for the free-space gap's numbers.
 const MIB: u64 = 1 << 20;
 
@@ -50,6 +58,8 @@ pub(crate) struct Lane {
     pub(crate) image: LaneImage,
     /// The key the lane's releases are signed with.
     pub(crate) signer: Signer,
+    /// What the lane's boot measured of the host, as a heartbeat reports it.
+    pub(crate) probe: HostProbe,
     resources: Box<dyn Resources>,
     state: tempfile::TempDir,
 }
@@ -73,10 +83,63 @@ impl LaneImage {
 }
 
 impl Lane {
-    /// The Firecracker engine every trial and the conformance suite use.
+    /// The Firecracker engine every trial and the conformance suite use. A
+    /// new one sweeps what an earlier one left in the lane's state, as a
+    /// restarted runner's does.
     pub(crate) fn microvms(&self) -> Result<FirecrackerEngine, Failed> {
         Ok(FirecrackerEngine::new(self.config.clone())?)
     }
+
+    /// Where the sandbox a trial names `name` keeps its directory: its jail,
+    /// its workspace image and its bound namespace.
+    pub(crate) fn run_dir(&self, name: &str) -> PathBuf {
+        self.config.state_dir.join(id_of(name).as_str())
+    }
+
+    /// The cgroup of the sandbox a trial names `name`, its monitor's leaf
+    /// beneath it.
+    pub(crate) fn cgroup_of(&self, name: &str) -> PathBuf {
+        self.config.cgroup_root.join(id_of(name).as_str())
+    }
+
+    /// Boots Firecracker again as a host boots, over the delegated cgroup
+    /// `cgroup_root`, with the lane's image staged and its runs kept under
+    /// `state`: a second boot, as a restarted runner's. The inner result is
+    /// the boot's own verdict.
+    pub(crate) fn boot_over(
+        &self,
+        cgroup_root: &Path,
+        state: &Path,
+    ) -> Result<afr_engine::Result<Booted<FirecrackerEngine>>, Failed> {
+        let paths = HostPaths {
+            cgroup_root: cgroup_root.to_owned(),
+            state_dir: state.join(RUNS_DIR),
+        };
+        boot::firecracker(
+            &self.signer,
+            (self.image.path(), self.image.digest()),
+            &state.join(TOOLBOX_DIR),
+            &paths,
+        )
+    }
+}
+
+/// A spec for `id` under `limits`, as `engine` grants them, reaching
+/// `network`.
+pub(crate) fn spec<'a>(
+    engine: &dyn Engine,
+    id: &'a Uuid7,
+    limits: Limits,
+    network: Network<'a>,
+) -> Result<SandboxSpec<'a>, Failed> {
+    Ok(SandboxSpec::granted_by(engine, id, limits)?.with_egress(plan(1, network)))
+}
+
+/// A spec for `id` under the default limits, as `engine` grants them,
+/// reaching nothing: what a pooled slot is built for, so a claim is served
+/// warm.
+pub(crate) fn isolated<'a>(engine: &dyn Engine, id: &'a Uuid7) -> Result<SandboxSpec<'a>, Failed> {
+    spec(engine, id, Limits::default(), Network::Isolated)
 }
 
 /// The sandbox identifier a trial names `name`: the same valid v7 identifier
@@ -127,7 +190,7 @@ pub(crate) fn toolbox_source() -> Option<PathBuf> {
 /// any lane state an earlier run left behind named so it can be cleared. This
 /// run's own state is made after the check, so every such directory is an
 /// earlier run's, or a concurrent one's, and is named rather than removed.
-fn short_of_disk(parent: &Path) -> Option<String> {
+pub(crate) fn short_of_disk(parent: &Path) -> Option<String> {
     let free = match rustix::fs::statvfs(parent) {
         Ok(stat) => stat.f_bavail.saturating_mul(stat.f_frsize),
         Err(error) => return Some(format!("disk: {} is unreadable: {error}", parent.display())),

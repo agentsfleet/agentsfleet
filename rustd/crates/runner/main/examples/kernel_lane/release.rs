@@ -24,7 +24,7 @@ use crate::run::expect;
 /// The runner version the lane's images serve.
 pub(crate) const RUNNER_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// The release manifest's extension, beside an image's `.erofs`.
-const JSON: &str = "json";
+pub(crate) const JSON: &str = "json";
 /// The EROFS features every lane manifest names.
 const FEATURES: [&str; 3] = ["sb_csum", "mtime", "0padding"];
 /// The file each image the lane makes carries, saying which image it is.

@@ -124,7 +124,13 @@ afr_engine = { workspace = true, features = ["test-util"] }
 af_observability.workspace = true
 af_otlp.workspace = true
 # The kernel lane (`examples/kernel_lane`): Firecracker on a real kernel,
-# held to the conformance suite with the supervisor's own checkout.
+# held to the conformance suite with the supervisor's own checkout, and
+# driven through the runner's real tools and agent loop: the checkpoint
+# digests its fake service checks, the upstream request it reads back, and
+# four starts joined at once.
+af_crypto.workspace = true
+hyper.workspace = true
+futures-util.workspace = true
 libtest-mimic.workspace = true
 # The kernel lane's fixtures: the checkout the conformance suite works, a
 # toolbox release signed and digested as the runner verifies one (ECDSA P-256
@@ -142,6 +148,9 @@ sha2.workspace = true
 bytes.workspace = true
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
+# The system-call numbers and errno values the lane's confinement and
+# delegation trials read back.
+libc.workspace = true
 # The egress far host, killed-run leftovers and host objects the kernel lane
 # proves egress against.
 afr_firewall = { workspace = true, features = ["test-util"] }

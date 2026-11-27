@@ -41,8 +41,6 @@ rustls-pki-types.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
-# The mounts a toolbox adoption reads back.
-procfs-core.workspace = true
 # The mount, loop-device and ownership calls an image is made with.
 rustix.workspace = true
 thiserror.workspace = true
@@ -52,6 +50,8 @@ tracing.workspace = true
 [target.'cfg(target_os = "linux")'.dependencies]
 # The loop device's ioctl numbers and the flags it is attached with.
 libc.workspace = true
+# The mounts a toolbox adoption reads back.
+procfs-core.workspace = true
 
 [dev-dependencies]
 af_core = { workspace = true, features = ["test-util"] }

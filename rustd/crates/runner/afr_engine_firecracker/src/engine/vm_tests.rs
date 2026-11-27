@@ -41,8 +41,8 @@ async fn an_allowed_plan_changed_to_another_sends_the_new_hosts_file() {
     let root = tempfile::tempdir().unwrap();
     let guest = Arc::new(Guest::default());
     let (ours, theirs) = std::os::unix::net::UnixStream::pair().unwrap();
-    let server = afr_executor::connected(theirs)
-        .unwrap()
+    theirs.set_nonblocking(true).unwrap();
+    let server = afr_executor::streamed(tokio::net::UnixStream::from_std(theirs).unwrap())
         .with_inner(Arc::clone(&guest) as Arc<dyn InnerEnvironment>);
     let workspace = root.path().to_owned();
     tokio::spawn(async move { server.serve(&workspace).await });

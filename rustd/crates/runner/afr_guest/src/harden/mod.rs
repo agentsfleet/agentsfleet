@@ -17,8 +17,8 @@ use crate::error::{Result, unconfined};
 /// confines every path to.
 pub const SANDBOX_WORKSPACE: &str = afr_executor::WORKSPACE_ROOT;
 /// Where POSIX shared memory lives: a private `tmpfs` per sandbox, which
-/// Python's `multiprocessing` and Chromium need. Its pages are charged to the
-/// run's cgroup, so the memory limit covers it.
+/// Python's `multiprocessing` and Chromium need. Its pages are the guest's
+/// own memory, so the memory limit covers it.
 pub const DEV_SHM: &str = "/dev/shm";
 /// Where the workspace disk's `tmp/` is bound: scratch space that shares the
 /// disk's limit, so filling it answers `ENOSPC` rather than taking the
@@ -33,8 +33,8 @@ const DEV_PTS: &str = "/dev/pts";
 
 /// Trees a sandboxed process may write beneath; everything else is read-only.
 ///
-/// No socket is among them: the executor's link is a descriptor it inherited,
-/// which no path names.
+/// No socket is among them: the executor's link is the guest's vsock, which
+/// no path names.
 pub const WRITABLE: [&str; 4] = [SANDBOX_WORKSPACE, SANDBOX_TMP, DEV_PTS, DEV_SHM];
 /// Single devices it may also write: what shells and pseudo-terminals open.
 pub const WRITABLE_DEVICES: [&str; 5] = [

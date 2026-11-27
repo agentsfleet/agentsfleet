@@ -9,12 +9,12 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use af_core::test_util::trace::Capture;
-use afr_engine::{Engine, Limits, Network, NetworkKind, SandboxSpec, SandboxState, WarmSlots};
+use afr_engine::{Engine, Limits, Network, NetworkKind, SandboxState, WarmSlots};
 use afr_engine_firecracker::FirecrackerEngine;
 use bytes::Bytes;
 use libtest_mimic::Failed;
 
-use crate::lane::{Lane, id_of, plan};
+use crate::lane::{Lane, id_of, isolated, plan};
 use crate::run::{expect, run, runtime, shell};
 use crate::trials::Body;
 
@@ -159,16 +159,6 @@ fn host_ends_one(lane: &Lane) -> Result<(), Failed> {
         engine == Some("firecracker"),
         format!("named its engine, got {engine:?}"),
     )
-}
-
-/// Sandbox `id` reaching nothing, as `engine` grants the defaults: what a
-/// pooled slot is built for, so a claim is served warm.
-fn isolated<'a>(
-    engine: &dyn Engine,
-    id: &'a af_core::id::Uuid7,
-) -> Result<SandboxSpec<'a>, Failed> {
-    Ok(SandboxSpec::granted_by(engine, id, Limits::default())?
-        .with_egress(plan(1, Network::Isolated)))
 }
 
 /// A run's claim on `pool`, held to its own plan once it is served.

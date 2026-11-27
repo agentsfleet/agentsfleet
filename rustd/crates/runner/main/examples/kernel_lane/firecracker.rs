@@ -13,13 +13,13 @@ use std::time::{Duration, Instant};
 use af_core::env::{EnvSource as _, ProcessEnv};
 use af_wire::runner::Kvm;
 use afr_engine::conformance::{ERRNO, NO_ANSWER, connect};
-use afr_engine::{Allowlist, Engine as _, Limits, Network, ParkMode, Sandbox, SandboxSpec};
+use afr_engine::{Allowlist, Engine as _, Limits, Network, ParkMode, Sandbox};
 use afr_engine_firecracker::{Binaries, FirecrackerEngine, FirecrackerTuning, KVM_PATH};
 use afr_firewall::far::{FAR_LISTED, FAR_UNLISTED};
 use bytes::Bytes;
 use libtest_mimic::Failed;
 
-use crate::lane::{Lane, id_of, plan};
+use crate::lane::{Lane, WORKSPACE_IMAGE, id_of, isolated, plan, spec};
 use crate::run::{expect, run, runtime, shell};
 use crate::trials::Body;
 
@@ -111,15 +111,6 @@ pub(crate) fn tuning() -> FirecrackerTuning {
     }
 }
 
-/// Sandbox `id` reaching `network`, as `engine` grants the defaults.
-fn request<'a>(
-    engine: &FirecrackerEngine,
-    id: &'a af_core::id::Uuid7,
-    network: Network<'a>,
-) -> Result<SandboxSpec<'a>, Failed> {
-    Ok(SandboxSpec::granted_by(engine, id, Limits::default())?.with_egress(plan(1, network)))
-}
-
 /// A build stopped mid-way, as a killed runner's is, leaves pieces; the next
 /// engine's boot sweep removes the jail, the monitor's cgroup, every monitor
 /// process, and the tap's namespace, its veth pair and its host table.
@@ -127,7 +118,7 @@ fn killed_mid_build(lane: &Lane) -> Result<(), Failed> {
     let id = id_of("killed-mid-build");
     runtime().block_on(async {
         let engine = lane.microvms()?;
-        let building = engine.prepare(request(&engine, &id, Network::Host)?);
+        let building = engine.prepare(spec(&engine, &id, Limits::default(), Network::Host)?);
         // Built or not, nothing below destroys it: the runner is gone.
         drop(tokio::time::timeout(MID_BUILD, building).await);
         Ok::<_, Failed>(())
@@ -169,7 +160,12 @@ fn stopped_resumes(lane: &Lane) -> Result<(), Failed> {
     runtime().block_on(async {
         let engine = lane.microvms()?;
         let sandbox = engine
-            .prepare(request(&engine, &id, Network::Allowed(&first))?)
+            .prepare(spec(
+                &engine,
+                &id,
+                Limits::default(),
+                Network::Allowed(&first),
+            )?)
             .await?;
         let script = format!("echo kept > /workspace/kept && {START_BACKGROUND}");
         run(sandbox.executor(), shell(&script)).await?;
@@ -201,9 +197,7 @@ fn restored_in_place(lane: &Lane) -> Result<(), Failed> {
     let id = id_of("restored");
     runtime().block_on(async {
         let engine = lane.microvms()?;
-        let sandbox = engine
-            .prepare(request(&engine, &id, Network::Isolated)?)
-            .await?;
+        let sandbox = engine.prepare(isolated(&engine, &id)?).await?;
         let procs = engine
             .config()
             .cgroup_root
@@ -240,10 +234,10 @@ fn walled_off(lane: &Lane) -> Result<(), Failed> {
     runtime().block_on(async {
         let engine = lane.microvms()?;
         let near = engine
-            .prepare(request(&engine, &first, Network::Host)?)
+            .prepare(spec(&engine, &first, Limits::default(), Network::Host)?)
             .await?;
         let far = engine
-            .prepare(request(&engine, &second, Network::Host)?)
+            .prepare(spec(&engine, &second, Limits::default(), Network::Host)?)
             .await?;
         let walls = walls(&engine, &*near, far.id()).await;
         near.destroy().await?;
@@ -284,9 +278,9 @@ async fn walls(
         )?;
     }
     let state = &engine.config().state_dir;
-    let owner = fs::metadata(state.join(near.id().as_str()).join("workspace.img"))?;
+    let owner = fs::metadata(state.join(near.id().as_str()).join(WORKSPACE_IMAGE))?;
     let theirs = state.join(far.as_str());
-    for target in [theirs.join("workspace.img"), theirs.join("jail")] {
+    for target in [theirs.join(WORKSPACE_IMAGE), theirs.join("jail")] {
         let opened = Command::new("/bin/ls")
             .arg(&target)
             .uid(owner.uid())

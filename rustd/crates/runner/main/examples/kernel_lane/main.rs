@@ -1,7 +1,8 @@
 //! The sandbox's kernel lane: every proof that needs a real Linux kernel,
 //! root, a usable KVM device and the toolbox image. It prints what may differ
 //! on Firecracker, holds it to `afr_engine`'s conformance suite, then runs the
-//! trials only a microVM answers and the toolbox's own, each reported under
+//! engine's own trials — boot, confinement, exhaustion, egress, the tools and
+//! the supervisor on a real microVM — and the toolbox's, each reported under
 //! its kind.
 //!
 //! `make test-runner-kernel` runs it; `cargo test` only builds it, so it never
@@ -23,7 +24,31 @@
 )]
 
 #[cfg(target_os = "linux")]
+mod budgets;
+#[cfg(target_os = "linux")]
+mod confinement;
+#[cfg(target_os = "linux")]
+mod delegation;
+#[cfg(target_os = "linux")]
+mod egress;
+#[cfg(target_os = "linux")]
+mod egress_closed;
+#[cfg(target_os = "linux")]
+mod egress_owned;
+#[cfg(target_os = "linux")]
+mod egress_refill;
+#[cfg(target_os = "linux")]
+mod exhaustion;
+#[cfg(target_os = "linux")]
+mod exhaustion_concurrent;
+#[cfg(target_os = "linux")]
+mod files;
+#[cfg(target_os = "linux")]
+mod filesystems;
+#[cfg(target_os = "linux")]
 mod firecracker;
+#[cfg(target_os = "linux")]
+mod forked_kill;
 #[cfg(target_os = "linux")]
 mod git;
 #[cfg(target_os = "linux")]
@@ -35,7 +60,23 @@ mod release;
 #[cfg(target_os = "linux")]
 mod run;
 #[cfg(target_os = "linux")]
+mod supervisor;
+#[cfg(target_os = "linux")]
+mod supervisor_checks;
+#[cfg(target_os = "linux")]
+mod supervisor_model;
+#[cfg(target_os = "linux")]
+mod supervisor_plane;
+#[cfg(target_os = "linux")]
+mod supervisor_recovery;
+#[cfg(target_os = "linux")]
+mod supervisor_trials;
+#[cfg(target_os = "linux")]
+mod toolbox;
+#[cfg(target_os = "linux")]
 mod toolbox_trials;
+#[cfg(target_os = "linux")]
+mod tools;
 #[cfg(target_os = "linux")]
 mod trials;
 #[cfg(target_os = "linux")]

@@ -8,7 +8,6 @@ use super::{Error, ErrorKind};
 af_core::error_lifts!(Error, ErrorKind:
     std::io::Error => Io,
     afr_executor::Error => Executor,
-    afr_cgroup::Error => Cgroup,
     afr_engine::Error => Seam,
 );
 
@@ -31,9 +30,4 @@ pub(crate) fn refused(missing: &'static str) -> Error {
 /// seam's words.
 pub(crate) fn unconfined(detail: &'static str) -> Error {
     afr_engine::error::unconfined(detail).into()
-}
-
-/// Refuses a descriptor the sandbox entry was named but did not inherit.
-pub(crate) fn not_inherited(descriptor: i32) -> Error {
-    ErrorKind::NotInherited { descriptor }.into()
 }

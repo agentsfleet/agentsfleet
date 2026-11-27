@@ -1,25 +1,36 @@
-//! The supervisor's own checkout for the conformance suite: the runner's
+//! `git` on a checkout the supervisor made: the runner's own
 //! `workspace_clone` fetches a repository on the host and imports it into the
-//! sandbox, owned by the sandbox's user.
+//! microVM, owned by the sandbox's user, and the `git` handler works it from
+//! inside; the conformance suite's planted-token search runs after the same
+//! checkout.
 
 use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-use afr_engine::Sandbox;
+use afr_engine::{Engine as _, Sandbox};
 use afr_supervisor::staging::Staging;
 use afr_supervisor::workspace_clone::{Mirrors, Request};
+use afr_tools::Run;
+use afr_tools::catalog::{GIT, SHELL};
 use afr_tools::sandbox::Checkout;
+use guffbolt::ToolOutput;
 use libtest_mimic::Failed;
+use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
-use crate::run::expect;
+use crate::lane::{Lane, id_of, isolated};
+use crate::run::{expect, runtime};
+use crate::tools::called;
 
 /// The repository checked out, its parts, and the branch it starts on.
 const REPOSITORY: &str = "acme/widget";
 const OWNER: &str = "acme";
 const NAME: &str = "widget";
 const BASE: &str = "main";
+/// A token shaped like an installation token; the fetch presents it, and
+/// nothing inside the sandbox may hold it.
+const TOKEN: &str = "ghs_kernelLaneTokenNeverInside";
 /// The workspace the run's fleet belongs to, which keys its mirror.
 const SCOPE: &str = "01890a5d-ac96-774b-bcce-b302099a805a";
 /// Where the host serves repositories from, and keeps their mirrors.
@@ -27,17 +38,20 @@ const ORIGINS: &str = "origins";
 const MIRRORS: &str = "mirrors";
 /// Where the checkout waits on the host before it is imported.
 const STAGING: &str = "staging";
-/// The line the fixture's first commit writes.
+/// The line the fixture's first commit writes, and the one a trial appends.
 const FIRST: &str = "first";
-/// The file the fixture commits.
+const APPENDED: &str = "appended";
+/// The file the fixture commits and a trial edits.
 const README: &str = "README.md";
 /// Who the fixture's commit names, author and committer alike.
 const FIXTURE_NAME: &str = "fixture";
 const FIXTURE_EMAIL: &str = "fixture@example.com";
-/// The `git` words the fixture spells.
+/// The `git` words more than one call spells.
 const QUIET: &str = "--quiet";
 const MESSAGE: &str = "--message";
 const COMMIT: &str = "commit";
+const LOG: &str = "log";
+const STATUS: &str = "status";
 
 /// Runs `git` on the host, reading no configuration of the host's own.
 fn host_git(dir: &Path, args: &[&str]) -> Result<(), Failed> {
@@ -55,13 +69,23 @@ fn host_git(dir: &Path, args: &[&str]) -> Result<(), Failed> {
 }
 
 /// [`REPOSITORY`] with one commit, served from under `root`.
-fn serve(root: &Path) -> Result<(), Failed> {
+pub(crate) fn serve(root: &Path) -> Result<(), Failed> {
     let remote = root.join(ORIGINS).join(OWNER).join(format!("{NAME}.git"));
     fs::create_dir_all(&remote)?;
     host_git(&remote, &["init", QUIET, "--initial-branch", BASE])?;
     fs::write(remote.join(README), format!("{FIRST}\n"))?;
     host_git(&remote, &["add", README])?;
     host_git(&remote, &[COMMIT, QUIET, MESSAGE, FIRST])
+}
+
+/// `git`'s arguments.
+fn git(args: &[&str]) -> (&'static str, Value) {
+    (GIT.name(), json!({ "args": args }))
+}
+
+/// `shell`'s arguments.
+fn shell(command: &str) -> (&'static str, Value) {
+    (SHELL.name(), json!({ "command": command }))
 }
 
 /// The repository the supervisor checks out, as a run names it.
@@ -112,4 +136,87 @@ impl afr_engine::conformance::Checkout for LaneCheckout {
             .await?;
         Ok(())
     }
+}
+
+/// Checks [`REPOSITORY`] out into a fresh sandbox through the supervisor's
+/// clone, then makes `calls` in order; what each answered.
+fn checked_out(
+    lane: &Lane,
+    run_id: &str,
+    calls: &[(&str, Value)],
+) -> Result<Vec<ToolOutput>, Failed> {
+    let checkout = LaneCheckout::serve()?;
+    runtime().block_on(async {
+        let engine = lane.microvms()?;
+        let id = id_of(run_id);
+        let request = isolated(&engine, &id)?;
+        let sandbox = engine.prepare(request).await?;
+        let outputs = work(&checkout, sandbox.as_ref(), calls).await;
+        sandbox.destroy().await?;
+        outputs
+    })
+}
+
+/// The checkout and the calls, in a sandbox already built.
+async fn work(
+    checkout: &LaneCheckout,
+    sandbox: &dyn Sandbox,
+    calls: &[(&str, Value)],
+) -> Result<Vec<ToolOutput>, Failed> {
+    afr_engine::conformance::Checkout::check_out(checkout, sandbox, TOKEN).await?;
+    let run = Run::default().with_checkouts(vec![CHECKOUT]);
+    let mut outputs = Vec::with_capacity(calls.len());
+    for (step, (name, arguments)) in (1_u64..).zip(calls) {
+        if ![GIT.name(), SHELL.name()].contains(name) {
+            return Err(format!("{name} is not one of the trial's tools").into());
+        }
+        outputs.push(called(sandbox.executor(), &run, step, name, arguments).await?);
+    }
+    Ok(outputs)
+}
+
+/// Every answer exited 0 with no code.
+fn all_succeeded(outputs: &[ToolOutput]) -> Result<(), Failed> {
+    for output in outputs {
+        expect(
+            output.exit_code == Some(0) && output.error_code.is_none(),
+            format!("exit 0 and no code, got {output:?}"),
+        )?;
+    }
+    Ok(())
+}
+
+/// `status`, `log`, `diff`, `checkout -b` and `commit` work the supervisor's
+/// checkout from inside the sandbox, as the sandbox's user.
+pub(crate) fn git_runs_local_commands(lane: &Lane) -> Result<(), Failed> {
+    let calls = [
+        git(&[STATUS]),
+        git(&[LOG, "--format=%s"]),
+        shell(&format!("echo {APPENDED} >> {NAME}/README.md")),
+        git(&["diff"]),
+        git(&["checkout", "-b", "x"]),
+        git(&[COMMIT, "--all", MESSAGE, APPENDED]),
+        git(&[LOG, "-1", "--format=%an %s"]),
+    ];
+    let outputs = checked_out(lane, "git-local", &calls)?;
+    all_succeeded(&outputs)?;
+    let [status, log, _write, diff, _branch, _commit, last] = outputs.as_slice() else {
+        return Err(format!("{} answers, got {outputs:?}", calls.len()).into());
+    };
+    expect(
+        status.text.contains("On branch main"),
+        format!("the base branch is checked out, got {:?}", status.text),
+    )?;
+    expect(
+        log.text.trim() == FIRST,
+        format!("the base's history, got {:?}", log.text),
+    )?;
+    expect(
+        diff.text.contains(&format!("+{APPENDED}")),
+        format!("the edit shows, got {:?}", diff.text),
+    )?;
+    expect(
+        last.text.trim() == format!("agentsfleet {APPENDED}"),
+        format!("the commit is the sandbox's, got {:?}", last.text),
+    )
 }

@@ -12,7 +12,7 @@ mod raise;
 
 #[cfg(not(target_os = "linux"))]
 pub(crate) use self::raise::refused;
-pub(crate) use self::raise::{not_inherited, unconfined};
+pub(crate) use self::raise::unconfined;
 
 af_core::error_shell!(
     /// A sandbox entry's failure, with the backtrace of where it was raised.
@@ -36,21 +36,6 @@ pub(crate) enum ErrorKind {
         /// The executor's failure.
         #[source]
         source: afr_executor::Error,
-    },
-
-    /// The sandbox entry was named a descriptor it did not inherit, or the
-    /// same one twice.
-    #[error("descriptor {descriptor} was not inherited from the engine")]
-    NotInherited {
-        /// The number the command line named.
-        descriptor: i32,
-    },
-
-    /// A tenant leaf file the engine opens refused.
-    #[error(transparent)]
-    Cgroup {
-        /// The cgroup's failure.
-        source: afr_cgroup::Error,
     },
 
     /// A system call made directly was refused.
@@ -107,11 +92,8 @@ impl Error {
     pub const fn code(&self) -> ErrorCode {
         match self.kind() {
             ErrorKind::Executor { source } => source.code(),
-            ErrorKind::Cgroup { source } => source.code(),
             ErrorKind::Seam { source } => source.code(),
-            ErrorKind::Io { .. } | ErrorKind::NotInherited { .. } => {
-                error_code::INTERNAL_OPERATION_FAILED
-            }
+            ErrorKind::Io { .. } => error_code::INTERNAL_OPERATION_FAILED,
             #[cfg(target_os = "linux")]
             ErrorKind::System { .. }
             | ErrorKind::Landlock { .. }
@@ -132,10 +114,7 @@ impl Error {
     pub const fn seam(&self) -> Option<&afr_engine::Error> {
         match self.kind() {
             ErrorKind::Seam { source } => Some(source),
-            ErrorKind::Cgroup { source } => source.seam(),
-            ErrorKind::Io { .. } | ErrorKind::Executor { .. } | ErrorKind::NotInherited { .. } => {
-                None
-            }
+            ErrorKind::Io { .. } | ErrorKind::Executor { .. } => None,
             #[cfg(target_os = "linux")]
             ErrorKind::System { .. }
             | ErrorKind::Landlock { .. }

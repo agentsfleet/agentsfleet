@@ -52,8 +52,8 @@ const USR_LINKS: [(&str, &str); 4] = [
     ("/lib", "usr/lib"),
     ("/lib64", "usr/lib64"),
 ];
-/// The disk's two trees, as bubblewrap lays a workspace disk out, each with
-/// the mode it is bound with.
+/// The disk's two trees, each with the mode it is bound with: the workspace,
+/// and the scratch space beside it that shares the disk's limit.
 const DISK_TREES: [(&str, &str, u32); 2] = [
     ("workspace", afr_executor::WORKSPACE_ROOT, 0o755),
     ("tmp", "/tmp", 0o1777),

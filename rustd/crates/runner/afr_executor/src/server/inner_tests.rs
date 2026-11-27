@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use rustix::io::Errno;
 
-use super::{Entry, InnerEnvironment, Server, connected};
+use super::{Entry, InnerEnvironment, Server, streamed};
 use crate::api::{Ending, Executor as _, Spawn};
 use crate::{Client, Sizes};
 
@@ -59,10 +59,11 @@ impl InnerEnvironment for Fake {
 
 /// A client of `server`, which serves `root` on the far end of a socket
 /// pair.
-fn serving(server: impl FnOnce(std::os::unix::net::UnixStream) -> Server, root: &Path) -> Client {
+fn serving(server: impl FnOnce(tokio::net::UnixStream) -> Server, root: &Path) -> Client {
     let (ours, theirs) = std::os::unix::net::UnixStream::pair().unwrap();
+    theirs.set_nonblocking(true).unwrap();
     let root = root.to_owned();
-    let server = server(theirs);
+    let server = server(tokio::net::UnixStream::from_std(theirs).unwrap());
     tokio::spawn(async move { server.serve(&root).await });
     Client::connected(ours, Sizes::DEFAULT).unwrap()
 }
@@ -73,10 +74,7 @@ async fn a_process_enters_the_inner_environment_in_its_working_directory() {
     std::fs::create_dir(dir.path().join("sub")).unwrap();
     let inner = Arc::new(Fake::default());
     let held = Arc::clone(&inner) as Arc<dyn InnerEnvironment>;
-    let client = serving(
-        |stream| connected(stream).unwrap().with_inner(held),
-        dir.path(),
-    );
+    let client = serving(|stream| streamed(stream).with_inner(held), dir.path());
 
     let process = client
         .spawn(&Spawn::program("true").cwd("sub"))
@@ -98,10 +96,7 @@ async fn a_process_that_cannot_enter_the_inner_environment_never_runs() {
         refuses: true,
         ..Fake::default()
     });
-    let client = serving(
-        |stream| connected(stream).unwrap().with_inner(inner),
-        dir.path(),
-    );
+    let client = serving(|stream| streamed(stream).with_inner(inner), dir.path());
 
     let refused = client
         .spawn(&Spawn::program("touch").arg("ran"))
@@ -122,10 +117,7 @@ async fn a_renewal_reaches_the_inner_environment_and_answers_once_it_stands() {
     let dir = tempfile::tempdir().unwrap();
     let inner = Arc::new(Fake::default());
     let held = Arc::clone(&inner) as Arc<dyn InnerEnvironment>;
-    let client = serving(
-        |stream| connected(stream).unwrap().with_inner(held),
-        dir.path(),
-    );
+    let client = serving(|stream| streamed(stream).with_inner(held), dir.path());
 
     client.renew().await.unwrap();
     client.renew().await.unwrap();
@@ -136,7 +128,7 @@ async fn a_renewal_reaches_the_inner_environment_and_answers_once_it_stands() {
 #[tokio::test]
 async fn an_executor_with_no_inner_environment_refuses_a_renewal() {
     let dir = tempfile::tempdir().unwrap();
-    let client = serving(|stream| connected(stream).unwrap(), dir.path());
+    let client = serving(streamed, dir.path());
 
     let refused = client.renew().await.unwrap_err();
 
@@ -154,10 +146,7 @@ async fn a_hosts_file_replaces_the_inner_environments_whole() {
     let dir = tempfile::tempdir().unwrap();
     let inner = Arc::new(Fake::default());
     let held = Arc::clone(&inner) as Arc<dyn InnerEnvironment>;
-    let client = serving(
-        |stream| connected(stream).unwrap().with_inner(held),
-        dir.path(),
-    );
+    let client = serving(|stream| streamed(stream).with_inner(held), dir.path());
     let old = "127.0.0.1 localhost\n203.0.113.7 old.example\n";
     let new = "127.0.0.1 localhost\n198.51.100.9 new.example\n";
 
@@ -170,7 +159,7 @@ async fn a_hosts_file_replaces_the_inner_environments_whole() {
 #[tokio::test]
 async fn an_executor_with_no_inner_environment_refuses_a_hosts_file() {
     let dir = tempfile::tempdir().unwrap();
-    let client = serving(|stream| connected(stream).unwrap(), dir.path());
+    let client = serving(streamed, dir.path());
 
     let refused = client.hosts("127.0.0.1 localhost\n").await.unwrap_err();
 

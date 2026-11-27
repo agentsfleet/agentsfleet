@@ -1,6 +1,6 @@
 [package]
 name = "afr_guest"
-description = "The process inside a sandbox: the descriptors it inherits from the engine, the confinement it puts on itself, and the executor it then serves."
+description = "The confinement a sandbox's tenant processes put on themselves, and the inner environment a microVM's executor builds for them."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -16,16 +16,11 @@ workspace = true
 
 [dependencies]
 af_core.workspace = true
-# The tenant leaf's files the engine opens, named as the cgroup names them.
-afr_cgroup.workspace = true
 # The mechanism names a refusal shares with the capability report, and the
 # seam's refusals.
 afr_engine.workspace = true
 # The executor every sandbox serves.
 afr_executor.workspace = true
-# The sandbox entry's descriptor flags, parsed once here for the runner
-# binary and the kernel lane alike.
-clap.workspace = true
 # The process status a sandbox reads before it serves.
 procfs-core.workspace = true
 # The process calls the entry makes on itself, and the namespace, mount and
