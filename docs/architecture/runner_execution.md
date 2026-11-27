@@ -388,7 +388,7 @@ A turn that moves to another runner restores its files from a [checkpoint](check
 
 ### Toolbox
 
-The toolbox is a minimal Debian root filesystem with git, Python 3, ripgrep, jq, curl, uv and Bun. Bun is its only JavaScript runtime and package manager, as `bun`, `bunx` and `node`; no Node.js is installed. Under the name `node`, Bun runs a script and answers `node -p process.version`, and it does not answer `node --version`. The toolbox holds no system package manager, no Perl and no Go.
+The toolbox is a minimal Debian root filesystem with git, Python 3, ripgrep, jq, curl, uv and Bun, and a small set of everyday tools: `ps` and `pgrep` (procps), `unzip`, `xz`, `bzip2`, `zstd`, `file`, `patch`, `make` and `tree`. Every Debian package in it is the newest its pinned snapshot serves, and it holds no C compiler. Bun is its only JavaScript runtime and package manager, as `bun`, `bunx` and `node`; no Node.js is installed. Under the name `node`, Bun runs a script and answers `node -p process.version`, and it does not answer `node --version`. The toolbox holds no system package manager, no Perl and no Go.
 
 `make toolbox-image` builds it with mmdebstrap from pinned Debian snapshots ([manifest](../../scripts/toolbox/manifest.txt)). It ships as a read-only Enhanced Read-Only File System (EROFS) image with LZ4HC compression.
 

@@ -79,9 +79,9 @@ COMMAND_TIMEOUT_SECONDS = 120
 NANOSECONDS_PER_MILLISECOND = 1_000_000
 SHA256_PATTERN = r"[0-9a-f]{64}"
 DROP_CACHES = Path("/proc/sys/vm/drop_caches")
-NODE_TEST = """const test = require('node:test');
-const assert = require('node:assert/strict');
-test('adds', () => assert.equal(1 + 1, 2));
+# Bun is the image's only JavaScript runtime, and its own runner runs the test.
+BUN_TEST = """import { expect, test } from 'bun:test';
+test('adds', () => expect(1 + 1).toBe(2));
 """
 GIT_COMMIT = (
     "git init -q && printf 'one\\n' >README && git add README && "
@@ -110,7 +110,7 @@ unshare --root="$root" --wd=/workspace --setuid="$user" --setgid="$user" -- "$@"
 exit "$status"
 """
 STEPS = {
-    "node_test": ["node", "--test", "/workspace/sum.test.js"],
+    "bun_test": ["bun", "test", "/workspace/sum.test.js"],
     "python_import": ["python3", "-c", "import hashlib, json, pathlib, ssl"],
     "git_commit": ["sh", "-ec", GIT_COMMIT],
     "node_start": ["node", "-e", "0"],
@@ -155,7 +155,7 @@ def measure(command):
     workspace.chmod(0o777)
     (workspace / "tmp").mkdir(mode=0o777)
     (workspace / "tmp").chmod(0o777)
-    (workspace / "sum.test.js").write_text(NODE_TEST)
+    (workspace / "sum.test.js").write_text(BUN_TEST)
     # `setpriv` ends the step when this sampler dies, however it dies, and
     # `--kill-child` passes that on to the namespace: no step outlives its
     # measurement holding the image's mount.

@@ -19,7 +19,23 @@ const RIPGREP: &str = "ripgrep";
 const SHA256: &str = "sha256";
 /// The Debian packages the run's tools come from, each pinned with the hash
 /// apt checked it by.
-const PINNED: [&str; 6] = ["ca-certificates", GIT, "python3", RIPGREP, "jq", "curl"];
+const PINNED: [&str; 15] = [
+    "ca-certificates",
+    GIT,
+    "python3",
+    RIPGREP,
+    "jq",
+    "curl",
+    "procps",
+    "unzip",
+    "xz-utils",
+    "bzip2",
+    "zstd",
+    "file",
+    "patch",
+    "make",
+    "tree",
+];
 /// The binaries Debian does not ship, each vendored by URL and SHA-256.
 const UV_RELEASE: &str = "astral-sh/uv/releases/download/";
 const BUN_RELEASE: &str = "oven-sh/bun/releases/download/";

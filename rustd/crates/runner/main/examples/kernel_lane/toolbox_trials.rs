@@ -1,5 +1,6 @@
 //! The toolbox's own trials: its build reproduces, its image fits its size
-//! cap, and a run sees its licence notices kept and its docs dropped.
+//! cap, a run sees its licence notices kept and its docs dropped, and each of
+//! its small tools runs once.
 
 use std::fs;
 use std::path::Path;
@@ -59,6 +60,31 @@ print(f'{len(packages)} verified package notices; read-only toolbox; writable wo
 PY
 ";
 
+/// Runs each small tool once, offline: `ps` and `pgrep` find a sleeper the
+/// shell started, and the others answer their version or read a file.
+const SMALL_TOOLS: &str = r#"
+sleep 30 &
+sleeper=$!
+ps -e -o pid=,comm= | grep -q "^ *$sleeper sleep$" || exit 1
+[ "$(pgrep -fx 'sleep 30')" = "$sleeper" ] || exit 1
+kill "$sleeper"
+echo "ps and pgrep found $sleeper"
+unzip -v && xz --version && bzip2 --help 2>&1 && zstd --version && file /usr/bin/git &&
+  patch --version && make --version && tree --version
+"#;
+/// A word from each small tool's answer, in the order the step runs them.
+const SMALL_TOOL_WORDS: [&str; 9] = [
+    "ps and pgrep found ",
+    "UnZip 6.",
+    "xz (XZ Utils) ",
+    "bzip2, a block-sorting file compressor",
+    "Zstandard CLI",
+    "/usr/bin/git: ELF 64-bit",
+    "GNU patch ",
+    "GNU Make ",
+    "tree v",
+];
+
 /// Every toolbox trial, by the name the lane reports it under.
 pub(crate) const TRIALS: &[(&str, Body)] = &[
     ("test_toolbox_build_is_reproducible", reproducible),
@@ -67,6 +93,7 @@ pub(crate) const TRIALS: &[(&str, Body)] = &[
         "test_toolbox_keeps_copyright_and_drops_docs",
         keeps_copyright_and_drops_docs,
     ),
+    ("test_toolbox_runs_its_small_tools", runs_small_tools),
 ];
 
 fn reproducible(lane: &Lane) -> Result<(), Failed> {
@@ -118,5 +145,18 @@ fn keeps_copyright_and_drops_docs(lane: &Lane) -> Result<(), Failed> {
                 .text
                 .contains("verified package notices; read-only toolbox; writable workspace"),
         format!("all retained notices, stripped docs and a read-only toolbox, got {licences:?}"),
+    )
+}
+
+fn runs_small_tools(lane: &Lane) -> Result<(), Failed> {
+    let output = shell_calls(lane, "toolbox-small-tools", &[shell(SMALL_TOOLS, None)])?;
+    let [tools] = answers(&output)?;
+    expect(
+        tools.exit_code == Some(0)
+            && tools.error_code.is_none()
+            && SMALL_TOOL_WORDS
+                .iter()
+                .all(|word| tools.text.contains(word)),
+        format!("each small tool answers, got {tools:?}"),
     )
 }
