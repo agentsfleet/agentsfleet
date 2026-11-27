@@ -1,7 +1,7 @@
 //! Capture commits once every new object's PUT is accepted and every ordered
 //! page is written.
 
-use super::{Session, catalog::Catalog, transfer::Transfers, tree::ChangeSource, uploads};
+use super::{Lineage, Session, catalog::Catalog, transfer::Transfers, tree::ChangeSource, uploads};
 use crate::{Result, client::ControlPlane, error};
 use af_core::id::Uuid7;
 use af_wire::activity::{
@@ -25,6 +25,9 @@ pub(crate) struct Capture<'a> {
     pub(crate) mode: CheckpointMode,
     pub(crate) base: Option<&'a CheckpointPlan>,
     pub(crate) stop: &'a tokio_util::sync::CancellationToken,
+    /// The tree the task's current checkpoint resolves to, when this run
+    /// committed it: what a pin that read only what changed builds on.
+    pub(crate) lineage: Option<&'a Lineage>,
 }
 
 impl Capture<'_> {
@@ -36,6 +39,18 @@ impl Capture<'_> {
         history: Zeroizing<Vec<u8>>,
         base_paths: Vec<String>,
     ) -> Result<CheckpointPlan> {
+        let (plan, _lineage) = self.run_over(source, history, base_paths).await?;
+        Ok(plan)
+    }
+
+    /// As [`Self::run`], with the tree the committed generation resolves to,
+    /// for the next save to build on; none when it reused a base unchanged.
+    pub(crate) async fn run_over(
+        &self,
+        source: Option<&dyn ChangeSource>,
+        history: Zeroizing<Vec<u8>>,
+        base_paths: Vec<String>,
+    ) -> Result<(CheckpointPlan, Option<Lineage>)> {
         let activity = af_crypto::entropy::Entropy::new()
             .uuid7(af_core::clock::now())?
             .to_string();
@@ -54,7 +69,7 @@ impl Capture<'_> {
         let saved = self
             .capture(&activity, &mut progress, source, history, base_paths)
             .await;
-        uploads::logged("durable_task", started, &saved, |plan| plan.generation);
+        uploads::logged("durable_task", started, &saved, |(plan, _)| plan.generation);
         let phase = if saved.is_ok() {
             Phase::Saved
         } else {
@@ -80,7 +95,7 @@ impl Capture<'_> {
         source: Option<&dyn ChangeSource>,
         history: Zeroizing<Vec<u8>>,
         base_paths: Vec<String>,
-    ) -> Result<CheckpointPlan> {
+    ) -> Result<(CheckpointPlan, Option<Lineage>)> {
         if self.stop.is_cancelled() {
             return Err(error::config("checkpoint capture was cancelled"));
         }
@@ -94,12 +109,20 @@ impl Capture<'_> {
             None,
         )
         .await;
-        let catalog = Catalog::read(source, history, base_paths, self.stop).await?;
+        let catalog = Catalog::read(
+            source,
+            history,
+            (base_paths, self.lineage),
+            af_wire::durable_task::CHECKPOINT_PAGE_BYTES,
+            self.stop,
+        )
+        .await?;
         if self.stop.is_cancelled() {
             return Err(error::config("checkpoint capture was cancelled"));
         }
         let (task, plan) = self.plan(activity, &catalog).await?;
         if plan.mode != self.mode
+            || plan.parent != catalog.parent.as_ref().map(ToString::to_string)
             || plan.format_version != CHECKPOINT_FORMAT
             || plan.toolbox_digest != self.toolbox
         {
@@ -108,7 +131,7 @@ impl Capture<'_> {
             ));
         }
         if plan.manifest_root.is_some() && self.mode == CheckpointMode::RetainBase {
-            return Ok(plan);
+            return Ok((plan, None));
         }
         let mut session = Session {
             plane: self.plane,
@@ -133,9 +156,11 @@ impl Capture<'_> {
                 ),
             )
             .await;
-        session
+        let saved = session
             .commit_catalog(&catalog, &published, self.task)
-            .await
+            .await?;
+        let lineage = catalog.lineage(Uuid7::parse(&saved.checkpoint_id)?);
+        Ok((saved, Some(lineage)))
     }
 
     async fn plan(
@@ -167,6 +192,7 @@ impl Capture<'_> {
                     operation_id: activity.to_owned(),
                     durable_task: task.clone(),
                     mode: self.mode,
+                    parent: catalog.parent.as_ref().map(ToString::to_string),
                     base_id: self.base.and_then(|base| base.base_id.clone()),
                     commit_oid: match &self.task.target {
                         DurableTaskTarget::ApiOnly => None,
@@ -226,6 +252,7 @@ impl Session<'_> {
             .durable_task_checkpoint_commit(self.run, &checkpoint, &input)
             .await?;
         if saved.checkpoint_id != self.plan.checkpoint_id
+            || saved.parent != self.plan.parent
             || saved.base_id != self.plan.base_id
             || saved.mode != self.plan.mode
             || saved.repository != self.plan.repository

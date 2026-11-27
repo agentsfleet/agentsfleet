@@ -11,6 +11,7 @@ mod files;
 mod files_tests;
 mod inventory;
 mod layout;
+mod lineage;
 mod links;
 mod names;
 mod progress;
@@ -31,6 +32,7 @@ mod window;
 
 pub(crate) use admission::RecoveryResources;
 pub(super) use capture::Capture;
+pub(crate) use lineage::Lineage;
 pub(super) use restore::Restore;
 pub(crate) use transfer::Transfers;
 pub(crate) use tree::{ChangeSource, Tree};

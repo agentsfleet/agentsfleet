@@ -121,6 +121,8 @@ pub(super) fn plan() -> Result<CheckpointPlan> {
     let deadline = af_core::clock::after(af_core::clock::now(), std::time::Duration::from_mins(10));
     let digest = af_core::etag::sha256_hex(&serde_json::to_vec(&page()).map_err(error::encode)?);
     Ok(CheckpointPlan {
+        parent: None,
+        chain: Vec::new(),
         checkpoint_id: ID.to_owned(),
         generation: 1,
         base_id: None,

@@ -19,8 +19,12 @@ use serde_json::value::RawValue;
 
 use crate::{Ending, Stream};
 
+mod pin;
 mod transfer;
 
+pub use self::pin::{
+    METHOD_PIN_RELEASE, METHOD_PIN_WALK, PinReleaseParams, PinWalkParams, PinWalked,
+};
 pub use self::transfer::TRANSFER_CHUNK_BYTES;
 pub use self::transfer::{
     ExportChunk, ExportOpenParams, ExportReadParams, ImportOpenParams, ImportWriteParams,

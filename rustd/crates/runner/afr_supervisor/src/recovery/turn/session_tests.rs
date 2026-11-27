@@ -204,6 +204,7 @@ async fn restore_pages(pages: Vec<CheckpointPage>, assigned: Option<String>) -> 
     let root = tempfile::tempdir()?;
     let result = session
         .restore_files(
+            &[],
             &ids,
             &digest,
             (

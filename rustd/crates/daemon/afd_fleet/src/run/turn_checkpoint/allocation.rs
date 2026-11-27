@@ -44,21 +44,24 @@ pub(super) async fn room(owner: &mut TurnRunGuard<'_>, head: Option<&Uuid7>) -> 
     if pending.is_some() {
         return Err(TurnCheckpointRefusal::Conflict.into());
     }
-    let ready: i64 = sqlx::query_scalar(include_str!("sql/ready_count.sql"))
+    let mut ready: i64 = sqlx::query_scalar(include_str!("sql/ready_count.sql"))
         .bind(&owner.current.turn_id)
+        .bind(head)
         .fetch_one(&mut *owner.tx)
         .await
         .map_err(query("count retained ready turn generations"))?;
-    if ready >= super::READY_GENERATIONS {
+    // A chain a full manifest superseded is retired a generation at a time.
+    while ready >= super::READY_GENERATIONS {
         let retired: Option<Uuid7> = sqlx::query_scalar(include_str!("sql/retire_ready.sql"))
             .bind(&owner.current.turn_id)
             .bind(head)
             .fetch_optional(&mut *owner.tx)
             .await
             .map_err(query("retire an unpinned non-head turn generation"))?;
-        if retired.is_none() || ready > super::READY_GENERATIONS {
+        if retired.is_none() {
             return Err(TurnCheckpointRefusal::Limit.into());
         }
+        ready -= 1;
     }
     owner.fresh().await?;
     Ok(())
@@ -144,6 +147,7 @@ async fn insert(
         .bind(&input.history_digest)
         .bind(owner.limits.transfer_seconds())
         .bind(cipher)
+        .bind(input.parent.as_ref().map(guard::id).transpose()?)
         .execute(&mut *owner.tx)
         .await
         .map_err(query("persist complete turn capture plan"))?;

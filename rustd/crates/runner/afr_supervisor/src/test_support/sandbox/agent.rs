@@ -1,7 +1,9 @@
 //! A fake guest agent has explicit recovery proof and no hidden host work.
 
 use super::{AGENT_GONE, FREEZE, Parking, THAW};
-use af_guest_wire::{FileContent, Imported, Listing};
+use af_guest_wire::protocol::PinWalked;
+use af_guest_wire::tree::Pins;
+use af_guest_wire::{FileContent, Imported, Listing, Sizes};
 use afr_guest_client::{GuestAgent, Process, ProcessId, Spawn};
 use bytes::Bytes;
 use cap_std::ambient_authority;
@@ -9,6 +11,7 @@ use cap_std::fs::Dir;
 use std::io::{Seek as _, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, PoisonError};
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt as _};
 use tokio::sync::mpsc;
 
@@ -32,6 +35,9 @@ pub(super) struct FakeGuest {
     pub(super) freezes: bool,
     /// Where it reports each freeze and thaw.
     pub(super) steps: Option<mpsc::UnboundedSender<&'static str>>,
+    /// Each save pin's identities, kept as the guest agent keeps them: a
+    /// test seeds them by walking and releasing a pin through it.
+    pub(super) pins: std::sync::Arc<Mutex<Pins>>,
 }
 
 #[async_trait::async_trait]
@@ -124,6 +130,43 @@ impl GuestAgent for FakeGuest {
         rewind.seek(SeekFrom::Start(0))?;
         tokio::io::copy(&mut tokio::fs::File::from_std(spool), into).await?;
         Ok(into.flush().await?)
+    }
+
+    /// Walks its workspace with the guest agent's own pin record and packs
+    /// what changed into `into`.
+    async fn pin_walk(
+        &self,
+        parent: Option<&str>,
+        into: &mut (dyn AsyncWrite + Send + Unpin),
+    ) -> af_guest_wire::Result<PinWalked> {
+        let dir = Dir::open_ambient_dir(self.served()?, ambient_authority())?;
+        let walked = self
+            .pins
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .walk(&dir, parent, Sizes::DEFAULT.max_frame_bytes)?;
+        let spool = tempfile::tempfile()?;
+        let roots: Vec<_> = walked.roots.iter().map(PathBuf::as_path).collect();
+        af_guest_wire::tree::pack(&dir, &roots, &spool)?;
+        let mut rewind = &spool;
+        rewind.seek(SeekFrom::Start(0))?;
+        tokio::io::copy(&mut tokio::fs::File::from_std(spool), into).await?;
+        into.flush().await?;
+        Ok(PinWalked {
+            pin: walked.pin,
+            transfer_id: walked.pin,
+            delta: walked.delta,
+            removed: walked.removed,
+            entries: walked.entries,
+            changed_bytes: walked.changed_bytes,
+        })
+    }
+
+    async fn pin_release(&self, pin: u64, generation: Option<&str>) -> af_guest_wire::Result<()> {
+        self.pins
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .release(pin, generation)
     }
 }
 

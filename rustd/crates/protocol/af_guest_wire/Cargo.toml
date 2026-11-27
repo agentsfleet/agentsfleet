@@ -28,8 +28,10 @@ cap-std.workspace = true
 # type.
 clap.workspace = true
 jsonrpsee-types.workspace = true
-# The signal number an ending names, and the file flags a tree opens with.
-rustix.workspace = true
+# The signal number an ending names, the file flags a tree opens with, and a
+# pin's walk: `statx` through directory descriptors and the clock file
+# timestamps are read from.
+rustix = { workspace = true, features = ["time"] }
 serde.workspace = true
 serde_json.workspace = true
 # `import` and `export`: files cross the link as a tar stream.
@@ -39,5 +41,7 @@ thiserror.workspace = true
 tokio = { workspace = true, features = ["io-util", "rt"] }
 
 [dev-dependencies]
+# The workspaces a pin's walk is proved over.
+tempfile.workspace = true
 # The codec both ends frame lines with, proved against the frame bound.
 tokio-util = { workspace = true, features = ["codec"] }

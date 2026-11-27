@@ -24,6 +24,7 @@ fn begin(workspace: TurnWorkspace) -> TurnCheckpointAction {
     let files = matches!(workspace, TurnWorkspace::Files { .. });
     TurnCheckpointAction::Begin(TurnCheckpointBegin {
         expected_head: None,
+        parent: None,
         format_version: TURN_CHECKPOINT_FORMAT,
         workspace,
         history_digest: "a".repeat(64),

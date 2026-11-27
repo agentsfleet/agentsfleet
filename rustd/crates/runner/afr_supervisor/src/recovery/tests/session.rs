@@ -44,6 +44,7 @@ async fn already_received_ciphertext_is_committed_without_a_second_physical_uplo
         mode: CheckpointMode::Incremental,
         base: None,
         stop: &CancellationToken::new(),
+        lineage: None,
     }
     .run(None, Zeroizing::new(b"private history".to_vec()), vec![])
     .await?;
@@ -79,6 +80,7 @@ async fn upload_response_cannot_replace_registered_ciphertext() -> crate::Result
             mode: CheckpointMode::Incremental,
             base: None,
             stop: &CancellationToken::new(),
+            lineage: None,
         }
         .run(None, Zeroizing::new(b"private history".to_vec()), vec![])
         .await

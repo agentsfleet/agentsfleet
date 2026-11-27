@@ -11,6 +11,9 @@
 //! ignored, so what lands is the unpacking user's; the mode's permission bits
 //! are kept and its set-id bits are not.
 //!
+//! A save's pin walks the tree first ([`Pins`]): it keeps each entry's
+//! identity, so the next pin packs only what changed since one committed.
+//!
 //! A stream carries each byte its tree holds on disk once: a file with
 //! several names is packed under the first and as a link to it under each
 //! other, and a hole in a file is left out of the stream and is a hole again
@@ -25,10 +28,14 @@ use rustix::io::Errno;
 
 use crate::error::{self, Error, Result};
 
+mod identity;
 mod pack;
+mod pins;
 mod unpack;
+mod walk;
 
 pub use self::pack::pack;
+pub use self::pins::{PinWalk, Pins};
 pub use self::unpack::unpack;
 
 /// A directory named relative to itself.

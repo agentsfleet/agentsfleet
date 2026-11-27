@@ -40,14 +40,19 @@ A file save needs a verified toolbox and a free transfer slot on the runner. An 
 Harness::save_boundary                         afr_agent loop/recovery_boundary.rs
   |-- file slot busy -> skip -> keep the previous ready checkpoint
   `-- admitted -> BoundaryOwner::capture       afr_supervisor run_loop/recovery_capture.rs
-         -> quiesce: a tenant process still runs -> skip this save
-         -> export the workspace through the guest agent into a host stage
-         -> scan the stage, encrypt, authorize, upload, read back and verify
-         -> publish the exact root and manifest under the run's fence
-         -> remove the stage -> acknowledge the saved generation
+         -> quiesce: a guest agent call in flight -> skip this save
+         -> pause: freeze the tenant leaf
+         -> pin: the guest agent walks the workspace, copying into a host
+            stage only what changed since the parent generation
+         -> resume: the run goes on
+         -> register the changed chunks, seal, upload, write the delta's pages
+         -> commit the exact root and manifest under the run's fence
+         -> release the pin, naming the committed generation
 ```
 
-Firecracker answers `quiesce` by asking the guest's agent whether it is idle. A workspace that will not export skips the save, and the run goes on ([capture](../../rustd/crates/runner/afr_supervisor/src/run_loop/recovery_capture.rs)).
+A save pauses for one identity read per entry and a copy of the changed bytes. The guest agent keeps each path's device, inode, size, mode and nanosecond modification and change times at the last committed pin; an entry whose identity is unchanged is skipped unless its change time falls at or after that pin's coarse clock tick, which re-reads it. The record is a hint a restore never trusts. A guest agent without it (a new connection or host) copies everything once, and that save writes a full manifest ([walk](../../rustd/crates/protocol/af_guest_wire/src/tree/pins.rs), [volume](../../rustd/crates/runner/afr_supervisor/src/staging/volume.rs)).
+
+A save over its parent writes a delta: the changed entries and a `Remove` for each path gone, with `parent_checkpoint_id` naming the parent. A restore applies the chain's full manifest, then each delta in order ([chain](../../rustd/crates/protocol/af_chunk_store/src/chain.rs)). A save writes a full manifest, with no parent, once the chain's delta pages with its own would outnumber a full manifest's pages; both counts come from the save's own layout ([lineage](../../rustd/crates/runner/afr_supervisor/src/recovery/lineage.rs)). The foreign key has no cascade, so Postgres refuses to delete an ancestor a delta names, and purge skips it; a superseded chain goes newest first.
 
 A checkpoint names its turn and owner, never a version of the fleet. A restore under a different model keeps the conversation and tool results. It drops only reasoning the old provider signed, because another provider cannot read it.
 

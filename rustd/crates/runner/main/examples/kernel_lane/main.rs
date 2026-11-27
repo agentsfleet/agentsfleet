@@ -56,6 +56,8 @@ mod lane;
 #[cfg(target_os = "linux")]
 mod microvm_pool;
 #[cfg(target_os = "linux")]
+mod pin_mapping;
+#[cfg(target_os = "linux")]
 mod pin_pause;
 #[cfg(target_os = "linux")]
 mod release;
@@ -88,7 +90,28 @@ use std::process::ExitCode;
 
 #[cfg(target_os = "linux")]
 fn main() -> ExitCode {
+    install_logs();
     lane::main()
+}
+
+/// Writes every record to stderr through the runner's own filter, at the
+/// level `AGENTSFLEET_LOG_LEVEL` names and info when unset, so a failing
+/// trial's output carries what its engine logged: each microVM's console
+/// line (`sandbox_console`) among it.
+#[cfg(target_os = "linux")]
+fn install_logs() {
+    use tracing_subscriber::Layer as _;
+    use tracing_subscriber::layer::SubscriberExt as _;
+    use tracing_subscriber::util::SubscriberInitExt as _;
+
+    let level = af_core::env::log_level(
+        &af_core::env::ProcessEnv,
+        tracing::level_filters::LevelFilter::INFO,
+    );
+    let records = tracing_subscriber::fmt::layer()
+        .with_writer(std::io::stderr)
+        .with_filter(af_providers::settings::log_filter(level));
+    tracing_subscriber::registry().with(records).init();
 }
 
 #[cfg(not(target_os = "linux"))]

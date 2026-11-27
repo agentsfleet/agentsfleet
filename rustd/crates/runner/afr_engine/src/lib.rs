@@ -31,7 +31,7 @@ mod warm_slots;
 pub use self::boot::{Backend, Booted, HostPaths, Resources, Started, boot};
 #[cfg(any(test, feature = "test-util"))]
 pub use self::engine::fresh_sandbox_id;
-pub use self::engine::volume::{Paused, Resumed, WorkspaceVolume, pin_paused};
+pub use self::engine::volume::{Paused, PausedWork, Resumed, WorkspaceVolume, pin_paused};
 pub use self::engine::{
     AdmissionBound, Cap, Capabilities, DEFAULT_CPU_MILLIS, DEFAULT_DISK_BYTES,
     DEFAULT_MEMORY_BYTES, DEFAULT_PIDS, DEFAULT_READY_TIMEOUT, EgressEnforcer, EgressPlan, Engine,

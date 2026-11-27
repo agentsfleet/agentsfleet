@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 /// One bounded file represented by immutable encrypted chunks in order.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct CheckpointFile {
     /// Declared workspace-relative path; never followed during restoration.
@@ -28,7 +28,7 @@ pub struct CheckpointFile {
 
 /// Complete logical entry or explicit deletion relative to the retained base.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum CheckpointEntry {
     /// Ordinary file; special files are never captured.
@@ -49,7 +49,8 @@ pub enum CheckpointEntry {
         #[garde(length(bytes, min = 1, max = PATH_MAX_BYTES), custom(relative_link))]
         target: String,
     },
-    /// Explicit removal from the verified base.
+    /// Explicit removal from the verified base, or from the parent a delta
+    /// manifest is applied over.
     Remove {
         /// Workspace-relative base entry to remove, including any descendants.
         #[garde(length(bytes, min = 1, max = PATH_MAX_BYTES), custom(relative_path))]

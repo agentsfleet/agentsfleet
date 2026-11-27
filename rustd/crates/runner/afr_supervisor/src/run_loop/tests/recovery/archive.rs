@@ -124,7 +124,7 @@ impl Archive {
             input.digest,
             af_core::etag::sha256_hex(&serde_json::to_vec(&input.contents).unwrap())
         );
-        assert!(input.contents.entries.is_empty());
+        assert_eq!(input.contents.entries, []);
         assert_eq!(input.contents.history_objects, vec![ID.to_owned()]);
         let response = serde_json::to_value(&input.contents).unwrap();
         self.page = Some(input.contents);

@@ -48,9 +48,13 @@ impl<'a> NativeTurn<'a> {
         }
     }
 
-    /// The generation this run's last turn save committed, when one has.
-    pub(crate) fn head(&self) -> Option<&af_wire::run::TurnResume> {
-        self.publication.head.as_ref()
+    /// The generation a pin may read only what changed since: the head, when
+    /// this run's own save committed it and holds the tree it resolves to.
+    pub(crate) fn parent(&self) -> Option<&Uuid7> {
+        let lineage = self.publication.lineage.as_ref()?;
+        let head = self.publication.head.as_ref()?;
+        let head = Uuid7::parse(&head.checkpoint_id.0).ok()?;
+        (*lineage.head() == head).then(|| lineage.head())
     }
 
     fn request<R: TurnCheckpointRequest>(&self, request: R) -> Result<TurnCommand<R>> {

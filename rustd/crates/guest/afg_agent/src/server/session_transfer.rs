@@ -1,10 +1,11 @@
 //! Trees crossing in chunks: each import spooled on the workspace disk under
 //! a number, each export packed as it is read, its chunks on the blocking
-//! pool.
+//! pool. A save's pin walk is an export of what changed since the last
+//! committed pin.
 
 use std::fs::File;
 use std::path::PathBuf;
-use std::sync::mpsc::Receiver;
+use std::sync::mpsc::{Receiver, sync_channel};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use jsonrpsee_types::{Id, Request};
@@ -16,9 +17,11 @@ use af_guest_wire::error::{self, Result};
 use af_guest_wire::protocol::{
     ExportChunk, ExportOpenParams, ExportReadParams, ImportOpenParams, ImportWriteParams,
     METHOD_EXPORT_OPEN, METHOD_EXPORT_READ, METHOD_IMPORT_COMMIT, METHOD_IMPORT_OPEN,
-    METHOD_IMPORT_WRITE, METHOD_TRANSFER_DROP, TransferOpened, TransferParams,
+    METHOD_IMPORT_WRITE, METHOD_PIN_RELEASE, METHOD_PIN_WALK, METHOD_TRANSFER_DROP,
+    PinReleaseParams, PinWalkParams, PinWalked, TransferOpened, TransferParams,
     transfer_chunk_bytes,
 };
+use af_guest_wire::tree::PinWalk;
 
 /// A transfer the session does not hold: never opened, finished, or given up.
 const DETAIL_NO_TRANSFER: &str = "no transfer with that identifier";
@@ -53,6 +56,8 @@ impl Session {
             METHOD_IMPORT_COMMIT => self.commit_import(id, params(request)),
             METHOD_EXPORT_OPEN => self.open_export(id, params(request)),
             METHOD_EXPORT_READ => self.read_export(id, params(request)),
+            METHOD_PIN_WALK => self.pin_walk(id, params(request)),
+            METHOD_PIN_RELEASE => self.pin_release(id, params(request)),
             METHOD_TRANSFER_DROP => {
                 let dropped = params(request).and_then(|forget: TransferParams| {
                     self.transfers
@@ -172,12 +177,57 @@ impl Session {
         }
     }
 
+    /// Walks the workspace for a save's pin and holds the export of what
+    /// changed under a number of its own, answered with the walk; the export
+    /// is read as `fs/export_read` reads one. The walk runs on the blocking
+    /// pool; one that fails forgets its export.
+    fn pin_walk(&mut self, id: Id<'static>, params: Result<PinWalkParams>) {
+        let walk = match params {
+            Ok(walk) => walk,
+            Err(failure) => return self.answer::<PinWalked>(id, Err(failure)),
+        };
+        let (sender, chunks) = sync_channel(1);
+        let stream = Arc::new(Mutex::new(Exporting { chunks, offset: 0 }));
+        let transfer_id = self.hold(Transfer::Export { stream });
+        let (pins, frame_bytes) = (Arc::clone(&self.pins), self.sizes.max_frame_bytes);
+        self.blocking(id, move |workspace| {
+            let walked = workspace.pin_walk(&pins, walk.parent.as_deref(), frame_bytes, sender);
+            match walked {
+                Ok(walked) => (Ok(answered(walked, transfer_id)), None),
+                Err(failure) => (Err(failure), Some(transfer_id)),
+            }
+        });
+    }
+
+    /// Ends a pin, keeping its identities when it names the generation the
+    /// daemon committed from it.
+    fn pin_release(&mut self, id: Id<'static>, params: Result<PinReleaseParams>) {
+        let pins = Arc::clone(&self.pins);
+        self.on_files(id, params, move |_workspace, release: PinReleaseParams| {
+            pins.lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .release(release.pin, release.generation.as_deref())
+        });
+    }
+
     /// The spool of import `transfer_id`.
     fn import_spool(&self, transfer_id: u64) -> Result<Arc<File>> {
         match self.transfers.get(&transfer_id) {
             Some(Transfer::Import { spool, .. }) => Ok(Arc::clone(spool)),
             Some(Transfer::Export { .. }) | None => Err(no_transfer()),
         }
+    }
+}
+
+/// A pin's walk as its answer names it, its export held as `transfer_id`.
+fn answered(walked: PinWalk, transfer_id: u64) -> PinWalked {
+    PinWalked {
+        pin: walked.pin,
+        transfer_id,
+        delta: walked.delta,
+        removed: walked.removed,
+        entries: walked.entries,
+        changed_bytes: walked.changed_bytes,
     }
 }
 

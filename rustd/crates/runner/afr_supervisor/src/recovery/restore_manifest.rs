@@ -1,16 +1,21 @@
-//! Authenticate complete base and overlay manifests before restoring any file.
+//! Authenticate the base, every chain link and the plan's own manifest
+//! before restoring any file.
 
 use super::Session;
 use crate::{Result, error};
+use af_chunk_store::Resolved;
 use af_core::id::Uuid7;
 use af_wire::durable_task::{CHECKPOINT_PAGE_BYTES, CheckpointEntry, CheckpointReadQuery};
 use std::collections::BTreeMap;
 
 impl Session<'_> {
+    /// The tree the plan resolves to: its retained base, then every link of
+    /// its chain, then its own pages, each checked against its root first;
+    /// with the plan's own history objects and the base's paths.
     pub(super) async fn manifest(
         &mut self,
     ) -> Result<(BTreeMap<String, CheckpointEntry>, Vec<String>, Vec<String>)> {
-        let mut entries = BTreeMap::new();
+        let mut entries = Resolved::default();
         let mut bytes = 0_usize;
         let base = self.plan.base_page_ids.clone();
         if !base.is_empty() {
@@ -26,7 +31,15 @@ impl Session<'_> {
                 return Err(error::config("retained base contains private history"));
             }
         }
-        let base_paths = entries.keys().cloned().collect();
+        let base_paths = entries.entries().keys().cloned().collect();
+        for link in self.plan.chain.clone() {
+            // An ancestor's history is its own generation's, never this
+            // one's; each manifest of the chain is held to the page bound on
+            // its own, as its commit held it.
+            let _history = self
+                .pages(&link.page_ids, &link.manifest_root, &mut entries, &mut 0)
+                .await?;
+        }
         let ids = self.plan.page_ids.clone();
         let expected = self
             .plan
@@ -36,6 +49,7 @@ impl Session<'_> {
         let history = self
             .pages(&ids, &expected, &mut entries, &mut bytes)
             .await?;
+        let entries = entries.into_entries();
         entries
             .values()
             .try_fold(0_u64, |sum, entry| {
@@ -54,7 +68,7 @@ impl Session<'_> {
         &mut self,
         ids: &[String],
         expected: &str,
-        entries: &mut BTreeMap<String, CheckpointEntry>,
+        entries: &mut Resolved,
         bytes: &mut usize,
     ) -> Result<Vec<String>> {
         let checkpoint = Uuid7::parse(&self.plan.checkpoint_id)?;
@@ -95,7 +109,7 @@ impl Session<'_> {
                     return Err(error::config("checkpoint manifest paths are not ordered"));
                 }
                 previous = Some(entry.path().to_owned());
-                overlay(entries, entry)?;
+                entries.apply(entry)?;
             }
             history.extend(page.history_objects);
             if history.len() > 256 {
@@ -110,25 +124,4 @@ impl Session<'_> {
         }
         Ok(history)
     }
-}
-
-fn overlay(entries: &mut BTreeMap<String, CheckpointEntry>, entry: CheckpointEntry) -> Result<()> {
-    if let CheckpointEntry::Remove { path } = entry {
-        entries.remove(&path);
-        let prefix = format!("{path}/");
-        let removed: Vec<_> = entries
-            .range(prefix.clone()..)
-            .take_while(|(path, _)| path.starts_with(&prefix))
-            .map(|(path, _)| path.clone())
-            .collect();
-        for path in removed {
-            entries.remove(&path);
-        }
-    } else {
-        entries.insert(entry.path().to_owned(), entry);
-    }
-    if entries.len() > 400_000 {
-        return Err(error::config("checkpoint overlay exceeds entry bound"));
-    }
-    Ok(())
 }

@@ -1,9 +1,10 @@
 //! A turn's save, published after its run resumed: register, seal, PUT,
 //! pages, then the commit that moves the turn's head.
 
-use super::super::{catalog::Catalog, tree::ChangeSource, uploads};
+use super::super::{Lineage, catalog::Catalog, tree::ChangeSource, uploads};
 use super::{NativeTurn, session::TurnSession};
 use crate::{Result, error};
+use af_core::id::Uuid7;
 use af_wire::{
     durable_task::CheckpointPage,
     run::{
@@ -42,10 +43,18 @@ impl NativeTurn<'_> {
             }
             snapshot.previous = Some(head.clone());
         }
-        let catalog = catalog(&snapshot, source, stop).await?;
+        // Replaced only by a commit: a failed save leaves the head, and the
+        // tree it resolves to, as they were.
+        let catalog = catalog(&snapshot, source, self.publication.lineage.as_ref(), stop).await?;
         let begin = intent(&snapshot, catalog.as_ref())?;
         let plan = self.command(begin.clone()).await?;
         plan.validate()?;
+        let next = catalog
+            .as_ref()
+            .map(|catalog| {
+                Ok::<_, crate::Error>(catalog.lineage(Uuid7::parse(&plan.checkpoint_id.0)?))
+            })
+            .transpose()?;
         let reference = TurnCheckpointRef {
             checkpoint_id: plan.checkpoint_id.clone(),
             pin_id: CheckpointOperationId(plan.pin.id.clone()),
@@ -53,6 +62,7 @@ impl NativeTurn<'_> {
         let result = async {
             if plan.scope != snapshot.scope
                 || plan.expected_head != begin.expected_head
+                || plan.parent != begin.parent
                 || plan.history_digest != begin.history_digest
                 || Some(plan.page_ids.len()) != usize::try_from(begin.page_count).ok()
             {
@@ -75,6 +85,9 @@ impl NativeTurn<'_> {
                     checkpoint: reference,
                 })
                 .await;
+        }
+        if result.is_ok() {
+            self.publication.lineage = next;
         }
         result
     }
@@ -190,12 +203,20 @@ impl TurnSession<'_, '_> {
 async fn catalog(
     snapshot: &TurnSnapshot,
     source: Option<&dyn ChangeSource>,
+    lineage: Option<&Lineage>,
     stop: &CancellationToken,
 ) -> Result<Option<Catalog>> {
     match (&snapshot.scope.workspace, source) {
         (TurnWorkspace::ApiOnly, None) => Ok(None),
         (TurnWorkspace::Files { .. }, Some(source)) => Ok(Some(
-            Catalog::read(Some(source), Zeroizing::new(Vec::new()), Vec::new(), stop).await?,
+            Catalog::read(
+                Some(source),
+                Zeroizing::new(Vec::new()),
+                (Vec::new(), lineage),
+                af_wire::run::TURN_CHECKPOINT_PAGE_BYTES,
+                stop,
+            )
+            .await?,
         )),
         _ => Err(error::config("ordinary root and actual workspace differ")),
     }
@@ -215,6 +236,9 @@ fn intent(snapshot: &TurnSnapshot, catalog: Option<&Catalog>) -> Result<TurnChec
             .previous
             .as_ref()
             .map(|saved| saved.checkpoint_id.clone()),
+        parent: catalog
+            .and_then(|catalog| catalog.parent.as_ref())
+            .map(|parent| CheckpointOperationId(parent.to_string())),
         format_version: af_wire::run::TURN_CHECKPOINT_FORMAT,
         workspace: snapshot.scope.workspace.clone(),
         history_digest: af_core::etag::sha256_hex(&snapshot.history),

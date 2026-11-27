@@ -38,10 +38,10 @@ use af_guest_wire::error::{self, Result};
 use af_guest_wire::protocol::{
     CountParams, Counted, HostsParams, KillParams, Leaf, LeafParams, METHOD_COUNT,
     METHOD_DELETE_FILE, METHOD_FREEZE, METHOD_HOSTS, METHOD_KILL, METHOD_LIST_DIR,
-    METHOD_READ_FILE, METHOD_RECOVERY_IDLE, METHOD_RENEW, METHOD_SEARCH, METHOD_SPAWN, METHOD_THAW,
-    METHOD_WRITE, METHOD_WRITE_FILE, PathParams, ReadParams, ReadResult, RecoveryParams,
-    RecoveryProof, RenewParams, RenewedWorkspace, SpawnParams, WriteFileParams, WriteParams,
-    decoded, request,
+    METHOD_PIN_RELEASE, METHOD_READ_FILE, METHOD_RECOVERY_IDLE, METHOD_RENEW, METHOD_SEARCH,
+    METHOD_SPAWN, METHOD_THAW, METHOD_WRITE, METHOD_WRITE_FILE, PathParams, PinReleaseParams,
+    PinWalked, ReadParams, ReadResult, RecoveryParams, RecoveryProof, RenewParams,
+    RenewedWorkspace, SpawnParams, WriteFileParams, WriteParams, decoded, request,
 };
 use af_guest_wire::{FileContent, Found, Imported, Listing, Search};
 
@@ -308,6 +308,22 @@ impl GuestAgent for Client {
         into: &mut (dyn AsyncWrite + Send + Unpin),
     ) -> Result<()> {
         self.export_tree(paths, into).await
+    }
+
+    async fn pin_walk(
+        &self,
+        parent: Option<&str>,
+        into: &mut (dyn AsyncWrite + Send + Unpin),
+    ) -> Result<PinWalked> {
+        self.walk_pin(parent, into).await
+    }
+
+    async fn pin_release(&self, pin: u64, generation: Option<&str>) -> Result<()> {
+        let params = PinReleaseParams {
+            pin,
+            generation: generation.map(str::to_owned),
+        };
+        self.order(METHOD_PIN_RELEASE, &params).await
     }
 
     async fn renew(&self) -> Result<()> {

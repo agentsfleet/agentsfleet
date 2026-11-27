@@ -45,6 +45,8 @@ afd_bus.workspace = true
 af_egress.workspace = true
 # Shared boundary validation for private checkpoint storage configuration.
 af_validate.workspace = true
+# The delta chain a commit resolves, the same overlay the runner's restore applies.
+af_chunk_store.workspace = true
 afd_vault.workspace = true
 # Native publication owns guarded HTTP, bounded workflow parsing and Git blobs.
 reqwest.workspace = true

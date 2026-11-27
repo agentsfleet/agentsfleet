@@ -1,7 +1,7 @@
 //! One connection's calls: decoded, routed, answered.
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use bytes::Bytes;
 use futures_util::StreamExt as _;
@@ -28,6 +28,7 @@ use af_guest_wire::protocol::{
     METHOD_RENEW, METHOD_SEARCH, METHOD_SPAWN, METHOD_THAW, METHOD_WRITE, METHOD_WRITE_FILE,
     PathParams, ReadParams, SpawnParams, SpawnResult, WriteFileParams, WriteParams,
 };
+use af_guest_wire::tree::Pins;
 
 /// A line that is not JSON-RPC at all.
 const DETAIL_UNREADABLE: &str = "the message is not a JSON-RPC request";
@@ -76,6 +77,8 @@ pub(super) struct Session {
     /// Trees crossing in chunks, by the number the client names them by.
     transfers: HashMap<u64, Transfer>,
     next_transfer: u64,
+    /// Each save pin's identities; a new connection holds none.
+    pins: Arc<Mutex<Pins>>,
     /// The read clamp and the frame cap its starter chose.
     sizes: Sizes,
 }
@@ -104,6 +107,7 @@ impl Session {
             next_process: 0,
             transfers: HashMap::new(),
             next_transfer: 0,
+            pins: Arc::default(),
             sizes,
         }
     }

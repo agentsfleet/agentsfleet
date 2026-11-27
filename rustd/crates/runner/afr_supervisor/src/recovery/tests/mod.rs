@@ -63,6 +63,8 @@ fn task() -> DurableTaskContext<'static> {
 fn plan() -> CheckpointPlan {
     let deadline = clock::after(clock::now(), Duration::from_mins(15));
     CheckpointPlan {
+        parent: None,
+        chain: Vec::new(),
         checkpoint_id: ID.to_owned(),
         generation: 1,
         base_id: None,

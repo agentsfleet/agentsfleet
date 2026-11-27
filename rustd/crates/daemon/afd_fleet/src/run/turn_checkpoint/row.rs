@@ -21,6 +21,8 @@ pub(super) struct Plan {
     /// The cipher this plan's new objects and its root are sealed under, as recorded.
     pub cipher: String,
     pub expected_head_id: Option<Uuid7>,
+    /// The generation this plan's pages are a delta against; none for a full manifest.
+    pub parent_id: Option<Uuid7>,
     pub has_workspace: bool,
     pub toolbox_digest: Option<String>,
     pub page_ids: Vec<Uuid7>,
@@ -66,6 +68,10 @@ impl Plan {
             scope: self.scope(owner),
             expected_head: self
                 .expected_head_id
+                .as_ref()
+                .map(|id| CheckpointOperationId(id.as_str().to_owned())),
+            parent: self
+                .parent_id
                 .as_ref()
                 .map(|id| CheckpointOperationId(id.as_str().to_owned())),
             page_ids: self

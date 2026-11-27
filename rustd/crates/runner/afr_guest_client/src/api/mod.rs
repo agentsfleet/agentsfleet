@@ -9,6 +9,7 @@ use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::events::Events;
 use af_guest_wire::error::{Result, file_calls_unsupported, no_inner_environment, no_tenant_leaf};
+use af_guest_wire::protocol::PinWalked;
 use af_guest_wire::{Ending, FileContent, Found, Imported, Listing, Search, Sizes, Stream};
 
 /// A process the guest agent started, unique for the life of one guest agent.
@@ -305,6 +306,30 @@ pub trait GuestAgent: Send + Sync + fmt::Debug {
         _paths: &[&str],
         _into: &mut (dyn AsyncWrite + Send + Unpin),
     ) -> Result<()> {
+        Err(file_calls_unsupported())
+    }
+
+    /// Walks the workspace under a save's pause and writes into `into`, as a
+    /// tar stream, every entry whose identity changed since the pin that
+    /// published `parent`; the whole workspace when it holds no identities
+    /// for `parent`. The answer says which, and what is gone.
+    ///
+    /// # Errors
+    /// The walk or the stream failed; the guest agent keeps no pin.
+    async fn pin_walk(
+        &self,
+        _parent: Option<&str>,
+        _into: &mut (dyn AsyncWrite + Send + Unpin),
+    ) -> Result<PinWalked> {
+        Err(file_calls_unsupported())
+    }
+
+    /// Ends `pin`. With `generation`, the daemon committed it, and its
+    /// identities are what the next walk against `generation` reads against.
+    ///
+    /// # Errors
+    /// The guest agent holds no such pin.
+    async fn pin_release(&self, _pin: u64, _generation: Option<&str>) -> Result<()> {
         Err(file_calls_unsupported())
     }
 

@@ -48,6 +48,7 @@ pub(super) fn checkpoint(
     let root = TurnPrivateRoot { history: private };
     let page_digest = sha256_hex(&serde_json::to_vec(page)?);
     Ok(TurnCheckpointSaved {
+        chain: Vec::new(),
         descriptor: TurnResume {
             checkpoint_id: CheckpointOperationId(ID.to_owned()),
             generation: 1,

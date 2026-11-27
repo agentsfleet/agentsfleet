@@ -99,6 +99,9 @@ serde_json.workspace = true
 # The bench hands each cipher a plaintext buffer that wipes itself.
 zeroize.workspace = true
 sqlx.workspace = true
+# The pause bench opens its workspace as the guest agent does, through a
+# directory handle.
+cap-std.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = [
     "rt-multi-thread",

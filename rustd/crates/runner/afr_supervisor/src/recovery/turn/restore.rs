@@ -52,6 +52,7 @@ impl NativeTurn<'_> {
                 )?;
                 session
                     .restore_files(
+                        &saved.chain,
                         &saved.page_ids,
                         &saved.descriptor.manifest_root,
                         (staged.path().to_owned(), Staged::owner()),

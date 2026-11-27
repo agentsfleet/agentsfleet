@@ -155,6 +155,7 @@ async fn restore(
     }
     session
         .restore_files(
+            &[],
             &[CheckpointOperationId(PAGE.to_owned())],
             &manifest,
             (

@@ -143,6 +143,7 @@ impl Run<'_> {
                 mode: CheckpointMode::Incremental,
                 base: state.base.as_ref(),
                 stop: &self.interrupt,
+                lineage: None,
             }
             .run(
                 Some(&Tree::new(staged.path().to_owned(), self.interrupt.clone())),
@@ -191,6 +192,7 @@ impl Run<'_> {
                 mode: CheckpointMode::Incremental,
                 base: None,
                 stop: &self.interrupt,
+                lineage: None,
             }
             .run(None, recovery.history.clone(), Vec::new())
             .await?;

@@ -5,13 +5,13 @@ use super::super::capture_tests::{Checked, Remote, snapshot};
 use super::super::scope;
 use crate::recovery::NativeTurn;
 use crate::run_loop::pin::{Pinned as PinSource, Pinning, pin_sandbox, release};
-use crate::staging::{ExportPin, ExportVolume, Staging};
+use crate::staging::{Staging, WalkPin, WalkVolume};
 use crate::test_support::FakeEngine;
 use crate::{error, test_support};
 use af_chunk_store::Change;
 use af_core::id::Uuid7;
 use af_wire::run::{TurnCheckpointAction as Action, TurnCheckpointCommand, TurnResume};
-use afr_engine::{Paused, Resumed, Sandbox, WorkspaceVolume};
+use afr_engine::{Paused, PausedWork, Resumed, Sandbox, WorkspaceVolume};
 use futures_util::stream::BoxStream;
 use std::sync::{Arc, Mutex, PoisonError};
 use tokio::sync::mpsc;
@@ -40,7 +40,7 @@ impl Log {
 /// The workspace's own volume, each step it takes recorded in `log`, with the
 /// sandbox's quiesce drained in ahead of the pause it precedes.
 pub(super) struct Recording<'a> {
-    inner: ExportVolume<'a>,
+    inner: WalkVolume<'a>,
     log: Log,
     steps: Mutex<mpsc::UnboundedReceiver<&'static str>>,
 }
@@ -55,7 +55,7 @@ impl<'a> Recording<'a> {
         stop: &CancellationToken,
     ) -> Self {
         Self {
-            inner: ExportVolume::new(sandbox, staging, stop.clone()),
+            inner: WalkVolume::new(sandbox, staging, stop.clone()),
             log: log.clone(),
             steps: Mutex::new(steps),
         }
@@ -71,7 +71,7 @@ impl<'a> Recording<'a> {
 
 #[async_trait::async_trait]
 impl WorkspaceVolume for Recording<'_> {
-    type Pin = ExportPin;
+    type Pin = WalkPin;
 
     async fn pause(&self) -> afr_engine::Result<()> {
         self.drain_sandbox();
@@ -79,7 +79,7 @@ impl WorkspaceVolume for Recording<'_> {
         self.inner.pause().await
     }
 
-    async fn pin(&self, paused: &Paused, parent: Option<&Uuid7>) -> afr_engine::Result<ExportPin> {
+    async fn pin(&self, paused: &Paused, parent: Option<&Uuid7>) -> afr_engine::Result<WalkPin> {
         let pin = self.inner.pin(paused, parent).await;
         self.log.push("pin");
         pin
@@ -92,13 +92,25 @@ impl WorkspaceVolume for Recording<'_> {
 
     fn changes<'a>(
         &'a self,
-        pin: &'a Resumed<ExportPin>,
+        pin: &'a Resumed<WalkPin>,
     ) -> BoxStream<'a, afr_engine::Result<Change>> {
         self.inner.changes(pin)
     }
 
-    async fn release(&self, pin: Resumed<ExportPin>, committed: bool) -> afr_engine::Result<()> {
-        self.log.push(if committed {
+    fn paused_work(&self, pin: &Resumed<WalkPin>) -> PausedWork {
+        self.inner.paused_work(pin)
+    }
+
+    fn parent<'a>(&self, pin: &'a Resumed<WalkPin>) -> Option<&'a Uuid7> {
+        self.inner.parent(pin)
+    }
+
+    async fn release(
+        &self,
+        pin: Resumed<WalkPin>,
+        committed: Option<&Uuid7>,
+    ) -> afr_engine::Result<()> {
+        self.log.push(if committed.is_some() {
             "release"
         } else {
             "release uncommitted"
@@ -178,7 +190,7 @@ pub(super) async fn pinned(
     sandbox: &dyn Sandbox,
     volume: &Recording<'_>,
     parent: Option<&Uuid7>,
-) -> Checked<Resumed<ExportPin>> {
+) -> Checked<Resumed<WalkPin>> {
     match pin_sandbox(sandbox, volume, parent).await? {
         Pinning::Pinned(pin) => Ok(pin),
         Pinning::Skipped(reason) => Err(format!("the save skipped as {reason:?}").into()),
@@ -192,13 +204,26 @@ pub(super) async fn save(
     volume: &Recording<'_>,
     stop: &CancellationToken,
 ) -> Checked<crate::Result<TurnResume>> {
-    let parent = native
-        .head()
-        .map(|head| Uuid7::parse(&head.checkpoint_id.0))
-        .transpose()?;
-    let pin = pinned(sandbox, volume, parent.as_ref()).await?;
+    let parent = native.parent().cloned();
+    save_against(native, sandbox, volume, parent.as_ref(), stop).await
+}
+
+/// As [`save`], its pin read against `parent`; none reads the whole
+/// workspace, as a guest agent that lost its identities does.
+pub(super) async fn save_against(
+    native: &mut NativeTurn<'_>,
+    sandbox: &dyn Sandbox,
+    volume: &Recording<'_>,
+    parent: Option<&Uuid7>,
+    stop: &CancellationToken,
+) -> Checked<crate::Result<TurnResume>> {
+    let pin = pinned(sandbox, volume, parent).await?;
     let source = PinSource { volume, pin: &pin };
     let saved = native.capture(snapshot(scope()), Some(&source), stop).await;
-    release(volume, pin, saved.is_ok()).await;
+    let committed = match &saved {
+        Ok(head) => Some(Uuid7::parse(&head.checkpoint_id.0)?),
+        Err(_) => None,
+    };
+    release(volume, pin, committed.as_ref()).await;
     Ok(saved)
 }

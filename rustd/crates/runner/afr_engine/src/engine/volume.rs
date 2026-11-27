@@ -39,6 +39,16 @@ impl<P> Resumed<P> {
     }
 }
 
+/// What a pause did to take one pin: the work that grows with the workspace
+/// and the work that grows only with what changed.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PausedWork {
+    /// The entries whose identity the pin read.
+    pub entries: u64,
+    /// The bytes of what changed that the pin copied.
+    pub changed_bytes: u64,
+}
+
 /// A workspace a save reads in two steps: what changed is fixed under a pause,
 /// and read only after the pause ends.
 #[async_trait::async_trait]
@@ -68,17 +78,25 @@ pub trait WorkspaceVolume: Send + Sync {
     async fn resume(&self) -> Result<()>;
 
     /// What `pin` fixed: each changed entry, each followed by its changed
-    /// chunks. Read as often as a publication needs; every read yields the
-    /// same changes.
+    /// chunks, and a removal for each path `parent` held that is gone. Read
+    /// as often as a publication needs; every read yields the same changes.
     fn changes<'a>(&'a self, pin: &'a Resumed<Self::Pin>) -> BoxStream<'a, Result<Change>>;
 
-    /// Ends `pin`. `committed` says the daemon answered the commit of the
-    /// generation it fed, so the next pin's parent is that generation;
-    /// otherwise the next pin reads against the one before.
+    /// What the pause did to take `pin`.
+    fn paused_work(&self, pin: &Resumed<Self::Pin>) -> PausedWork;
+
+    /// The generation `pin`'s changes are the difference from: the `parent`
+    /// it was taken against, or none when its changes are the whole
+    /// workspace, as a pin with no record of `parent` reads it.
+    fn parent<'a>(&self, pin: &'a Resumed<Self::Pin>) -> Option<&'a Uuid7>;
+
+    /// Ends `pin`. `committed` names the generation the daemon answered the
+    /// commit of, so the next pin against it reads only what changed since
+    /// this one; none keeps the last committed pin's record.
     ///
     /// # Errors
     /// What the pin held could not be removed.
-    async fn release(&self, pin: Resumed<Self::Pin>, committed: bool) -> Result<()>;
+    async fn release(&self, pin: Resumed<Self::Pin>, committed: Option<&Uuid7>) -> Result<()>;
 }
 
 /// Pauses tenant code, pins `volume` against `parent` and resumes it, whether

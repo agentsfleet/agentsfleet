@@ -27,6 +27,7 @@ async fn capture_deduplicates_content_and_commits_only_the_acknowledged_boundary
         mode: CheckpointMode::Incremental,
         base: None,
         stop: &stop,
+        lineage: None,
     }
     .run(
         Some(&crate::recovery::Tree::new(
@@ -64,6 +65,7 @@ async fn cancelled_capture_allocates_nothing_and_never_announces_saved() -> crat
         mode: CheckpointMode::Incremental,
         base: None,
         stop: &stop,
+        lineage: None,
     }
     .run(None, Zeroizing::new(Vec::new()), vec![])
     .await
@@ -95,6 +97,7 @@ async fn retained_base_replay_does_not_register_or_republish_objects() -> crate:
         mode: CheckpointMode::RetainBase,
         base: None,
         stop: &CancellationToken::new(),
+        lineage: None,
     }
     .run(None, Zeroizing::new(Vec::new()), vec![])
     .await?;
@@ -140,6 +143,7 @@ async fn incompatible_plan_and_live_writer_refuse_before_publication() -> crate:
             mode: CheckpointMode::Incremental,
             base: None,
             stop: &CancellationToken::new(),
+            lineage: None,
         }
         .run(None, Zeroizing::new(b"private history".to_vec()), vec![])
         .await
@@ -197,6 +201,7 @@ async fn page_and_commit_acknowledgements_cannot_change_the_saved_boundary() -> 
             mode: CheckpointMode::Incremental,
             base: None,
             stop: &CancellationToken::new(),
+            lineage: None,
         }
         .run(None, Zeroizing::new(Vec::new()), vec![])
         .await

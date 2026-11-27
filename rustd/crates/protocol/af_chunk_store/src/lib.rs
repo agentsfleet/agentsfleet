@@ -6,10 +6,12 @@
 //! registered before one byte of it is used. [`seal`] is the other half, so the
 //! key and nonce handling a save and a restore share lives in one place.
 
+mod chain;
 mod change;
 mod error;
 mod sealed;
 
+pub use self::chain::{MAX_ENTRIES, Resolved};
 pub use self::change::{Change, ChunkKey};
 pub use self::error::{Error, Result};
 pub use self::sealed::{MAX_OBJECT_BYTES, cipher, open, seal, stored_length};

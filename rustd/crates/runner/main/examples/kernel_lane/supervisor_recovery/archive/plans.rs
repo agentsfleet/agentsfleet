@@ -21,6 +21,8 @@ impl Archive {
         let plan = CheckpointPlan {
             checkpoint_id: id.clone(),
             generation: u64::try_from(self.plans.len())? + 1,
+            parent: None,
+            chain: Vec::new(),
             base_id: if input.mode == CheckpointMode::RetainBase {
                 Some(id.clone())
             } else {

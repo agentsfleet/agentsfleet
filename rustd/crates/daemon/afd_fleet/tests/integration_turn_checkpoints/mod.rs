@@ -3,6 +3,7 @@
 mod allocation;
 mod answers;
 mod authority;
+mod chains;
 mod commits;
 mod custody;
 mod expiry;
@@ -98,6 +99,7 @@ impl Case {
             operation_id: CheckpointOperationId(afd_db::test_util::mint_id().as_str().to_owned()),
             action: TurnCheckpointAction::Begin(TurnCheckpointBegin {
                 expected_head: None,
+                parent: None,
                 format_version: 1,
                 workspace: TurnWorkspace::ApiOnly,
                 history_digest: "a".repeat(64),

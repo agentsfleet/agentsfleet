@@ -61,6 +61,7 @@ fn api_only_cannot_discard_the_files_declared_by_a_capture() -> crate::Result<()
 fn begin() -> TurnCheckpointBegin {
     TurnCheckpointBegin {
         expected_head: None,
+        parent: None,
         format_version: TURN_CHECKPOINT_FORMAT,
         workspace: TurnWorkspace::ApiOnly,
         history_digest: "a".repeat(64),

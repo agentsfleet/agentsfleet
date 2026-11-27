@@ -6,4 +6,4 @@ WHERE p.turn_id=$1 AND (
 AND NOT EXISTS (SELECT 1 FROM runner.checkpoint_pins pin WHERE pin.checkpoint_id=p.id
     AND pin.released_at IS NULL AND pin.expires_at>statement_timestamp()
     AND pin.operation_expires_at>statement_timestamp())
-ORDER BY p.generation LIMIT $2 FOR UPDATE OF p
+ORDER BY p.generation DESC LIMIT $2 FOR UPDATE OF p

@@ -1,8 +1,8 @@
 //! Where a sandbox's files wait on the host on their way in or out.
 //!
-//! A repository is checked out here before it is imported, a workspace is
-//! exported here before a checkpoint reads it, and a checkpoint is restored
-//! here before it is imported.
+//! A repository is checked out here before it is imported, what a save's pin
+//! copied out of a workspace waits here before a checkpoint reads it, and a
+//! checkpoint is restored here before it is imported.
 //!
 //! ```text
 //!   <home>/staging/<sandbox>-<random>/      one step's tree: 0700, the runner's,
@@ -13,7 +13,7 @@
 //! ```
 //!
 //! The workspace itself stays the engine's: files cross only through the
-//! guest agent's `import` and `export`, and both ends check the stream with the
+//! guest agent's `import`, `export` and pin walk, and both ends check the stream with the
 //! same [`af_guest_wire::tree`] functions. A tree crosses through an anonymous
 //! spool beside the stage, never inside it, so no spool is packed or
 //! unpacked over.
@@ -25,6 +25,7 @@ use std::path::{Path, PathBuf};
 
 use af_core::id::Uuid7;
 use af_guest_wire::Imported;
+use af_guest_wire::protocol::PinWalked;
 use afr_guest_client::GuestAgent;
 use cap_std::ambient_authority;
 use cap_std::fs::Dir;
@@ -35,7 +36,7 @@ use crate::error::{self, Result};
 mod bounded;
 mod volume;
 
-pub(crate) use self::volume::{ExportPin, ExportVolume, FREEZE_TENANT};
+pub(crate) use self::volume::{FREEZE_TENANT, WalkPin, WalkVolume};
 
 /// Only the runner reads or writes a stage: a tenant's files pass through it.
 const STAGE_MODE: u32 = 0o700;
@@ -235,11 +236,7 @@ impl Staged {
 ///
 /// # Errors
 /// The guest agent would not export, or the stream outgrew `disk_bytes`.
-pub(crate) async fn spool_export(
-    agent: &dyn GuestAgent,
-    disk_bytes: u64,
-    spool: File,
-) -> Result<File> {
+async fn spool_export(agent: &dyn GuestAgent, disk_bytes: u64, spool: File) -> Result<File> {
     let mut stream = Bounded::new(tokio::fs::File::from_std(spool), disk_bytes);
     let exported = agent.export(&[WHOLE], &mut stream).await;
     if stream.outgrown() {
@@ -247,6 +244,26 @@ pub(crate) async fn spool_export(
     }
     exported.map_err(|source| error::boundary(DETAIL_EXPORT, source))?;
     Ok(stream.into_spool().into_std().await)
+}
+
+/// Walks the workspace `agent` serves for a save's pin against `parent`,
+/// copying what changed into `spool`, held to `disk_bytes` as
+/// [`Staged::export`] says.
+///
+/// # Errors
+/// The guest agent would not walk, or the stream outgrew `disk_bytes`.
+pub(crate) async fn spool_pin(
+    agent: &dyn GuestAgent,
+    parent: Option<&str>,
+    disk_bytes: u64,
+    spool: File,
+) -> Result<PinWalked> {
+    let mut stream = Bounded::new(tokio::fs::File::from_std(spool), disk_bytes);
+    let walked = agent.pin_walk(parent, &mut stream).await;
+    if stream.outgrown() {
+        return Err(error::capture_limit(DETAIL_OUTGROWN));
+    }
+    walked.map_err(|source| error::boundary(DETAIL_EXPORT, source))
 }
 
 #[cfg(test)]

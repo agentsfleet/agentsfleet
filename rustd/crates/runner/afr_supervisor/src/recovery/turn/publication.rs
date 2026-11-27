@@ -1,6 +1,7 @@
 //! Keep the exact uncertain commit until a matching receipt or abandonment settles it.
 
 use super::NativeTurn;
+use crate::recovery::Lineage;
 use crate::{Result, client::TurnCommand, error};
 use af_wire::run::{TurnCheckpointAbandon, TurnCheckpointCommit, TurnCheckpointRef, TurnResume};
 
@@ -8,6 +9,8 @@ use af_wire::run::{TurnCheckpointAbandon, TurnCheckpointCommit, TurnCheckpointRe
 pub(super) struct Publication {
     pub(super) head: Option<TurnResume>,
     pub(super) pending: Option<Pending>,
+    /// The tree `head` resolves to, when this run's own save committed it.
+    pub(super) lineage: Option<Lineage>,
 }
 
 #[derive(Debug)]

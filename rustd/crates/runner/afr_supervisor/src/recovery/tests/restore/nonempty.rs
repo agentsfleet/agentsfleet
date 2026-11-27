@@ -56,6 +56,8 @@ fn material(object: &mut CheckpointObject, byte: u8) {
 fn plan(object: &CheckpointObject) -> CheckpointPlan {
     let expires = af_core::clock::after(af_core::clock::now(), std::time::Duration::from_mins(10));
     CheckpointPlan {
+        parent: None,
+        chain: Vec::new(),
         checkpoint_id: ID.to_owned(),
         generation: 1,
         base_id: None,

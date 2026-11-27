@@ -28,16 +28,6 @@ struct Receipt {
     request_digest: String,
 }
 
-#[derive(sqlx::FromRow)]
-struct Base {
-    id: Uuid7,
-    page_ids: Vec<Uuid7>,
-    manifest_root: Option<String>,
-    logical_bytes: i64,
-    entry_count: i32,
-    ready: bool,
-}
-
 pub(in crate::durable_task) async fn create(
     tasks: &DurableTasks,
     run: DurableTaskRun<'_>,
@@ -92,6 +82,7 @@ pub(in crate::durable_task) async fn create(
     if input.mode == CheckpointMode::RetainBase && input.base_id.is_some() {
         return Err(DurableTaskRefusal::CheckpointIncompatible.into());
     }
+    parent(&mut tx, input, &owned, &task).await?;
     super::lock_storage(&mut tx, &owned.current.workspace_id).await?;
     sqlx::query(include_str!("sql/abandon_capture.sql"))
         .bind(&task)
@@ -126,12 +117,48 @@ pub(in crate::durable_task) async fn create(
     Ok(response)
 }
 
+/// A delta is applied over the task's current checkpoint, over the same
+/// retained base, and over nothing else; a retained base is always full.
+async fn parent(
+    connection: &mut PgConnection,
+    input: &CheckpointPlanInput,
+    owned: &execution::Owned,
+    task: &Uuid7,
+) -> Result<()> {
+    let Some(parent) = &input.parent else {
+        return Ok(());
+    };
+    if input.mode != CheckpointMode::Incremental
+        || owned.snapshot.context.checkpoint_id.as_deref() != Some(parent.as_str())
+    {
+        return Err(DurableTaskRefusal::CheckpointIncompatible.into());
+    }
+    let base: Option<Uuid7> = sqlx::query_scalar(include_str!("sql/parent_base.sql"))
+        .bind(durable_task_guard::wire(parent)?)
+        .bind(task)
+        .bind(CheckpointMode::Incremental.as_str())
+        .fetch_optional(connection)
+        .await
+        .map_err(query("read the retained base a delta's parent overlays"))?
+        .ok_or(DurableTaskRefusal::CheckpointIncompatible)?;
+    let named = input
+        .base_id
+        .as_deref()
+        .map(durable_task_guard::wire)
+        .transpose()?;
+    if base != named {
+        return Err(DurableTaskRefusal::CheckpointIncompatible.into());
+    }
+    Ok(())
+}
+
 fn request_digest(input: &CheckpointPlanInput) -> Result<String> {
     Ok(af_core::etag::sha256_hex(
         &serde_json::to_vec(&(
             &input.durable_task,
             &input.operation_id,
             input.mode,
+            &input.parent,
             &input.base_id,
             &input.commit_oid,
             input.format_version,
@@ -165,7 +192,7 @@ async fn allocate(
     let mut pages = std::iter::repeat_with(|| tasks.runs.entropy().uuid7(clock::now()))
         .take(page_count)
         .collect::<std::result::Result<Vec<_>, _>>()?;
-    let base = base(
+    let base = super::base::select(
         tasks,
         connection,
         input,
@@ -222,6 +249,13 @@ async fn allocate(
         .bind(ready_base.and_then(|base| base.manifest_root.as_deref()))
         .bind(scope)
         .bind(<&str>::from(guard::storage(tasks)?.keys().cipher()))
+        .bind(
+            input
+                .parent
+                .as_deref()
+                .map(durable_task_guard::wire)
+                .transpose()?,
+        )
         .execute(&mut *connection)
         .await
         .map_err(query("persist native checkpoint plan"))?;
@@ -263,103 +297,4 @@ async fn target(
         format!("github:{}", target.repository_id),
         commit.map(str::to_owned),
     ))
-}
-
-async fn base(
-    tasks: &DurableTasks,
-    connection: &mut PgConnection,
-    input: &CheckpointPlanInput,
-    workspace: &Uuid7,
-    repository: &str,
-    commit: Option<&str>,
-    pages: &mut Vec<Uuid7>,
-) -> Result<Option<Base>> {
-    if let Some(base) = &input.base_id {
-        // The retained base can precede publication; the checkpoint stores the
-        // current head separately and report/checkpoint.sql validates that head.
-        let base: Base = sqlx::query_as(include_str!("sql/base_selected.sql"))
-            .bind(crate::durable_task::guard::wire(base)?)
-            .bind(workspace)
-            .bind(repository)
-            .bind(sql_small_counter(
-                input.format_version,
-                "checkpoint format_version",
-            )?)
-            .bind(&input.toolbox_digest)
-            .fetch_optional(connection)
-            .await
-            .map_err(query("prove exact retained repository base"))?
-            .ok_or(DurableTaskRefusal::CheckpointIncompatible)?;
-        if input.mode != CheckpointMode::Incremental || !base.ready {
-            return Err(DurableTaskRefusal::CheckpointIncompatible.into());
-        }
-        return Ok(Some(base));
-    }
-    if commit.is_none() {
-        if input.mode != CheckpointMode::Incremental {
-            return Err(DurableTaskRefusal::CheckpointIncompatible.into());
-        }
-        return Ok(None);
-    }
-    if input.mode != CheckpointMode::RetainBase {
-        return Err(DurableTaskRefusal::CheckpointIncompatible.into());
-    }
-    let existing: Option<Base> = sqlx::query_as(include_str!("sql/base_existing.sql"))
-        .bind(workspace)
-        .bind(repository)
-        .bind(commit)
-        .bind(sql_small_counter(
-            input.format_version,
-            "checkpoint format_version",
-        )?)
-        .bind(&input.toolbox_digest)
-        .fetch_optional(&mut *connection)
-        .await
-        .map_err(query("read reusable exact repository base"))?;
-    if let Some(base) = existing {
-        if !base.ready {
-            return Err(DurableTaskRefusal::StorageUnavailable.into());
-        }
-        // Checkout metadata may differ despite an identical Git commit. Reuse
-        // the immutable base dimensions; the next overlay describes this tree.
-        pages.clone_from(&base.page_ids);
-        return Ok(Some(base));
-    }
-    let id = tasks.runs.entropy().uuid7(clock::now())?;
-    sqlx::query(include_str!("sql/base_insert.sql"))
-        .bind(&id)
-        .bind(workspace)
-        .bind(repository)
-        .bind(commit)
-        .bind(sql_small_counter(
-            input.format_version,
-            "checkpoint format_version",
-        )?)
-        .bind(&input.toolbox_digest)
-        .bind(&*pages)
-        .bind(sql_counter(
-            input.logical_bytes,
-            "checkpoint logical_bytes",
-        )?)
-        .bind(sql_small_counter(
-            input.entry_count,
-            "checkpoint entry_count",
-        )?)
-        .execute(&mut *connection)
-        .await
-        .map_err(query("allocate retained base identity"))?;
-    sqlx::query(include_str!("sql/base_pages_allocate.sql"))
-        .bind(&id)
-        .bind(&*pages)
-        .execute(connection)
-        .await
-        .map_err(query("allocate immutable base page identities"))?;
-    Ok(Some(Base {
-        id: id.clone(),
-        page_ids: pages.clone(),
-        manifest_root: None,
-        logical_bytes: sql_counter(input.logical_bytes, "checkpoint logical_bytes")?,
-        entry_count: sql_small_counter(input.entry_count, "checkpoint entry_count")?,
-        ready: false,
-    }))
 }

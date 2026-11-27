@@ -128,7 +128,7 @@ async fn read_pages(
         )
         .await
         .expect("scoped manifest read");
-    assert!(page.entries.is_empty());
+    assert_eq!(page.entries, []);
     assert_eq!(page.history_objects.len(), 0);
     let objects = tasks
         .checkpoint_objects(case.run(), &id(&plan.checkpoint_id), &query)

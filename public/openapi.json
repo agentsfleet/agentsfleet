@@ -19738,7 +19738,7 @@
           },
           {
             "type": "object",
-            "description": "Explicit removal from the verified base.",
+            "description": "Explicit removal from the verified base, or from the parent a delta\nmanifest is applied over.",
             "required": [
               "path",
               "kind"
@@ -19780,6 +19780,33 @@
             "minimum": 0
           }
         }
+      },
+      "CheckpointLink": {
+        "type": "object",
+        "description": "One generation of a delta chain, as a restore reads it: its ordered pages\nand the root they hash to.",
+        "required": [
+          "checkpoint_id",
+          "page_ids",
+          "manifest_root"
+        ],
+        "properties": {
+          "checkpoint_id": {
+            "type": "string",
+            "description": "The generation."
+          },
+          "manifest_root": {
+            "type": "string",
+            "description": "The canonical ordered page-root digest its commit recorded."
+          },
+          "page_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Its ordered pages."
+          }
+        },
+        "additionalProperties": false
       },
       "CheckpointMode": {
         "type": "string",
@@ -20093,6 +20120,7 @@
         "required": [
           "checkpoint_id",
           "generation",
+          "chain",
           "mode",
           "repository",
           "format_version",
@@ -20133,6 +20161,13 @@
               "type": "string"
             },
             "description": "Verified retained base pages, read through the same scoped page resource."
+          },
+          "chain": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CheckpointLink"
+            },
+            "description": "Every generation the delta resolves through, its full manifest first\nand `parent` last; empty for a full manifest."
           },
           "checkpoint_id": {
             "type": "string",
@@ -20191,6 +20226,13 @@
               "type": "string"
             },
             "description": "Complete ordered pages; never an unbounded inline manifest."
+          },
+          "parent": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The generation this plan's pages are a delta against; absent for a\nfull manifest."
           },
           "pin": {
             "$ref": "#/components/schemas/CheckpointPin",
@@ -20281,6 +20323,13 @@
             "format": "int32",
             "description": "Ordered page identities to allocate.",
             "minimum": 0
+          },
+          "parent": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The generation this plan's pages are a delta against: the task's\ncurrent checkpoint. Absent for a full manifest."
           },
           "toolbox_digest": {
             "type": "string",

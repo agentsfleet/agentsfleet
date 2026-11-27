@@ -75,6 +75,8 @@ pub(super) fn deadline() -> jiff::Timestamp {
 pub(super) fn plan(input: &CheckpointPlanInput) -> CheckpointPlan {
     let deadline = deadline();
     CheckpointPlan {
+        parent: None,
+        chain: Vec::new(),
         checkpoint_id: CHECKPOINT.to_owned(),
         generation: 1,
         base_id: None,

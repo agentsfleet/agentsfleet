@@ -229,6 +229,7 @@ impl Ledger {
         self.allocated += 1;
         let deadline = clock::after(clock::now(), Duration::from_mins(15));
         let plan = TurnCheckpointPlan {
+            parent: begin.parent.clone(),
             checkpoint_id: CheckpointOperationId(format!(
                 "019f0000-0000-7000-8000-{:012}",
                 self.allocated + 10

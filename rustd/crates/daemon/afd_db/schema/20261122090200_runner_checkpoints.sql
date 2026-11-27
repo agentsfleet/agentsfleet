@@ -23,6 +23,9 @@ CREATE TABLE runner.checkpoints (
     entry_count INTEGER NOT NULL CHECK (entry_count >= 0),
     manifest_root TEXT,
     history_digest TEXT,
+    -- The generation this one's pages are a delta against, of the same owner; NULL for a full
+    -- manifest. No cascade: Postgres refuses to delete an ancestor a remaining delta names.
+    parent_checkpoint_id UUID,
     -- Turn only: the head this plan expected, the folded inputs it covers, and its history
     -- root sealed under the workspace's checkpoint key with its own random nonce.
     expected_head_checkpoint_id UUID,
@@ -49,6 +52,8 @@ CREATE TABLE runner.checkpoints (
         REFERENCES fleet.durable_tasks (id, fleet_id, workspace_id) ON DELETE CASCADE,
     CONSTRAINT fk_checkpoints_base FOREIGN KEY (checkpoint_base_id, workspace_id, repository)
         REFERENCES runner.checkpoint_bases (id, workspace_id, repository),
+    CONSTRAINT fk_checkpoints_parent FOREIGN KEY (parent_checkpoint_id, workspace_id)
+        REFERENCES runner.checkpoints (id, workspace_id),
     CONSTRAINT uq_checkpoints_id_turn_id UNIQUE (id, turn_id),
     CONSTRAINT uq_checkpoints_durable_task_scope UNIQUE (id, durable_task_id, fleet_id, workspace_id),
     CONSTRAINT uq_checkpoints_id_workspace_id UNIQUE (id, workspace_id),
@@ -79,6 +84,7 @@ CREATE UNIQUE INDEX uq_checkpoints_durable_task_id_pending ON runner.checkpoints
 
 CREATE INDEX idx_checkpoints_workspace_id_id ON runner.checkpoints (workspace_id, id);
 CREATE INDEX idx_checkpoints_fleet_id ON runner.checkpoints (fleet_id);
+CREATE INDEX idx_checkpoints_parent_checkpoint_id ON runner.checkpoints (parent_checkpoint_id) WHERE parent_checkpoint_id IS NOT NULL;
 CREATE INDEX idx_checkpoints_checkpoint_base_id ON runner.checkpoints (checkpoint_base_id) WHERE checkpoint_base_id IS NOT NULL;
 CREATE INDEX idx_checkpoints_turn_id_generation_ready ON runner.checkpoints (turn_id, generation) WHERE ready_at IS NOT NULL;
 CREATE INDEX idx_checkpoints_expires_at_id_unready ON runner.checkpoints (expires_at, id) WHERE ready_at IS NULL;

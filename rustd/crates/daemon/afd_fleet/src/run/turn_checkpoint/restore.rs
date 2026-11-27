@@ -12,7 +12,8 @@ use super::{
     row::Plan,
     transaction,
 };
-use crate::{Result, run::Runs};
+use crate::{Result, durable_task::checkpoint, run::Runs};
+use af_wire::durable_task::CheckpointLink;
 
 pub(super) async fn read(
     store: &TurnCheckpoints,
@@ -33,6 +34,7 @@ pub(super) async fn read(
     let covered = plan.folds()?;
     root::validate(&bytes, &plan.scope(&owner), &covered, None)?;
     folds::validate(&mut owner, &covered, None).await?;
+    let chain = chain(&mut owner, &plan).await?;
     let pin = pins::reader(runs, &mut owner, &plan.id, &guard::id(operation)?).await?;
     let response = TurnCheckpointResponse::Read(Box::new(TurnCheckpointSaved {
         descriptor: descriptor.clone(),
@@ -42,12 +44,26 @@ pub(super) async fn read(
             .iter()
             .map(|id| CheckpointOperationId(id.as_str().to_owned()))
             .collect(),
+        chain,
         root: bytes,
         folds: covered,
     }));
     owner.commit().await?;
     transaction::recycle(connection);
     Ok(response)
+}
+
+/// The generations `plan`'s pages are a delta through, full first.
+pub(super) async fn chain(
+    owner: &mut TurnRunGuard<'_>,
+    plan: &Plan,
+) -> Result<Vec<CheckpointLink>> {
+    if plan.parent_id.is_none() {
+        return Ok(Vec::new());
+    }
+    checkpoint::chain::links(&mut owner.tx, &plan.id)
+        .await?
+        .ok_or_else(|| TurnCheckpointRefusal::Incompatible.into())
 }
 
 pub(super) async fn adopt(

@@ -21,7 +21,7 @@ use super::{
 use crate::{
     Result, error,
     recovery::{Capture, ChangeSource},
-    staging::{ExportPin, ExportVolume},
+    staging::{WalkPin, WalkVolume},
 };
 
 /// How a boundary's pause ended.
@@ -37,7 +37,7 @@ pub(super) struct Publish<'a> {
     /// The runner's file capacity, held until the publication ends.
     _reservation: Option<FileRecoveryPermit>,
     state: RecoveryState,
-    files: Option<(ExportVolume<'a>, Resumed<ExportPin>)>,
+    files: Option<(WalkVolume<'a>, Resumed<WalkPin>)>,
     toolbox: String,
     recovery: Option<&'a State>,
 }
@@ -91,7 +91,7 @@ impl<'a> BoundaryOwner<'a, '_> {
         let Workspace::Building { recovery, .. } = self.workspace else {
             return Ok(skipped(RecoverySkip::Unavailable));
         };
-        let volume = ExportVolume::new(sandbox, &self.run.lessee.staging, self.stop.clone());
+        let volume = WalkVolume::new(sandbox, &self.run.lessee.staging, self.stop.clone());
         let parent = self.parent(&snapshot.state)?;
         let pinning = pin_sandbox(sandbox, &volume, parent.as_ref()).await?;
         let pin = match pinning {
@@ -108,14 +108,24 @@ impl<'a> BoundaryOwner<'a, '_> {
         })))
     }
 
-    /// The generation the owner's last save committed: what the pin reads
-    /// against.
+    /// The generation the owner's last save committed, when this run holds
+    /// the tree it resolves to: what the pin reads only the changes since.
+    /// None reads the whole workspace.
     fn parent(&self, state: &RecoveryState) -> Result<Option<Uuid7>> {
-        let committed = match state {
-            RecoveryState::DurableTask(task) => task.task.checkpoint_id.as_deref(),
-            RecoveryState::Turn(_) => self.turn.head().map(|head| head.checkpoint_id.0.as_str()),
-        };
-        Ok(committed.map(Uuid7::parse).transpose()?)
+        match state {
+            RecoveryState::DurableTask(task) => {
+                let Some(committed) = task.task.checkpoint_id.as_deref() else {
+                    return Ok(None);
+                };
+                let committed = Uuid7::parse(committed)?;
+                Ok(self
+                    .lineage
+                    .as_ref()
+                    .filter(|lineage| *lineage.head() == committed)
+                    .map(|lineage| lineage.head().clone()))
+            }
+            RecoveryState::Turn(_) => Ok(self.turn.parent().cloned()),
+        }
     }
 
     /// The whole save at once, pin then publication, as a test drives it.
@@ -161,7 +171,7 @@ impl<'a> BoundaryOwner<'a, '_> {
         let saved = self
             .publish_state(state, Some(&source), &toolbox, recovery)
             .await;
-        release(&volume, pin, saved.is_ok()).await;
+        release(&volume, pin, committed(&saved).as_ref()).await;
         saved
     }
 
@@ -219,7 +229,7 @@ impl<'a> BoundaryOwner<'a, '_> {
     }
 
     async fn publish_durable_task(
-        &self,
+        &mut self,
         task: DurableTaskRecovery,
         source: Option<&dyn ChangeSource>,
         toolbox: &str,
@@ -238,24 +248,31 @@ impl<'a> BoundaryOwner<'a, '_> {
             mode: CheckpointMode::Incremental,
             base: state.and_then(|state| state.base.as_ref()),
             stop: &self.stop,
+            lineage: self.lineage.as_ref(),
         }
-        .run(
+        .run_over(
             source,
             task.history,
             state.map_or_else(Vec::new, |state| state.base_paths.clone()),
         )
         .await;
         match captured {
-            Ok(plan) => Ok(RecoverySave::Committed(Box::new(RecoveryReceipt {
-                run_id: self.run.ids.run.to_string(),
-                turn_id: self.run.payload.event.turn_id.to_string(),
-                fencing_token: self.run.payload.fencing_token,
-                checkpoint: CommittedRecovery::DurableTask {
-                    checkpoint_id: plan.checkpoint_id,
-                    generation: plan.generation,
-                    history_digest: digest,
-                },
-            }))),
+            Ok((plan, lineage)) => {
+                // A save that only reused its base leaves the tree as it was.
+                if lineage.is_some() {
+                    self.lineage = lineage;
+                }
+                Ok(RecoverySave::Committed(Box::new(RecoveryReceipt {
+                    run_id: self.run.ids.run.to_string(),
+                    turn_id: self.run.payload.event.turn_id.to_string(),
+                    fencing_token: self.run.payload.fencing_token,
+                    checkpoint: CommittedRecovery::DurableTask {
+                        checkpoint_id: plan.checkpoint_id,
+                        generation: plan.generation,
+                        history_digest: digest,
+                    },
+                })))
+            }
             Err(failure) => skip_durable_task(failure),
         }
     }
@@ -288,6 +305,19 @@ fn skip_durable_task(failure: crate::Error) -> Result<RecoverySave> {
         return Ok(RecoverySave::Skipped(RecoverySkip::Unavailable));
     }
     Err(failure)
+}
+
+/// The generation a save committed, which its pin is released as; none for
+/// a save that skipped or failed.
+fn committed(saved: &Result<RecoverySave>) -> Option<Uuid7> {
+    let Ok(RecoverySave::Committed(receipt)) = saved else {
+        return None;
+    };
+    let id = match &receipt.checkpoint {
+        CommittedRecovery::Turn(descriptor) => descriptor.checkpoint_id.0.as_str(),
+        CommittedRecovery::DurableTask { checkpoint_id, .. } => checkpoint_id.as_str(),
+    };
+    Uuid7::parse(id).ok()
 }
 
 const fn skipped(reason: RecoverySkip) -> Pinned<'static> {

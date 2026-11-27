@@ -9,6 +9,7 @@
 use std::path::PathBuf;
 
 use af_chunk_store::{Change, ChunkKey};
+use af_core::id::Uuid7;
 use af_wire::durable_task::{CheckpointEntry, CheckpointFile};
 use futures_util::{StreamExt as _, stream::BoxStream};
 use tokio::{sync::mpsc, task::JoinHandle};
@@ -22,6 +23,12 @@ use crate::{Result, error};
 pub(crate) trait ChangeSource: Send + Sync {
     /// Every change, from the first.
     fn changes(&self) -> BoxStream<'_, Result<Change>>;
+
+    /// The generation the changes are the difference from; none when they
+    /// are the whole tree.
+    fn parent(&self) -> Option<&Uuid7> {
+        None
+    }
 }
 
 /// A tree already on the host, read whole each time.

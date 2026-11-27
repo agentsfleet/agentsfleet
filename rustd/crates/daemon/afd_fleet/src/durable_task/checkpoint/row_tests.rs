@@ -33,6 +33,8 @@ fn plan(mode: &str, page_count: i32, page_ids: Vec<Uuid7>) -> Plan {
         mode: mode.to_owned(),
         repository: "github:101".to_owned(),
         base_id: None,
+        parent_id: None,
+        chain: Vec::new(),
         format_version: 1,
         cipher: "aes_256_gcm".to_owned(),
         toolbox_digest: "3".repeat(64),

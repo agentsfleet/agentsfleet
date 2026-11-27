@@ -95,12 +95,12 @@ impl Restore<'_> {
             .manifest_root
             .clone()
             .ok_or_else(|| error::config("retained base is incomplete"))?;
-        let mut entries = BTreeMap::new();
+        let mut entries = af_chunk_store::Resolved::default();
         let history = session.pages(&ids, &expected, &mut entries, &mut 0).await?;
         if !history.is_empty() {
             return Err(error::config("retained base manifest is incompatible"));
         }
-        Ok(entries.into_keys().collect())
+        Ok(entries.into_entries().into_keys().collect())
     }
 
     /// Restores into `destination`, then runs `install` (what moves the

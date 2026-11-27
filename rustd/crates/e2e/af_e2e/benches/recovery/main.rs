@@ -1,5 +1,6 @@
 //! Owned-rig API-only recovery burst through the production daemon and separate runner processes,
-//! after the cost of sealing and opening a chunk and a full checkpoint under each cipher.
+//! after the cost of sealing and opening a chunk and a full checkpoint under each cipher; or, as
+//! `BENCH_SHAPE=large-workspace`, a save's pause over a large workspace with a small change.
 
 use af_core::env::{EnvSource as _, ProcessEnv};
 use clap::Parser;
@@ -24,11 +25,16 @@ mod e2e_seed_keys;
 mod measure;
 #[path = "../../tests/recovery_process/model.rs"]
 mod model;
+mod pause;
 #[path = "../../tests/recovery_process/worker.rs"]
 mod process;
 #[path = "../../tests/recovery_process/population.rs"]
 mod seed;
 mod worker;
+
+/// The `BENCH_SHAPE` that times a save's pause over a large workspace with a
+/// small change.
+const PAUSE_SHAPE: &str = "large-workspace";
 
 type Checked<T = ()> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
@@ -55,6 +61,11 @@ async fn main() -> Checked {
     cipher::report()?;
     if args.cipher_only {
         return Ok(());
+    }
+    // The large-workspace, small-change shape times the pause alone, which
+    // needs no rig.
+    if ProcessEnv.get("BENCH_SHAPE").as_deref() == Some(PAUSE_SHAPE) {
+        return pause::report();
     }
     if ProcessEnv.get("BENCH_PROFILE").as_deref() != Some("rig")
         || ProcessEnv.get("BENCH_TARGET_OWNED").as_deref() != Some("owned")

@@ -46,6 +46,13 @@ pub struct CheckpointPlanInput {
     /// Initial retained source or an incremental logical state.
     #[garde(skip)]
     pub mode: CheckpointMode,
+    /// The generation this plan's pages are a delta against: the task's
+    /// current checkpoint. Absent for a full manifest.
+    #[garde(inner(
+        length(bytes, min = 36, max = 36),
+        pattern(r"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+    ))]
+    pub parent: Option<String>,
     /// An already verified base; omitted for repository-free tasks.
     #[garde(inner(
         length(bytes, min = 36, max = 36),
@@ -110,6 +117,12 @@ pub struct CheckpointPlan {
     pub checkpoint_id: String,
     /// Checkpoint ordering, distinct from the task generation.
     pub generation: u64,
+    /// The generation this plan's pages are a delta against; absent for a
+    /// full manifest.
+    pub parent: Option<String>,
+    /// Every generation the delta resolves through, its full manifest first
+    /// and `parent` last; empty for a full manifest.
+    pub chain: Vec<CheckpointLink>,
     /// Retained base identity when present.
     pub base_id: Option<String>,
     /// Base or incremental state.
@@ -143,6 +156,29 @@ pub struct CheckpointPlan {
     pub pin: CheckpointPin,
     /// Immutable plan replay.
     pub replayed: bool,
+}
+
+/// One generation of a delta chain, as a restore reads it: its ordered pages
+/// and the root they hash to.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct CheckpointLink {
+    /// The generation.
+    #[garde(
+        length(bytes, min = 36, max = 36),
+        pattern(r"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+    )]
+    pub checkpoint_id: String,
+    /// Its ordered pages.
+    #[garde(inner(
+        length(bytes, min = 36, max = 36),
+        pattern(r"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+    ))]
+    pub page_ids: Vec<String>,
+    /// The canonical ordered page-root digest its commit recorded.
+    #[garde(custom(super::digest))]
+    pub manifest_root: String,
 }
 
 /// Versioned reader/writer renewal.

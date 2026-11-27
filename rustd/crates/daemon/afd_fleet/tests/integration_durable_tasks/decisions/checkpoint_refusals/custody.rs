@@ -325,7 +325,7 @@ async fn restore_reads(
         .checkpoint_page(case.run(), &checkpoint, &id(&page_id), &query)
         .await
         .expect("a frozen page reads back");
-    assert!(frozen.entries.is_empty());
+    assert_eq!(frozen.entries, []);
     let original = Stored::read(case, Pages::Base, &page_id).await;
     let mut altered = original.clone();
     altered.digest = "f".repeat(64);

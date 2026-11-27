@@ -22,6 +22,7 @@ async fn a_busy_durable_task_object_returns_the_nonfatal_unavailable_class_witho
         mode: CheckpointMode::Incremental,
         base: None,
         stop: &CancellationToken::new(),
+        lineage: None,
     }
     .run(
         None,

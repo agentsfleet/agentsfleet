@@ -103,6 +103,9 @@ pub(super) struct BoundaryOwner<'a, 'run> {
     pub(super) stop: CancellationToken,
     jobs: mpsc::Receiver<Job>,
     pub(super) turn: crate::recovery::NativeTurn<'a>,
+    /// The tree the task's checkpoint resolves to, when this run's own save
+    /// committed it; a turn's lives with its head in `turn`.
+    pub(super) lineage: Option<crate::recovery::Lineage>,
 }
 
 impl<'a, 'run> BoundaryOwner<'a, 'run> {
@@ -126,6 +129,7 @@ impl<'a, 'run> BoundaryOwner<'a, 'run> {
                 workspace,
                 stop: run.interrupt.child_token(),
                 jobs,
+                lineage: None,
             },
         )
     }

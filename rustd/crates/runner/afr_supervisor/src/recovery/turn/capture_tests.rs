@@ -207,6 +207,7 @@ impl Remote {
             begin.page_count
         };
         let plan = TurnCheckpointPlan {
+            parent: begin.parent.clone(),
             checkpoint_id: CheckpointOperationId(format!(
                 "019f0000-0000-7000-8000-{:012}",
                 generation + 20

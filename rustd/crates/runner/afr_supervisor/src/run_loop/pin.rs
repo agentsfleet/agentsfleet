@@ -6,16 +6,20 @@
 //! ```
 //!
 //! A live tenant process no longer skips the save: the pause freezes it
-//! (`ExportVolume`). A call still in flight does, before any freeze or pin.
+//! (`WalkVolume`). A call still in flight does, before any freeze or pin.
 
 use af_chunk_store::Change;
 use af_core::id::Uuid7;
 use afr_agent::RecoverySkip;
-use afr_engine::{Resumed, Sandbox, WorkspaceVolume};
+use afr_engine::{PausedWork, Resumed, Sandbox, WorkspaceVolume};
 use futures_util::{StreamExt as _, TryStreamExt as _, stream::BoxStream};
 
 use crate::staging::FREEZE_TENANT;
 use crate::{Result, error, recovery::ChangeSource};
+
+/// The stage a file walk pins at: the workspace read as files, each changed
+/// one copied under the pause.
+const STAGE: u8 = 1;
 
 /// How a boundary's pause ended.
 pub(crate) enum Pinning<P> {
@@ -58,7 +62,18 @@ pub(crate) async fn pin_sandbox<V: WorkspaceVolume>(
         Ok(pin) => {
             let engine: &str = sandbox.environment().engine.into();
             let paused_ms = u64::try_from(paused.elapsed().as_millis()).unwrap_or(u64::MAX);
-            tracing::info!(event = "checkpoint_paused", engine, paused_ms);
+            let PausedWork {
+                entries,
+                changed_bytes,
+            } = volume.paused_work(&pin);
+            tracing::info!(
+                event = "checkpoint_paused",
+                engine,
+                stage = STAGE,
+                entries,
+                changed_bytes,
+                paused_ms
+            );
             Ok(Pinning::Pinned(pin))
         }
         Err(failure) if failure.unsupported_operation() == Some(FREEZE_TENANT) => {
@@ -74,8 +89,13 @@ pub(crate) async fn pin_sandbox<V: WorkspaceVolume>(
     }
 }
 
-/// Releases `pin`, as committed only once its publication answered.
-pub(crate) async fn release<V: WorkspaceVolume>(volume: &V, pin: Resumed<V::Pin>, committed: bool) {
+/// Releases `pin`, naming the generation its publication committed, once
+/// the daemon answered that commit.
+pub(crate) async fn release<V: WorkspaceVolume>(
+    volume: &V,
+    pin: Resumed<V::Pin>,
+    committed: Option<&Uuid7>,
+) {
     if let Err(failure) = volume.release(pin, committed).await {
         let error_code = failure.code();
         tracing::warn!(event = "checkpoint_pin_release_failed", %error_code);
@@ -104,6 +124,10 @@ impl<V: WorkspaceVolume> ChangeSource for Pinned<'_, V> {
             .changes(self.pin)
             .map_err(|source| error::boundary("a pin's changes could not be read", source))
             .boxed()
+    }
+
+    fn parent(&self) -> Option<&Uuid7> {
+        self.volume.parent(self.pin)
     }
 }
 

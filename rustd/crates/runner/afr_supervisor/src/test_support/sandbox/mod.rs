@@ -151,6 +151,8 @@ pub(crate) struct FakeEngine {
     /// Whether its guest agents have a tenant leaf to freeze, each freeze and
     /// thaw reported as a step; without one they refuse both.
     pub(crate) freezes: bool,
+    /// Its guest agents' pin record, shared so a suite can commit a pin unpacked.
+    pub(crate) pins: Arc<std::sync::Mutex<af_guest_wire::tree::Pins>>,
 }
 
 impl FakeEngine {
@@ -263,6 +265,7 @@ impl Engine for FakeEngine {
                 served: AtomicBool::default(),
                 freezes: self.freezes,
                 steps: self.steps.clone(),
+                pins: Arc::clone(&self.pins),
             },
         }))
     }

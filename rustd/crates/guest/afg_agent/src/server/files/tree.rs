@@ -11,13 +11,15 @@ use std::io;
 use std::os::unix::fs::FileExt as _;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
+use std::sync::{Mutex, PoisonError};
 
 use cap_tempfile::TempFile;
 
 use super::Workspace;
 use af_guest_wire::Imported;
 use af_guest_wire::error::Result;
-use af_guest_wire::tree;
+use af_guest_wire::protocol::transfer_chunk_bytes;
+use af_guest_wire::tree::{self, PinWalk, Pins};
 
 impl Workspace {
     /// A fresh spool on the workspace disk that no name reaches.
@@ -60,8 +62,47 @@ impl Workspace {
             .iter()
             .map(|path| self.inside(path.as_ref()).map(Path::to_owned))
             .collect::<Result<Vec<_>>>()?;
-        let dir = self.dir.try_clone()?;
         let (sender, chunks) = sync_channel(1);
+        self.pack_into(inside, chunk_bytes, sender)?;
+        Ok(chunks)
+    }
+
+    /// Walks the workspace for a pin against `parent`, recording its
+    /// identities in `pins`, and starts packing what changed into `sender`
+    /// as [`Workspace::export`] packs. The answer it gives travels in a frame
+    /// of `frame_bytes`.
+    ///
+    /// # Errors
+    /// The walk could not read the workspace; nothing is packed or kept.
+    pub(in crate::server) fn pin_walk(
+        &self,
+        pins: &Mutex<Pins>,
+        parent: Option<&str>,
+        frame_bytes: usize,
+        sender: SyncSender<Result<Vec<u8>>>,
+    ) -> Result<PinWalk> {
+        let walked = pins.lock().unwrap_or_else(PoisonError::into_inner).walk(
+            &self.dir,
+            parent,
+            frame_bytes,
+        )?;
+        self.pack_into(
+            walked.roots.clone(),
+            transfer_chunk_bytes(frame_bytes),
+            sender,
+        )?;
+        Ok(walked)
+    }
+
+    /// Packs `inside`, paths already held inside the workspace, on a thread
+    /// of its own into `sender`, at most `chunk_bytes` a chunk.
+    fn pack_into(
+        &self,
+        inside: Vec<PathBuf>,
+        chunk_bytes: usize,
+        sender: SyncSender<Result<Vec<u8>>>,
+    ) -> Result<()> {
+        let dir = self.dir.try_clone()?;
         std::thread::Builder::new()
             .name(EXPORT_THREAD.to_owned())
             .spawn(move || {
@@ -78,7 +119,7 @@ impl Workspace {
                     let _unread = writer.sender.send(Err(failure));
                 }
             })?;
-        Ok(chunks)
+        Ok(())
     }
 }
 

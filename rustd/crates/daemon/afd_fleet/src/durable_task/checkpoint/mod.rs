@@ -1,5 +1,7 @@
 //! Fenced plans, immutable object custody and bounded recovery on existing runs.
 
+mod base;
+pub(crate) mod chain;
 mod commit;
 mod custody;
 mod effective;

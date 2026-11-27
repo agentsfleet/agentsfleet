@@ -234,4 +234,6 @@ async fn write_lines(
 #[cfg(test)]
 mod host_tests;
 #[cfg(test)]
+mod pin_tests;
+#[cfg(test)]
 mod tests;

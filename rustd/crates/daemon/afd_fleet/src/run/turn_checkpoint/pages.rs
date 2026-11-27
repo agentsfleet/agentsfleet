@@ -8,7 +8,12 @@ use super::{
     row::Plan,
     transaction,
 };
-use crate::{Result, durable_task::checkpoint::StoredObject, error::query, run::Runs};
+use crate::{
+    Result,
+    durable_task::checkpoint::{self, StoredObject},
+    error::query,
+    run::Runs,
+};
 use af_core::id::Uuid7;
 use af_wire::{
     durable_task::{CheckpointEntry, CheckpointPage, CheckpointTransferPurpose},
@@ -110,7 +115,14 @@ pub(super) async fn read(
         CheckpointTransferPurpose::Restore,
     )
     .await?;
-    let page = selected(&mut custody.owner, &custody.plan, &guard::id(page_id)?).await?;
+    let id = guard::id(page_id)?;
+    let page = if custody.plan.page_ids.contains(&id) {
+        selected(&mut custody.owner, &custody.plan, &id).await?
+    } else {
+        // A restore reads the pages of every generation its delta is
+        // applied over under the one pin it holds.
+        chained(&mut custody.owner, &custody.plan, &id).await?
+    };
     let contents = decode(&page)?;
     custody.commit().await?;
     transaction::recycle(connection);
@@ -132,6 +144,18 @@ pub(super) async fn selected(
         .await
         .map_err(query("hold a scoped turn manifest page"))?
         .ok_or_else(|| TurnCheckpointRefusal::Incompatible.into())
+}
+
+/// Page `id` of a generation `plan`'s pages are a delta through.
+async fn chained(owner: &mut TurnRunGuard<'_>, plan: &Plan, id: &Uuid7) -> Result<Page> {
+    let page = checkpoint::chain::page(&mut owner.tx, &plan.id, id)
+        .await?
+        .ok_or(TurnCheckpointRefusal::Conflict)?;
+    Ok(Page {
+        ordinal: page.page_number,
+        digest: page.digest,
+        body: page.body,
+    })
 }
 
 fn saved_digest(body: &[u8]) -> String {
@@ -193,11 +217,12 @@ pub(super) async fn validate(
                     );
                 }
             }
-            CheckpointEntry::Remove { .. } => {
+            // A removal is applied over a parent; a full manifest has none.
+            CheckpointEntry::Remove { .. } if plan.parent_id.is_none() => {
                 return Err(TurnCheckpointRefusal::Incompatible.into());
             }
+            CheckpointEntry::Remove { .. } | CheckpointEntry::Directory { .. } => {}
             CheckpointEntry::Symlink { path, target } => link(path, target)?,
-            CheckpointEntry::Directory { .. } => {}
         }
     }
     let ids: Vec<_> = ids.into_iter().collect();

@@ -79,14 +79,14 @@ async fn accept(
     .await
 }
 
-fn readable(
-    owner: &TurnRunGuard<'_>,
+async fn readable(
+    owner: &mut TurnRunGuard<'_>,
     plan: &Plan,
     pin: &pins::Pin,
     root: &TurnPrivateRoot,
-    manifest: &str,
-    folds: &[FoldRef],
+    (manifest, folds): (&str, &[FoldRef]),
 ) -> Result<()> {
+    let chain = super::restore::chain(owner, plan).await?;
     let descriptor = af_wire::run::TurnResume {
         checkpoint_id: CheckpointOperationId(plan.id.as_str().to_owned()),
         generation: plan.generation,
@@ -106,6 +106,7 @@ fn readable(
             .iter()
             .map(|id| CheckpointOperationId(id.as_str().to_owned()))
             .collect(),
+        chain,
         root: root.clone(),
         folds: folds.to_vec(),
     }));
@@ -205,7 +206,7 @@ async fn pending(
     let fence = owner.current.fence;
     let ids = folds::validate(owner, body.folds, Some((&writer, fence))).await?;
     let sealed = root::seal(store, owner, plan, body.root).await?;
-    readable(owner, plan, pin, body.root, body.manifest, body.folds)?;
+    readable(owner, plan, pin, body.root, (body.manifest, body.folds)).await?;
     custody(owner, plan, pin).await?;
     write(owner, &plan.id, &sealed, body.manifest, (&ids, body.folds)).await?;
     swap(owner, plan).await?;

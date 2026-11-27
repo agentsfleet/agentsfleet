@@ -90,6 +90,7 @@ impl Run<'_> {
             mode: CheckpointMode::RetainBase,
             base: None,
             stop: &self.interrupt,
+            lineage: None,
         }
         .run(
             Some(&Tree::new(root, self.interrupt.clone())),

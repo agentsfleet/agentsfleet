@@ -135,6 +135,7 @@ pub(crate) fn run(arguments: &Arguments, lane: &Arc<Lane>) -> Conclusion {
         .iter()
         .chain(crate::microvm_pool::TRIALS)
         .chain(crate::pin_pause::TRIALS)
+        .chain(crate::pin_mapping::TRIALS)
         .chain(ENGINE_TRIALS)
         .chain(crate::egress::TRIALS)
         .chain(crate::supervisor_trials::TRIALS)

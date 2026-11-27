@@ -186,6 +186,7 @@ dependencies = [
  "async-trait",
  "axum",
  "boring",
+ "cap-std",
  "clap",
  "futures-util",
  "garde",
@@ -270,6 +271,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tar",
+ "tempfile",
  "thiserror 2.0.21",
  "tokio",
  "tokio-util",
@@ -899,6 +901,7 @@ dependencies = [
 name = "afd_fleet"
 version = "0.90.0"
 dependencies = [
+ "af_chunk_store",
  "af_context",
  "af_core",
  "af_crypto",

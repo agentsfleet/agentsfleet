@@ -35,6 +35,10 @@ pub struct TurnCheckpointBegin {
     /// Exact last acknowledged head; absence means no previous checkpoint.
     #[garde(dive)]
     pub expected_head: Option<CheckpointOperationId>,
+    /// The generation these pages are a delta against: `expected_head`, or
+    /// absent for a full manifest.
+    #[garde(dive)]
+    pub parent: Option<CheckpointOperationId>,
     /// Independent private root format.
     #[garde(range(min = TURN_CHECKPOINT_FORMAT, max = TURN_CHECKPOINT_FORMAT))]
     pub format_version: u32,

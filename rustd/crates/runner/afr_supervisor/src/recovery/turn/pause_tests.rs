@@ -2,7 +2,9 @@
 //! resume, a publication that fails or dies keeps the previous generation, and
 //! the pin's staging file goes with it.
 
-use self::fixture::{Log, Recording, owner, pin_files, pinned, recorded_plane, sandbox, save};
+use self::fixture::{
+    Log, Recording, owner, pin_files, pinned, recorded_plane, sandbox, save, save_against,
+};
 use super::capture_tests::{Checked, Remote, snapshot, workspace};
 use super::{Encrypted, ID, encrypted, scope};
 use crate::recovery::NativeTurn;
@@ -64,11 +66,12 @@ async fn a_publication_failing_after_resume_keeps_the_previous_generation() -> C
     let (run, transfers) = (Uuid7::parse(ID)?, server.transfers());
     let mut native = NativeTurn::new(&plane, &run, 1, &transfers);
     let previous = save(&mut native, sandbox.as_ref(), &volume, &stop).await??;
-    // Every chunk is new to the owner again, so the next save uploads all four.
+    // Every chunk is new to the owner again, and the next save reads the
+    // whole workspace, so it uploads all four.
     owner(&remote)?.uploaded = false;
     let logs = Capture::install();
 
-    let failed = save(&mut native, sandbox.as_ref(), &volume, &stop).await?;
+    let failed = save_against(&mut native, sandbox.as_ref(), &volume, None, &stop).await?;
 
     let failure = failed
         .err()
@@ -84,8 +87,8 @@ async fn a_publication_failing_after_resume_keeps_the_previous_generation() -> C
         "the head names the previous generation"
     );
     assert_eq!(
-        native.head(),
-        Some(&previous),
+        native.parent().map(ToString::to_string),
+        Some(previous.checkpoint_id.0.clone()),
         "the next pin reads against it"
     );
     assert_eq!(

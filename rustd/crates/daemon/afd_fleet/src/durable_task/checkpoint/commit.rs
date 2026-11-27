@@ -81,8 +81,11 @@ pub(in crate::durable_task) async fn publish(
         CheckpointTransferPurpose::Upload,
     )
     .await?;
+    // A delta publishes only over the generation it was planned against.
+    let parent = plan.parent_id.as_ref().map(Uuid7::as_str);
     if input.covered_input_sequence != owned.snapshot.context.covered_input_sequence
         || input.effect_watermark > owned.snapshot.context.confirmed_effect_watermark
+        || parent.is_some() && owned.snapshot.context.checkpoint_id.as_deref() != parent
     {
         return Err(DurableTaskRefusal::StaleState.into());
     }
@@ -210,6 +213,9 @@ async fn scan(connection: &mut PgConnection, plan: &Plan) -> Result<Manifest> {
         {
             return Err(DurableTaskRefusal::CheckpointIncompatible.into());
         }
+    }
+    if plan.parent_id.is_some() {
+        super::chain::pages(connection, &plan.id, |page| tree.ancestor(page)).await?;
     }
     let manifest = scan_pages(
         connection,

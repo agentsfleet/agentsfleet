@@ -1,27 +1,32 @@
-//! A sandbox's workspace as a save reads it today: pinned by a whole export
-//! through its guest agent into one staging file, read back after resume.
+//! A sandbox's workspace as a save reads it: pinned by a walk in its guest
+//! agent that copies only what changed into one staging file, read back
+//! after resume.
 //!
 //! The pause freezes the guest's tenant leaf through the guest agent, which
-//! sits outside it and serves the export while every tenant process, a
+//! sits outside it and walks the workspace while every tenant process, a
 //! detached one too, is held; the VM never stops. A guest agent with no leaf
 //! holds nothing, so its sandbox must prove no tenant process runs.
 //!
-//! The export is the only work under the pause. The pin's file is unpacked
-//! into a stage beside it on the first read of its changes, which runs after
-//! the run resumed, and both go when the pin is released or dropped. A walk
-//! that reads only what changed replaces the export without the publication
-//! that reads it changing.
+//! The walk is the only work under the pause: one identity read per entry,
+//! and a copy of each entry whose identity changed since the pin that
+//! published `parent`. The guest agent keeps those identities, so a walk with
+//! none for `parent` (a new connection, a new host) copies everything once.
+//! The pin's file is unpacked into a stage beside it on the first read of its
+//! changes, which runs after the run resumed, and both go when the pin is
+//! released or dropped.
 
 use af_chunk_store::Change;
 use af_core::id::Uuid7;
+use af_guest_wire::protocol::PinWalked;
+use af_wire::durable_task::CheckpointEntry;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use afr_engine::{Paused, Quiescence, Resumed, Sandbox, WorkspaceVolume};
+use afr_engine::{Paused, PausedWork, Quiescence, Resumed, Sandbox, WorkspaceVolume};
 use futures_util::{StreamExt as _, TryStreamExt as _, stream::BoxStream};
 use tokio::sync::OnceCell;
 use tokio_util::sync::CancellationToken;
 
-use super::{Staged, Staging, spool_export};
+use super::{Staged, Staging, spool_pin};
 use crate::recovery::{ChangeSource, Tree};
 
 /// What an engine with no tenant leaf cannot do while a tenant process
@@ -30,7 +35,7 @@ pub(crate) const FREEZE_TENANT: &str = "freeze a running tenant process";
 
 /// The workspace `sandbox` serves, pinned through files under `staging`.
 #[derive(Debug)]
-pub(crate) struct ExportVolume<'a> {
+pub(crate) struct WalkVolume<'a> {
     sandbox: &'a dyn Sandbox,
     staging: &'a Staging,
     stop: CancellationToken,
@@ -38,7 +43,7 @@ pub(crate) struct ExportVolume<'a> {
     frozen: AtomicBool,
 }
 
-impl<'a> ExportVolume<'a> {
+impl<'a> WalkVolume<'a> {
     /// `sandbox`'s workspace, staged under `staging`; a read of its changes
     /// fails once `stop` is cancelled.
     pub(crate) const fn new(
@@ -55,18 +60,22 @@ impl<'a> ExportVolume<'a> {
     }
 }
 
-/// One save's pinned bytes, and the stage they are read from after resume.
+/// One save's pinned bytes, what the walk found, and the stage they are read
+/// from after resume.
 #[derive(Debug)]
-pub(crate) struct ExportPin {
+pub(crate) struct WalkPin {
     file: tempfile::NamedTempFile,
     stage: OnceCell<(Staged, Tree)>,
     staging: Staging,
     sandbox: Uuid7,
     disk_bytes: u64,
     stop: CancellationToken,
+    /// The generation the changes are the difference from, when they are.
+    parent: Option<Uuid7>,
+    walked: PinWalked,
 }
 
-impl ExportPin {
+impl WalkPin {
     /// The pinned tree, unpacked from the pin's file on its first read.
     async fn tree(&self) -> crate::Result<&Tree> {
         let (_, tree) = self
@@ -80,11 +89,19 @@ impl ExportPin {
             .await?;
         Ok(tree)
     }
+
+    /// A removal for each path the parent held that is gone.
+    fn removed(&self) -> impl Iterator<Item = Change> + '_ {
+        self.walked
+            .removed
+            .iter()
+            .map(|path| Change::Entry(CheckpointEntry::Remove { path: path.clone() }))
+    }
 }
 
 #[async_trait::async_trait]
-impl WorkspaceVolume for ExportVolume<'_> {
-    type Pin = ExportPin;
+impl WorkspaceVolume for WalkVolume<'_> {
+    type Pin = WalkPin;
 
     /// Freezes the tenant leaf; the run's loop, which starts every call,
     /// waits on the save until it resumes. A guest agent with no leaf holds
@@ -114,27 +131,33 @@ impl WorkspaceVolume for ExportVolume<'_> {
         }
     }
 
-    /// Exports the whole workspace into the pin's file. The walk reads every
-    /// byte, so `parent` changes nothing it reads.
-    async fn pin(
-        &self,
-        _paused: &Paused,
-        _parent: Option<&Uuid7>,
-    ) -> afr_engine::Result<ExportPin> {
+    /// Walks the workspace in the guest agent and copies into the pin's file
+    /// what changed since `parent`, or everything when the guest agent holds
+    /// no identities for it.
+    async fn pin(&self, _paused: &Paused, parent: Option<&Uuid7>) -> afr_engine::Result<WalkPin> {
         let disk_bytes = self.sandbox.granted().limits().disk_bytes;
+        let label = parent.map(ToString::to_string);
         let pinned = async {
             let file = self.staging.pin_file(self.sandbox.id())?;
-            spool_export(self.sandbox.agent(), disk_bytes, file.reopen()?).await?;
-            Ok::<_, crate::Error>(file)
+            let walked = spool_pin(
+                self.sandbox.agent(),
+                label.as_deref(),
+                disk_bytes,
+                file.reopen()?,
+            )
+            .await?;
+            Ok::<_, crate::Error>((file, walked))
         };
-        let file = pinned.await.map_err(afr_engine::Error::engine)?;
-        Ok(ExportPin {
+        let (file, walked) = pinned.await.map_err(afr_engine::Error::engine)?;
+        Ok(WalkPin {
             file,
             stage: OnceCell::new(),
             staging: self.staging.clone(),
             sandbox: self.sandbox.id().clone(),
             disk_bytes,
             stop: self.stop.clone(),
+            parent: parent.filter(|_| walked.delta).cloned(),
+            walked,
         })
     }
 
@@ -148,21 +171,50 @@ impl WorkspaceVolume for ExportVolume<'_> {
 
     fn changes<'a>(
         &'a self,
-        pin: &'a Resumed<ExportPin>,
+        pin: &'a Resumed<WalkPin>,
     ) -> BoxStream<'a, afr_engine::Result<Change>> {
-        futures_util::stream::once(pin.pin().tree())
+        let pinned = pin.pin();
+        let removed = futures_util::stream::iter(pinned.removed().map(Ok));
+        let tree = futures_util::stream::once(pinned.tree())
             .map_ok(ChangeSource::changes)
-            .try_flatten()
+            .try_flatten();
+        removed
+            .chain(tree)
             .map_err(afr_engine::Error::engine)
             .boxed()
     }
 
-    async fn release(&self, pin: Resumed<ExportPin>, _committed: bool) -> afr_engine::Result<()> {
+    fn paused_work(&self, pin: &Resumed<WalkPin>) -> PausedWork {
+        let walked = &pin.pin().walked;
+        PausedWork {
+            entries: walked.entries,
+            changed_bytes: walked.changed_bytes,
+        }
+    }
+
+    fn parent<'a>(&self, pin: &'a Resumed<WalkPin>) -> Option<&'a Uuid7> {
+        pin.pin().parent.as_ref()
+    }
+
+    /// Tells the guest agent whether the pin's generation was committed,
+    /// then removes the pin's file and stage, whatever the guest agent said.
+    async fn release(
+        &self,
+        pin: Resumed<WalkPin>,
+        committed: Option<&Uuid7>,
+    ) -> afr_engine::Result<()> {
         let pin = pin.into_pin();
+        let generation = committed.map(ToString::to_string);
+        let released = self
+            .sandbox
+            .agent()
+            .pin_release(pin.walked.pin, generation.as_deref())
+            .await;
         drop(pin.stage);
         pin.file
             .close()
-            .map_err(|failure| afr_engine::Error::engine(crate::Error::from(failure)))
+            .map_err(|failure| afr_engine::Error::engine(crate::Error::from(failure)))?;
+        Ok(released?)
     }
 }
 

@@ -124,7 +124,7 @@ fn a_near_full_manifest_keeps_all_private_history_on_a_separate_bounded_page() -
     let history = pages
         .last()
         .ok_or_else(|| crate::error::config("history page missing"))?;
-    assert!(history.entries.is_empty());
+    assert_eq!(history.entries, []);
     assert_eq!(history.history_objects, vec![identity; 8]);
     let paths = pages
         .iter()

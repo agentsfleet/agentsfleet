@@ -7,6 +7,9 @@ use sqlx::Connection as _;
 
 const BATCH: i64 = 100;
 const PLANS_PER_OWNER: i64 = 64;
+/// The key a delta names its parent by; Postgres refuses to delete a parent
+/// a remaining delta names.
+const PARENT_KEY: &str = "fk_checkpoints_parent";
 
 #[derive(sqlx::FromRow)]
 struct Candidate {
@@ -96,6 +99,47 @@ async fn retain(runs: &Runs, event: &Uuid7, fleet: &Uuid7, workspace: &Uuid7) ->
     Ok(removed)
 }
 
+/// Deletes one expired, unpinned generation inside a savepoint, newest first:
+/// an ancestor a remaining delta names is refused by Postgres on
+/// `fk_checkpoints_parent`, and stays until that delta goes.
+async fn purge(
+    connection: &mut sqlx::PgConnection,
+    (event, plan): (&Uuid7, &Uuid7),
+    now: &jiff_sqlx::Timestamp,
+    retention: i32,
+) -> Result<u64> {
+    let mut savepoint = connection
+        .begin()
+        .await
+        .map_err(query("open one turn generation's purge"))?;
+    let deleted = sqlx::query(include_str!("sql/maintenance_delete.sql"))
+        .bind(event)
+        .bind(now)
+        .bind(retention)
+        .bind(plan)
+        .execute(&mut *savepoint)
+        .await;
+    match deleted {
+        Ok(done) => {
+            savepoint
+                .commit()
+                .await
+                .map_err(query("keep one turn generation's purge"))?;
+            Ok(done.rows_affected())
+        }
+        Err(failure) if afd_db::constraint::violates_foreign_key(&failure, PARENT_KEY) => {
+            savepoint
+                .rollback()
+                .await
+                .map_err(query("skip an ancestor a remaining delta names"))?;
+            Ok(0)
+        }
+        Err(failure) => Err(query("collect only expired unpinned turn generations")(
+            failure,
+        )),
+    }
+}
+
 /// Collects the turn's expired generations, then, once none is left and the
 /// turn settled past retention, its receipts a batch at a time. The head clears
 /// only when the scope holds no receipt, so the turn stays a candidate until
@@ -122,15 +166,10 @@ async fn collect(
         .fetch_one(&mut *connection)
         .await
         .map_err(query("read post-lock turn retention clock"))?;
-    let removed = sqlx::query(include_str!("sql/maintenance_delete.sql"))
-        .bind(event)
-        .bind(now)
-        .bind(retention)
-        .bind(&plans)
-        .execute(&mut *connection)
-        .await
-        .map_err(query("collect only expired unpinned turn generations"))?
-        .rows_affected();
+    let mut removed = 0;
+    for plan in &plans {
+        removed += purge(connection, (event, plan), &now, retention).await?;
+    }
     sqlx::query(include_str!("sql/maintenance_operations.sql"))
         .bind(scope)
         .bind(BATCH)

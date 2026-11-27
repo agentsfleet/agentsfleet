@@ -105,6 +105,7 @@ async fn commit_covering(files: &Files, fold: &FoldRef) -> Checked<Response> {
     let Response::Begun(plan) = files
         .execute(Action::Begin(TurnCheckpointBegin {
             expected_head: None,
+            parent: None,
             format_version: 1,
             workspace,
             history_digest: af_core::etag::sha256_hex(history.history.as_bytes()),

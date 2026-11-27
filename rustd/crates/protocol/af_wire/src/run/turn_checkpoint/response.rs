@@ -4,7 +4,7 @@ use super::{
     CheckpointOperationId, FoldRef, TURN_CHECKPOINT_FORMAT, TurnCheckpointKind, TurnPrivateRoot,
     TurnResume, TurnScope,
 };
-use crate::durable_task::{CheckpointObject, CheckpointPage, CheckpointPin};
+use crate::durable_task::{CheckpointLink, CheckpointObject, CheckpointPage, CheckpointPin};
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
@@ -27,6 +27,10 @@ pub struct TurnCheckpointPlan {
     /// Publication compares this exact head again.
     #[garde(dive)]
     pub expected_head: Option<CheckpointOperationId>,
+    /// The generation these pages are a delta against; absent for a full
+    /// manifest.
+    #[garde(dive)]
+    pub parent: Option<CheckpointOperationId>,
     /// Complete ordered pages, allocated before their first write.
     #[garde(dive)]
     pub page_ids: Vec<CheckpointOperationId>,
@@ -54,6 +58,11 @@ pub struct TurnCheckpointSaved {
     /// Ordered file pages; empty for explicit API-only state.
     #[garde(dive)]
     pub page_ids: Vec<CheckpointOperationId>,
+    /// Every generation this one's pages are a delta through, its full
+    /// manifest first; empty when its pages are a full manifest. Each link's
+    /// pages are read under this generation's pin.
+    #[garde(dive)]
+    pub chain: Vec<CheckpointLink>,
     /// Complete authenticated private root; debug output is redacted.
     #[garde(dive)]
     pub root: TurnPrivateRoot,

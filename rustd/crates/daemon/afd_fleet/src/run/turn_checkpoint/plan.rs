@@ -48,6 +48,11 @@ impl Runs {
             if head != begin.expected_head.as_ref().map(guard::id).transpose()? {
                 return Err(TurnCheckpointRefusal::Conflict.into());
             }
+            // A delta is applied over the head it was walked against, and
+            // over nothing else.
+            if begin.parent.is_some() && begin.parent != begin.expected_head {
+                return Err(TurnCheckpointRefusal::Incompatible.into());
+            }
             allocation::room(&mut owner, head.as_ref()).await?;
             let receipt = (&operation, digest.as_str());
             let id = allocation::create(self, &mut owner, begin, receipt, cipher).await?;
@@ -64,7 +69,8 @@ impl Runs {
 pub(super) fn shape(input: &TurnCheckpointBegin) -> Result<()> {
     let valid = match &input.workspace {
         TurnWorkspace::ApiOnly => {
-            input.page_count == 0
+            input.parent.is_none()
+                && input.page_count == 0
                 && input.logical_bytes == 0
                 && input.entry_count == 0
                 && input.upload_budget_bytes == 0

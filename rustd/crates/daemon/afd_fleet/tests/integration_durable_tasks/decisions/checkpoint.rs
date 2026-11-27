@@ -75,7 +75,8 @@ async fn capture(case: &Case) {
     assert_eq!(replay.checkpoint_id, committed.checkpoint_id);
     assert_eq!(replay.manifest_root, committed.manifest_root);
     report_head(case, &task, &committed, &head).await;
-    refusals(&tasks, case, request).await;
+    refusals(&tasks, case, request.clone()).await;
+    delta(&tasks, case, &task, request, &committed).await;
     fixture
         .model
         .finish()
@@ -115,6 +116,7 @@ pub(super) fn input(
         operation_id: mint_id().into(),
         durable_task: task.clone(),
         mode,
+        parent: None,
         base_id,
         commit_oid: Some(head.to_owned()),
         format_version: 1,
@@ -226,6 +228,18 @@ async fn refusals(tasks: &DurableTasks, case: &Case, request: CheckpointPlanInpu
             error_code::DURABLE_TASK_CHECKPOINT_INCOMPATIBLE
         );
     }
+    // A delta is planned only over the task's current checkpoint.
+    let mut invalid = request.clone();
+    invalid.operation_id = mint_id().into();
+    invalid.parent = Some(mint_id().into());
+    let failure = tasks
+        .plan_checkpoint(case.run(), &valid(invalid))
+        .await
+        .expect_err("a delta over another generation");
+    assert_eq!(
+        failure.code(),
+        error_code::DURABLE_TASK_CHECKPOINT_INCOMPATIBLE
+    );
     for commit in [None, Some("0".repeat(40))] {
         let mut invalid = request.clone();
         invalid.operation_id = mint_id().into();
@@ -251,4 +265,31 @@ async fn refusals(tasks: &DurableTasks, case: &Case, request: CheckpointPlanInpu
             .await
             .expect("checkpoint count");
     assert_eq!(count, 2, "refused plans and replay allocate nothing");
+}
+
+/// A delta over the task's checkpoint names it as its parent and its chain,
+/// and commits over it.
+async fn delta(
+    tasks: &DurableTasks,
+    case: &Case,
+    task: &DecisionDurableTaskVersion,
+    mut request: CheckpointPlanInput,
+    parent: &CheckpointPlan,
+) {
+    request.operation_id = mint_id().into();
+    request.parent = Some(parent.checkpoint_id.clone());
+    let plan = tasks
+        .plan_checkpoint(case.run(), &valid(request))
+        .await
+        .expect("a delta over the current checkpoint");
+    assert_eq!(plan.parent.as_ref(), Some(&parent.checkpoint_id));
+    let links: Vec<_> = plan.chain.iter().map(|link| &link.checkpoint_id).collect();
+    assert_eq!(links, [&parent.checkpoint_id]);
+    assert_eq!(
+        plan.chain.first().map(|link| &link.page_ids),
+        Some(&parent.page_ids)
+    );
+    let committed = complete(tasks, case, task, &plan).await;
+    assert_eq!(committed.parent, plan.parent);
+    assert_eq!(committed.chain, plan.chain);
 }

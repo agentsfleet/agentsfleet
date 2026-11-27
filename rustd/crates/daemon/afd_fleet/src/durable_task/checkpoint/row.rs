@@ -10,7 +10,7 @@ use crate::{
 };
 use af_core::id::Uuid7;
 use af_wire::durable_task::{
-    CheckpointMode, CheckpointPin, CheckpointPlan, CheckpointTransferPurpose,
+    CheckpointLink, CheckpointMode, CheckpointPin, CheckpointPlan, CheckpointTransferPurpose,
 };
 use sqlx::PgConnection;
 
@@ -26,6 +26,13 @@ pub(super) struct Plan {
     pub repository: String,
     #[sqlx(rename = "checkpoint_base_id")]
     pub base_id: Option<Uuid7>,
+    /// The generation this plan's pages are a delta against; none for a full manifest.
+    #[sqlx(rename = "parent_checkpoint_id")]
+    pub parent_id: Option<Uuid7>,
+    /// The generations its pages are a delta through, full first: read by
+    /// [`Plan::load`] for a plan with a parent.
+    #[sqlx(skip)]
+    pub chain: Vec<CheckpointLink>,
     pub format_version: i32,
     /// The cipher this plan's new objects are sealed under, as recorded.
     pub cipher: String,
@@ -58,13 +65,19 @@ impl Plan {
         id: &Uuid7,
         task: &Uuid7,
     ) -> Result<Self> {
-        sqlx::query_as(include_str!("sql/plan.sql"))
+        let mut plan: Self = sqlx::query_as(include_str!("sql/plan.sql"))
             .bind(id)
             .bind(task)
-            .fetch_optional(connection)
+            .fetch_optional(&mut *connection)
             .await
             .map_err(query("lock task checkpoint plan"))?
-            .ok_or_else(|| DurableTaskRefusal::NotFound.into())
+            .ok_or(DurableTaskRefusal::NotFound)?;
+        if plan.parent_id.is_some() {
+            plan.chain = super::chain::links(connection, &plan.id)
+                .await?
+                .ok_or(DurableTaskRefusal::CheckpointIncompatible)?;
+        }
+        Ok(plan)
     }
 
     pub(super) fn mode(&self) -> Result<CheckpointMode> {
@@ -106,6 +119,8 @@ impl Plan {
         Ok(CheckpointPlan {
             checkpoint_id: self.id.clone().into(),
             generation: counter(self.generation, "checkpoint generation")?,
+            parent: self.parent_id.clone().map(String::from),
+            chain: self.chain.clone(),
             base_id: self.base_id.clone().map(String::from),
             mode: self.mode()?,
             repository: self.repository.clone(),

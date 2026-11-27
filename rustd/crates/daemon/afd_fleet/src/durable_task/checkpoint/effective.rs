@@ -1,7 +1,7 @@
 //! Validate expanded base plus overlay, including links through other links.
 
 use crate::{Result, durable_task::DurableTaskRefusal};
-use af_wire::durable_task::CheckpointEntry;
+use af_wire::durable_task::{CheckpointEntry, CheckpointPage};
 use std::collections::{BTreeMap, BTreeSet};
 
 const MAX_LINKS: usize = 40;
@@ -71,6 +71,24 @@ impl Tree {
             return Err(DurableTaskRefusal::LimitExhausted.into());
         }
         Ok(())
+    }
+
+    /// Applies one stored page of a generation the plan's pages are a delta
+    /// through; each was checked whole when its generation committed, so only
+    /// its bytes are checked again.
+    pub(super) fn ancestor(&mut self, page: super::chain::ChainPage) -> Result<()> {
+        let body = page
+            .body
+            .ok_or(DurableTaskRefusal::CheckpointIncompatible)?;
+        if page.digest.as_deref() != Some(af_core::etag::sha256_hex(&body).as_str()) {
+            return Err(DurableTaskRefusal::CheckpointIncompatible.into());
+        }
+        let contents: CheckpointPage =
+            serde_json::from_slice(&body).map_err(af_core::json::Unreadable::from)?;
+        contents
+            .entries
+            .into_iter()
+            .try_for_each(|entry| self.apply(entry))
     }
 
     pub(super) fn verify(&self, expected_entries: u32, expected_bytes: u64) -> Result<()> {
