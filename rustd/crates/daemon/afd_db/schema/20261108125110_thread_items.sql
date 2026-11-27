@@ -27,6 +27,7 @@ CREATE TABLE thread.items (
     output_line_count    BIGINT  NOT NULL,
     truncated            BOOLEAN NOT NULL,
     changes              JSONB,
+    sources              JSONB,
     created_at           TIMESTAMPTZ(3)  NOT NULL,
     updated_at           TIMESTAMPTZ(3)  NOT NULL,
     -- An item outlives its run: the run's deletion leaves the item, naming no run.

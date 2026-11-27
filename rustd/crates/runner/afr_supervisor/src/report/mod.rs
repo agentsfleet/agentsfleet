@@ -1,6 +1,7 @@
 //! A run's terminal report, built from how its run ended.
 
 pub(crate) mod delivery;
+pub(crate) mod sources;
 
 use std::borrow::Cow;
 use std::time::Duration;

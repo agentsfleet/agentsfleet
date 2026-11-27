@@ -61,6 +61,7 @@ impl Error {
             | ErrorKind::GithubMintFailed
             | ErrorKind::ConnectorReconnectRequired
             | ErrorKind::ConnectorMintFailed
+            | ErrorKind::Web { .. }
             | ErrorKind::GrantRequired
             | ErrorKind::Memory { .. } => None,
         }

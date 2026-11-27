@@ -203,6 +203,9 @@ pub const LABEL_VIA: &str = "via";
 /// The native runner connection protocol, from its closed transport set.
 pub const LABEL_TRANSPORT: &str = "transport";
 
+/// Platform web vendor contacted for a search or extract.
+pub const LABEL_VENDOR: &str = "vendor";
+
 /// Which bounded native operation produced a measurement.
 pub const LABEL_OPERATION: &str = "operation";
 
@@ -253,6 +256,7 @@ pub const CENSUS_LABEL_KEYS: &[&str] = &[
     LABEL_TRANSPORT,
     LABEL_KEY_EXCHANGE,
     LABEL_OPERATION,
+    LABEL_VENDOR,
     LABEL_SURFACE,
     LABEL_STAGE,
     LABEL_KIND,

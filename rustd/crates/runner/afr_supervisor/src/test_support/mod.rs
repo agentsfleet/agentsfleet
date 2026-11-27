@@ -300,10 +300,12 @@ pub(crate) fn with_calls(calls: u64) -> RunOutput {
             kind: ItemKind::ToolCall,
             tool: "update_plan".into(),
             status: ItemStatus::Succeeded,
+            sources: Vec::new(),
             changes: Vec::new(),
         })
         .collect();
     output.trace = Some(ToolTrace {
+        sources_in_items: false,
         calls: (1..=calls)
             .map(|number| ToolTraceCall {
                 call_id: number.to_string().into(),
@@ -315,6 +317,7 @@ pub(crate) fn with_calls(calls: u64) -> RunOutput {
                 output_line_count: Some(1),
                 exit_code: None,
                 duration_ms: 1,
+                sources: Vec::new(),
                 changes: Vec::new(),
             })
             .collect(),

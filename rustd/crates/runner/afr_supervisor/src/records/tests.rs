@@ -24,6 +24,7 @@ fn record(number: u64, output_bytes: usize) -> ToolCallRecord<'static> {
         kind: ItemKind::ToolCall,
         tool: "shell".into(),
         status: ItemStatus::Succeeded,
+        sources: Vec::new(),
         changes: Vec::new(),
     }
 }

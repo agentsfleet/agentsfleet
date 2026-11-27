@@ -106,7 +106,7 @@ pub(crate) const SELECT_GATE_BY_ID: &str = include_str!("select_gate_by_id.sql")
 ///
 /// `$1` status, `$2` detail, `$3` resolver, `$4` action, `$5` fleet filter
 /// (empty disables), `$6` approved status, `$7` grant approved, `$8` grant
-/// revoked, `$9` grant gate type, `$10` the archived fleet status. It answers
+/// revoked, `$9` grant gate type, `$10` the archived fleet status, `$11` the host grant kind. It answers
 /// the gate's type beside its attribution, which decides what continues.
 pub(crate) const RESOLVE_GATE: &str = include_str!("resolve_gate.sql");
 

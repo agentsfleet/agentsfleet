@@ -19,7 +19,7 @@
 
 use std::borrow::Cow;
 
-use af_wire::access_verb::AccessRequest;
+use af_wire::access_verb::{AccessRequest, Hostname};
 use garde::Validate as _;
 use guffbolt::ToolOutput;
 use schemars::JsonSchema;
@@ -36,7 +36,9 @@ use crate::runtime::{ToolContext, ToolErrorCode};
 pub(crate) struct Request {
     /// The secret's key in the workspace vault, such as `sentry`, or a
     /// connected integration, such as `github`.
-    name: String,
+    name: Option<String>,
+    /// A bare DNS hostname the fleet needs to reach while reading a page.
+    host: Option<String>,
     /// For `github` only: `{"repositories": ["owner/name"], "access": "read"}`,
     /// or `"access": "write"` with `"base"`, the branch every pull request
     /// opens against.
@@ -51,23 +53,38 @@ pub(crate) struct RequestAccess;
 impl Handler for RequestAccess {
     const ENTRY: &'static Entry = &REQUEST_ACCESS;
     const DESCRIPTION: &'static str = "Call this tool only when the person's newest message \
-        asks for work that needs a secret or an integration you do not hold. Do not call it for \
+        asks for work that needs access to a secret, integration or web host you do not hold. Do not call it for \
         a question, a greeting or an approval; answer those in plain text. Ask for one name in \
-        the workspace, such as a vault secret or `github` with its scope. A person approves it \
+        the workspace, such as a vault secret or `github` with its scope, or one bare DNS hostname as `host`. A person approves it \
         once on a card: this run ends waiting, and resumes with their answer.";
     type Arguments = Request;
 
     async fn run(&self, arguments: Request, context: ToolContext<'_, '_>) -> ToolOutput {
         // The run's fence is the supervisor's to add: a tool never holds it.
+        let host = match arguments.host.as_deref().map(Hostname::parse).transpose() {
+            Ok(host) => host,
+            Err(error) => {
+                return ToolOutput::failed(ToolErrorCode::InvalidArguments, &error.to_string());
+            }
+        };
+        let name = host
+            .as_ref()
+            .map(Hostname::as_str)
+            .or(arguments.name.as_deref())
+            .unwrap_or_default()
+            .to_owned();
         let request = AccessRequest {
             fencing_token: 0,
-            name: Cow::Borrowed(&arguments.name),
+            name: arguments.name.as_deref().map(Cow::Borrowed),
+            evidence: host
+                .as_ref()
+                .and_then(|host| context.run.refused_redirect(host)),
+            host,
             scope: arguments.scope,
         };
         if let Err(report) = request.validate() {
             return ToolOutput::failed(ToolErrorCode::InvalidArguments, &report.to_string());
         }
-        let name = arguments.name.as_str();
         answered_with(
             context.run.verbs.access(request).await,
             |answer| match answer {

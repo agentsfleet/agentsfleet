@@ -47,6 +47,8 @@ pub struct ProblemBody {
     pub resolved_at: Option<jiff::Timestamp>,
     /// On that 409 only: who gave it.
     pub resolved_by: Option<String>,
+    /// On a temporary extract outage, true authorizes one local read under the fleet's network policy.
+    pub local_read_permitted: Option<bool>,
     /// A curated sentence for end users, where the code has one.
     pub user_message: Option<String>,
 }

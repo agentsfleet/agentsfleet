@@ -21,6 +21,8 @@ use guffbolt::tools::outbound::{
 use crate::run::Run;
 use crate::runtime::ToolErrorCode;
 
+mod web;
+
 /// The event a refused call logs under, fixed because dashboards match on it.
 const EVENT_TOOL_REFUSED: &str = "tool_refused";
 const READ_DEADLINE_EXCEEDED: &str = "HTTP read deadline exceeded";
@@ -94,15 +96,7 @@ impl Outbound for Egressed<'_, '_> {
                 Redirects::Follow => send_get(tool, transport, self.run, draft).await,
                 Redirects::Stop => send(tool, transport, self.run, draft).await,
             }?;
-            Ok(Response {
-                status: inbound.status,
-                location: inbound.location,
-                content_type: inbound.content_type,
-                body: inbound.body,
-                truncated: inbound.truncated,
-                lossy: inbound.lossy,
-                followed_redirects: inbound.followed_redirects,
-            })
+            Ok(response(inbound))
         })
     }
 
@@ -146,6 +140,18 @@ impl Outbound for Egressed<'_, '_> {
     }
 }
 
+fn response(inbound: Inbound) -> Response {
+    Response {
+        status: inbound.status,
+        location: inbound.location,
+        content_type: inbound.content_type,
+        body: inbound.body,
+        truncated: inbound.truncated,
+        lossy: inbound.lossy,
+        followed_redirects: inbound.followed_redirects,
+    }
+}
+
 /// `draft`, admitted by the run's guard and sent through `transport`, its
 /// answer masked for every token the run minted.
 async fn send(
@@ -174,9 +180,10 @@ async fn send_get(
     draft: Draft,
 ) -> Result<Inbound, Refused> {
     let within = transport.limits().request_timeout;
-    tokio::time::timeout(within, get_chain(tool, transport, run, draft))
+    tokio::time::timeout(within, get_chain(tool, transport, run, draft, None))
         .await
         .unwrap_or_else(|_expired| Err(read_expired(tool, run.run_id)))
+        .map(|(inbound, _origin)| inbound)
 }
 
 fn read_expired(tool: &str, run_id: &str) -> Refused {
@@ -197,7 +204,9 @@ async fn get_chain(
     transport: &dyn Transport,
     run: &Run<'_>,
     draft: Draft,
-) -> Result<Inbound, Refused> {
+    fetch_call: Option<&str>,
+) -> Result<(Inbound, Option<String>), Refused> {
+    let placement = draft.placement;
     let headers = draft.headers.clone();
     let mut outbound = run
         .egress
@@ -212,14 +221,17 @@ async fn get_chain(
             .send(outbound.for_redirect_read())
             .await
             .map_err(|failure| redirect_refused(tool, run, &chain, &failure))?;
+        let from_host = chain.host().to_owned();
         let next = chain
             .next(&mut inbound)
             .map_err(|reason| stopped(reason, &chain, &inbound))?;
-        let Some(draft) = next else {
+        let Some(mut draft) = next else {
             mask_response(run, &mut inbound).await;
             chain.finish();
-            return Ok(inbound);
+            let final_origin = chain.started().then(|| chain.origin());
+            return Ok((inbound, final_origin));
         };
+        draft.placement = placement;
         // Every target is re-admitted; a network wait never holds this run guard.
         outbound = run
             .egress
@@ -227,7 +239,15 @@ async fn get_chain(
             .await
             .prepare(draft)
             .await
-            .map_err(|failure| redirect_refused(tool, run, &chain, &failure))?;
+            .map_err(|failure| {
+                if let Some(call_id) = fetch_call
+                    && failure.refusal() == Some(Refusal::HostNotAllowed)
+                {
+                    run.record_web_redirect(call_id, &from_host, chain.host());
+                    return refused(tool, run.run_id, &failure);
+                }
+                redirect_refused(tool, run, &chain, &failure)
+            })?;
     }
 }
 

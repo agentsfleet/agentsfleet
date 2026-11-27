@@ -67,7 +67,9 @@ pub(crate) enum ErrorKind {
     },
 
     /// The host is not in the fleet's network allowlist.
-    #[error("{host} is not in this fleet's network allowlist")]
+    #[error(
+        "{host} is not in this fleet's network allowlist. Use request_access to ask for this host"
+    )]
     HostNotAllowed {
         /// The URL's host.
         host: String,

@@ -311,3 +311,40 @@ async fn a_reported_empty_trace_is_served_as_known_zero_calls() {
     supervisor.shutdown().await;
     scene.cleanup().await;
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn a_redirected_fetch_keeps_its_source_after_a_reload() {
+    use crate::integration_tool_call_details::{post_records, record};
+    let mut supervisor = Supervisor::new();
+    let (scene, token) = tenant_reader(&mut supervisor).await;
+    let http = reqwest::Client::new();
+    let (id, fence) = run(&scene).await;
+    let sources =
+        json!([{"url":"https://docs.example.test/page"},{"url":"https://support.example.test"}]);
+    let mut item = record(1, "Guide");
+    item["tool"] = json!("web_fetch");
+    item["arguments"] = json!({"url":"https://docs.example.test/page"});
+    item["sources"] = sources.clone();
+    let (status, _) = post_records(&http, &scene, (&id, fence), &[item]).await;
+    assert_eq!(status, 200);
+    let mut compact = trace(1);
+    compact["calls"][0]["name"] = json!("web_fetch");
+    compact["sources_in_items"] = json!(true);
+    settle_with(&scene, (id, fence), compact).await;
+    let path = format!(
+        "/v1/workspaces/{}/fleets/{}/turns/{}",
+        scene.workspace, scene.fleet, scene.turn_id
+    );
+    let thread = tenant_get(&http, &scene, &token, &path).await;
+    let detail = tenant_get(&http, &scene, &token, &format!("{path}/items/{fence}:1")).await;
+    assert_eq!(field(&thread, "tool_calls")["calls"][0]["sources"], sources);
+    assert!(
+        field(&thread, "tool_calls")
+            .get("sources_in_items")
+            .is_none()
+    );
+    assert_eq!(detail["sources"], sources);
+    supervisor.shutdown().await;
+    scene.cleanup().await;
+}

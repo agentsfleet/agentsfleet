@@ -382,6 +382,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_with",
+ "url",
  "utoipa",
 ]
 
@@ -864,6 +865,7 @@ dependencies = [
  "af_egress",
  "af_fleet_runtime",
  "af_observability",
+ "af_providers",
  "af_secrets",
  "af_validate",
  "af_wire",
@@ -888,6 +890,7 @@ dependencies = [
  "async-trait",
  "aws-credential-types",
  "aws-sigv4",
+ "axum",
  "base64 0.23.1",
  "bytes",
  "const_format",
@@ -1390,6 +1393,7 @@ dependencies = [
  "tokio-rustls",
  "tokio-util",
  "tracing",
+ "url",
  "zeroize",
 ]
 

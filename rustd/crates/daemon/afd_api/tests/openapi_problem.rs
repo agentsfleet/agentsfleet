@@ -221,6 +221,13 @@ async fn test_the_problem_schema_is_the_envelope_the_daemon_writes() {
     sent.extend(conflict.iter().cloned());
     sent.extend(precondition.iter().cloned());
     sent.extend(standing.iter().cloned());
+    sent.extend(
+        wire_keys(ProblemResponse::extract_fallback(
+            "reader unavailable".to_owned(),
+            "r",
+        ))
+        .await,
+    );
 
     assert_eq!(required, base, "required is what every refusal carries");
     assert_eq!(

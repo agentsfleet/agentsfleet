@@ -98,6 +98,8 @@ mod integration_runner_steers_refusals;
 mod integration_runner_stream;
 #[path = "integration_runner_triggers.rs"]
 mod integration_runner_triggers;
+#[path = "integration_runner_web.rs"]
+mod integration_runner_web;
 #[path = "integration_rust_runner.rs"]
 mod integration_rust_runner;
 #[path = "integration_rust_runner_definitions.rs"]

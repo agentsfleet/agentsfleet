@@ -176,7 +176,6 @@ impl Conversation for Child<'_> {
             instructions: "",
             messages: &window.messages,
             tools,
-            hosted: &[],
             cache_key: "",
             max_output_tokens: window.max_output_tokens,
             single_attempt: false,

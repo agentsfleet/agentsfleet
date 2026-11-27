@@ -132,5 +132,4 @@ fn a_replay_keeps_the_providers_record_as_written() {
     assert!(!replay.is_empty());
     assert!(none.is_empty());
     assert_eq!(encoded, json!({"encrypted": "r1"}));
-    assert_eq!(guffbolt::Hosted::WebSearch.name(), "web_search");
 }

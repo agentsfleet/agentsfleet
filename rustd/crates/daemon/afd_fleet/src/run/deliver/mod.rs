@@ -98,7 +98,7 @@ impl RunService {
     ///
     /// # The branch names the EVENT, and the grant is what authorises it
     ///
-    /// `uq_integration_grants_fleet_id_service` makes the GitHub grant one row
+    /// `uq_integration_grants_fleet_kind_service` makes the GitHub grant one row
     /// for the fleet's whole life, so a branch named for the grant would have
     /// every event author on one branch, and a second run would force-update
     /// the first run's head. Authority is the approved grant, read at the

@@ -93,7 +93,6 @@ impl Harness<'_, '_> {
             instructions: &instructions,
             messages: &messages,
             tools: &[],
-            hosted: &[],
             cache_key: self.shared.fleet_id,
             max_output_tokens: Some(tokens),
             single_attempt: true,

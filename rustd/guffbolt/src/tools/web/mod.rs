@@ -5,10 +5,13 @@
 //! how they word the answer; admission, the transport, the mask and the
 //! refusal are the hook's, so every tool's request obeys one policy.
 
+mod html;
 pub mod http_request;
+mod search;
 pub mod web_fetch;
 
 pub use self::http_request::HttpRequest;
+pub use self::search::{Query, SearchBackend, SearchResult, WebSearch};
 pub use self::web_fetch::WebFetch;
 
 use crate::tool::ToolOutput;

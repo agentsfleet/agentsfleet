@@ -33,12 +33,16 @@ fn call(call_id: &str) -> ToolTraceCall<'static> {
         output_line_count: None,
         exit_code: None,
         duration_ms: 12,
+        sources: Vec::new(),
         changes: Vec::new(),
     }
 }
 
 fn trace(calls: Vec<ToolTraceCall<'static>>) -> ToolTrace<'static> {
-    ToolTrace { calls }
+    ToolTrace {
+        calls,
+        sources_in_items: false,
+    }
 }
 
 #[test]

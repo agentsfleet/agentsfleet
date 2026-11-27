@@ -53,6 +53,7 @@ async-trait.workspace = true
 # A decision reads the provider's stream of chunks.
 futures-util.workspace = true
 serde.workspace = true
+url.workspace = true
 # A tool call's arguments.
 serde_json.workspace = true
 thiserror.workspace = true

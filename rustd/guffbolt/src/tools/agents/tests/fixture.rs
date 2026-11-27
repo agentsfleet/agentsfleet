@@ -234,7 +234,6 @@ impl Conversation for Chat<'_, '_> {
             instructions: "",
             messages: &window.messages,
             tools,
-            hosted: &[],
             cache_key: &self.key,
             max_output_tokens: window.max_output_tokens,
             single_attempt: false,

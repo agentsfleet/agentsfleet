@@ -19,6 +19,8 @@
 //! the catalog's hosted handlers serve every run and are lent the run per
 //! call instead.
 
+mod search;
+
 use std::fmt;
 
 use af_egress::Transport;
@@ -102,6 +104,7 @@ impl<'b, 'run> Backends<'b, 'run> {
             .with_sessions(&run.sessions)
             .with_image_input(run.image_input)
             .with_outbound(&self.outbound)
+            .with_search(&self.outbound)
             .with_memory(&run.memory)
             .with_scheduler(&self.fenced)
             .with_channel(&self.fenced)

@@ -63,7 +63,12 @@ pub fn assemble(inputs: Inputs<'_>) -> crate::Result<ExecutionPolicy<'_>> {
     Ok(ExecutionPolicy {
         inference: inputs.provider.inference.clone(),
         model_context_tokens: inputs.provider.context_cap_tokens,
-        network_policy: network(inputs.network, &statics, binding.is_some()),
+        network_policy: network(
+            inputs.network,
+            &statics,
+            binding.is_some(),
+            inputs.approved.hosts(),
+        ),
         tools: catalog::offered(inputs.judged),
         // The tool bridge needs null when no static credential was approved.
         secrets_map: Some(statics)

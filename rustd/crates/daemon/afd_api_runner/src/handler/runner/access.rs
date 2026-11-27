@@ -1,5 +1,5 @@
 //! `POST /v1/runners/me/runs/{run_id}/access` — a running fleet asking a
-//! person for one secret or integration.
+//! person for a host, secret or integration.
 //!
 //! The fleet is the run's, proved from the path and the body's fence; nothing
 //! in the body names a fleet. A request the fleet's approved grant already
@@ -12,7 +12,7 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use af_observability::{AccessChange, FleetStep, Telemetry};
-use af_wire::access_verb::{AccessRequest, AccessRequested};
+use af_wire::access_verb::{AccessOutcome, AccessRequest, AccessRequested};
 use afd_approval::Requested;
 use afd_fleet::run::access::AccessAsked;
 use afd_http::handler::{Refusal, read_strict_body};
@@ -22,6 +22,8 @@ use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};
 use http::StatusCode;
 
+#[cfg(feature = "openapi")]
+use super::access_schema::AccessRequestSchema;
 use super::schedule::run;
 use crate::auth::RunnerIdentity;
 use crate::services::{RunPlane as _, RunnerPlane};
@@ -33,24 +35,25 @@ const EVENT_FAILED: &str = "runner_access_failed";
 const DETAIL_MALFORMED: &str = "Malformed access body";
 
 /// The refusal a name outside its bound earns.
-const DETAIL_NAME: &str = "name must be a non-empty vault key or integration with no NUL character";
+const DETAIL_NAME: &str =
+    "provide one credential name or one bare DNS hostname with matching evidence";
 
-/// Asks a person for one secret or integration on behalf of the run.
+/// Asks a person for a host, secret or integration on behalf of the run.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
     path = af_wire::paths::RUN_ACCESS,
     tag = afd_http::openapi::tag::INTEGRATION_GRANTS,
     operation_id = "runner_request_access",
-    summary = "Ask a person for a secret or an integration",
+    summary = "Ask a person for a host, secret or integration",
     description = concat!(
         "Asks a person to approve `name` for the assigned fleet: a workspace secret or a ",
-        "connected integration. `github` names its `scope`. A request the fleet's approved ",
+        "connected integration. An alternative `host` asks for a DNS hostname for web access. `github` names its `scope`. A request the fleet's approved ",
         "grant already covers answers 200 with no card. Any other raises a card carrying ",
         "the run's turn and answers 201; the run then ends waiting for the person's answer. ",
         "A card already open for the name answers 200. A name the workspace lacks answers ",
         "`UZ-AGT-022`, an integration it has not connected `UZ-AGT-023`.",
     ),
-    request_body = AccessRequest<'_>,
+    request_body = AccessRequestSchema,
     params(afd_http::openapi::path::Run),
     responses(
         (status = 201, description = "A card was raised", body = AccessRequested<'_>),
@@ -100,14 +103,15 @@ fn report<D: RunnerPlane>(services: &D, asked: &AccessAsked) {
 
 /// 201 with the card when one was raised; 200 otherwise.
 fn answered(requested: &Requested) -> (StatusCode, AccessRequested<'static>) {
-    let (status, gate) = match requested {
-        Requested::Raised { gate, .. } => (StatusCode::CREATED, Some(gate)),
-        Requested::Pending { gate, .. } => (StatusCode::OK, gate.as_ref()),
-        Requested::Covered { .. } => (StatusCode::OK, None),
+    let (status, outcome, gate) = match requested {
+        Requested::Raised { gate, .. } => (StatusCode::CREATED, AccessOutcome::Raised, Some(gate)),
+        Requested::Pending { gate, .. } => (StatusCode::OK, AccessOutcome::Pending, gate.as_ref()),
+        Requested::Covered { .. } => (StatusCode::OK, AccessOutcome::Covered, None),
     };
     (
         status,
         AccessRequested {
+            state: outcome,
             grant_id: Cow::Owned(requested.grant().to_string()),
             gate_id: gate.map(|gate| Cow::Owned(gate.to_string())),
         },

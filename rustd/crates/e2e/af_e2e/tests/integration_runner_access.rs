@@ -136,7 +136,10 @@ async fn test_a_request_raises_one_card_and_a_repeat_finds_it_open() {
         .await;
 
     assert_eq!(status, 200, "{open}");
-    assert_eq!(open, raised, "the repeat answers the open card");
+    assert_eq!(raised["state"], "raised");
+    assert_eq!(open["state"], "pending");
+    assert_eq!(open["grant_id"], raised["grant_id"]);
+    assert_eq!(open["gate_id"], raised["gate_id"]);
     let expected = (GrantKind::Secret.as_str().to_owned(), "pending".to_owned());
     assert_eq!(grant(&held, SENTRY).await, expected);
     assert_eq!(rows(&held).await, (1, 1));
@@ -161,6 +164,7 @@ async fn test_a_request_the_approved_grant_covers_raises_no_card() {
 
     assert_eq!(status, 200, "{covered}");
     assert!(covered["grant_id"].is_string(), "{covered}");
+    assert_eq!(covered["state"], "covered");
     assert_eq!(
         covered["gate_id"],
         Value::Null,
@@ -226,6 +230,35 @@ async fn test_access_refuses_a_run_that_is_not_held() {
         let answered = refused(&held, &route, &body).await;
         assert_eq!(answered, (status, json!(code)), "{route}: {body}");
     }
+    assert_eq!(rows(&held).await, (0, 0));
+    held.finish(supervisor).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn a_host_request_for_an_address_is_refused() {
+    let mut supervisor = Supervisor::new();
+    let qstash = FakeQStash::start().await;
+    let held = Box::pin(Assigned::boot(&mut supervisor, &qstash)).await;
+    let path = access(&held);
+    for host in [
+        "10.0.0.5",
+        "localhost",
+        "169.254.169.254",
+        "https://docs.example/private",
+    ] {
+        let body = json!({"fencing_token":held.fence,"host":host});
+        assert_eq!(
+            refused(&held, &path, &body).await,
+            (400, json!("UZ-REQ-001"))
+        );
+    }
+    let mismatch = json!({"fencing_token":held.fence,"host":"docs.example",
+        "evidence":{"tool":"web_fetch","from_host":"app.example","to_host":"elsewhere.example"}});
+    assert_eq!(
+        refused(&held, &path, &mismatch).await,
+        (400, json!("UZ-REQ-001"))
+    );
     assert_eq!(rows(&held).await, (0, 0));
     held.finish(supervisor).await;
 }

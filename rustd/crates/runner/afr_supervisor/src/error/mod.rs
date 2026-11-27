@@ -171,6 +171,8 @@ pub(crate) enum ErrorKind {
         status: u16,
         /// A registered code from the daemon's problem body, if present.
         code: Option<ErrorCode>,
+        /// A typed extract failure authorized one policy-checked local read.
+        local_read_permitted: bool,
     },
 
     /// The daemon refused the call with a 4xx; retrying changes nothing.

@@ -1,0 +1,57 @@
+//! The roster used to check every runner verb in tests.
+
+use super::Verb;
+
+impl Verb {
+    /// Every verb, so a suite walks the whole vocabulary rather than a
+    /// hand-kept list that a new verb can miss.
+    pub(crate) const ALL: [Self; 47] = [
+        Self::Open,
+        Self::Heartbeat,
+        Self::Renew,
+        Self::Progress,
+        Self::Report,
+        Self::Load,
+        Self::Capture,
+        Self::Recall,
+        Self::Mint,
+        Self::Items,
+        Self::Me,
+        Self::ScheduleCreate,
+        Self::ScheduleList,
+        Self::ScheduleUpdate,
+        Self::ScheduleDelete,
+        Self::ScheduleRun,
+        Self::ScheduleRuns,
+        Self::Message,
+        Self::FleetList,
+        Self::FleetTurns,
+        Self::FleetSteer,
+        Self::TriggerAdd,
+        Self::TriggerList,
+        Self::TriggerRemove,
+        Self::Access,
+        Self::WebSearch,
+        Self::WebExtract,
+        Self::Folds,
+        Self::TurnCheckpoint,
+        Self::ContextLoad,
+        Self::ContextSave,
+        Self::DurableTaskInputs,
+        Self::DurableTaskBindings,
+        Self::DurableTaskInputReceipt,
+        Self::DurableTaskDecisionReserve,
+        Self::DurableTaskDecisionRecord,
+        Self::DurableTaskEffectPublish,
+        Self::DurableTaskEffects,
+        Self::DurableTaskEffect,
+        Self::DurableTaskCheckpointPlan,
+        Self::DurableTaskCheckpointCommit,
+        Self::DurableTaskCheckpointPageWrite,
+        Self::DurableTaskCheckpointPage,
+        Self::DurableTaskCheckpointObjectsRegister,
+        Self::DurableTaskCheckpointUploads,
+        Self::DurableTaskCheckpointAuthorizations,
+        Self::DurableTaskCheckpointPin,
+    ];
+}

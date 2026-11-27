@@ -48,6 +48,26 @@ impl NoWork {
 }
 
 impl RunPlane for NoWork {
+    fn web_search(
+        &self,
+        _runner: &Uuid7,
+        _run: Uuid7,
+        _request: &garde::Valid<af_wire::web::SearchRequest>,
+        _deadline: tokio::time::Instant,
+    ) -> impl Future<Output = afd_fleet::Result<af_wire::web::SearchResponse>> + Send {
+        std::future::ready(Err(afd_fleet::Error::run_not_found()))
+    }
+
+    fn web_extract(
+        &self,
+        _runner: &Uuid7,
+        _run: Uuid7,
+        _request: &garde::Valid<af_wire::web::ExtractRequest>,
+        _deadline: tokio::time::Instant,
+    ) -> impl Future<Output = afd_fleet::Result<af_wire::web::ExtractResponse>> + Send {
+        std::future::ready(Err(afd_fleet::Error::run_not_found()))
+    }
+
     /// Mints nothing, and says so with the code a deployment holding no
     /// platform credential answers, unless built with [`NoWork::refusing`].
     ///

@@ -156,6 +156,7 @@ fn the_answers_round_trip() {
         output: "all of it".into(),
         output_line_count: 224,
         truncated: false,
+        sources: Vec::new(),
         changes: vec![FileChange {
             path: "src/a.rs".into(),
             added: 24,

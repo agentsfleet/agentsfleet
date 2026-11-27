@@ -33,6 +33,8 @@ use afd_http::route::{Ownership, RunnerRoute, TenantRoute};
 /// same way.
 const INVENTORY: &[&str] = &[
     "/v1/runners/me/stream",
+    "/v1/runners/me/runs/{run_id}/searches",
+    "/v1/runners/me/runs/{run_id}/extracts",
     // The device-flow login surface.
     "/v1/auth/sessions",
     "/v1/auth/sessions/{session_id}",
@@ -333,7 +335,9 @@ fn tenant_and_workspace_templates() -> impl Iterator<Item = &'static str> {
                     | Route::Workspace(_)
                     | Route::Fleet(_)
                     | Route::Connector(_)
-                    | Route::Runner(RunnerRoute::Stream)
+                    | Route::Runner(
+                        RunnerRoute::Stream | RunnerRoute::Searches | RunnerRoute::Extracts
+                    )
             )
         })
         // The identity-provider delivery is signature-authenticated ingress and

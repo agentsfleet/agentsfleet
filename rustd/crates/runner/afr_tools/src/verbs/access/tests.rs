@@ -93,7 +93,9 @@ async fn a_raised_card_ends_the_run_waiting_on_the_person() {
         asked,
         [Asked::Access(AccessRequest {
             fencing_token: 0,
-            name: "github".into(),
+            name: Some("github".into()),
+            host: None,
+            evidence: None,
             scope: Some(scope),
         })]
     );
@@ -140,4 +142,73 @@ async fn a_request_no_daemon_would_read_is_refused_here() {
         assert_eq!(output.asks, None);
         assert_eq!(asked, [], "{arguments}");
     }
+}
+
+#[tokio::test]
+async fn a_request_naming_both_a_name_and_a_host_is_refused() {
+    for args in [
+        json!({"host":"docs.example","name":"github"}),
+        json!({}),
+        json!({"host":"docs.example","scope":{}}),
+        json!({"host":"docs.example","evidence":{"tool":"web_fetch","from_host":"made.up","to_host":"docs.example"}}),
+    ] {
+        let (output, calls) = requested(Ok(AccessAnswer::Asked), args).await;
+        assert_eq!(
+            output.error_code,
+            Some(ToolErrorCode::InvalidArguments.into())
+        );
+        assert!(calls.is_empty());
+    }
+}
+
+#[tokio::test]
+async fn a_host_request_carries_only_the_matching_refusal_observed_by_this_run()
+-> Result<(), Box<dyn std::error::Error>> {
+    let verbs =
+        RecordingVerbs::answering(Ok(String::new()), Ok(true)).granting(Ok(AccessAnswer::Asked));
+    let run = run_with(&verbs);
+    run.record_web_redirect("not-open", "unrelated.example", "support.example");
+    let host = af_wire::access_verb::Hostname::parse("support.example")?;
+    assert!(run.refused_redirect(&host).is_none());
+    run.calls.open("read-page", 1);
+    run.record_web_redirect("read-page", "Docs.Example", "Support.Example");
+    run.calls.close("read-page");
+    let output = call(
+        &*Typed::boxed(RequestAccess),
+        &run,
+        json!({"host":"SUPPORT.example"}),
+    )
+    .await;
+    assert!(output.asks.is_some());
+    let calls = verbs.asked();
+    assert_eq!(calls.len(), 1);
+    let request = calls
+        .iter()
+        .find_map(|call| match call {
+            Asked::Access(request) => Some(request),
+            _ => None,
+        })
+        .ok_or("missing access request")?;
+    assert_eq!(
+        request
+            .host
+            .as_ref()
+            .map(af_wire::access_verb::Hostname::as_str),
+        Some("support.example")
+    );
+    assert_eq!(
+        request.evidence.as_ref().map(|e| e.from_host.as_str()),
+        Some("docs.example")
+    );
+    let other_run = run_with(&verbs);
+    let _answer = call(
+        &*Typed::boxed(RequestAccess),
+        &other_run,
+        json!({"host":"support.example"}),
+    )
+    .await;
+    assert!(
+        matches!(verbs.asked().last(),Some(Asked::Access(request)) if request.evidence.is_none())
+    );
+    Ok(())
 }

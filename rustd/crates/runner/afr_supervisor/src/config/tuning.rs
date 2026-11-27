@@ -20,6 +20,9 @@ use crate::client::CALL_TIMEOUT;
 pub const CALL_TIMEOUT_MIN_SECONDS: u64 =
     af_wire::message_verb::MESSAGE_DELIVERY_DEADLINE.as_secs() + 1;
 
+// At the minimum supported runner timeout the daemon can still name its outcome.
+const _: () = assert!(af_wire::web::WEB_DEADLINE.as_secs() < CALL_TIMEOUT_MIN_SECONDS);
+
 /// The supervisor's chosen bounds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Tuning {

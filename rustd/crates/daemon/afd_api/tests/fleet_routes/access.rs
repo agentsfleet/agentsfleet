@@ -37,6 +37,7 @@ async fn asked(f: &Fixture, router: &Router, bearer: &str) -> (Uuid7, Uuid7, Uui
                 name: SENTRY,
                 kind: GrantKind::Secret,
                 scope: None,
+                redirect: None,
                 turn: &turn,
             },
             af_core::clock::now(),

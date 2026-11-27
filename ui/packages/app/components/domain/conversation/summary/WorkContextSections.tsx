@@ -9,7 +9,7 @@ import { SUMMARY_ICON, SUMMARY_ROW } from "@/components/domain/shared/summary/su
 import { confirmed } from "../../tasks/use-task-read";
 import { FleetApprovalSummary } from "../../approvals/FleetApprovalSummary";
 import { useFleetLists } from "../../fleet/FleetListsProvider";
-import { AttachedSources, PreviewOutputs } from "./RunResources";
+import { AttachedSources, PreviewOutputs, WebSources } from "./RunResources";
 import { WorkSection } from "../../shared/summary/WorkSection";
 import type { RecordedChange, RecordedChangeRepository } from "./recorded-changes";
 import { RecordedChangeCounts, RecordedChangesDialog } from "./RecordedChangesDialog";
@@ -80,10 +80,12 @@ export function ChangesSummary({changes}: {changes: readonly RecordedChange[]}) 
   </RecordedChangesDialog>)}</WorkSection>;
 }
 
-export function WorkSources({sources, files}: {sources?: FleetSources; files?: readonly {id: string; name: string}[]}) {
+export function WorkSources({sources, files, turns = []}: {turns?: readonly FleetTurn[]; sources?: FleetSources; files?: readonly {id: string; name: string}[]}) {
+  const pages = new Map(turns.flatMap(turn => turn.tools?.flatMap(call => call.sources ?? []) ?? []).map(source => [source.url, source]));
   return <WorkSection title="Sources">
+    <WebSources pages={[...pages.values()]} />
     {files?.length ? <AttachedSources files={files} /> : null}
-    {sources?.repositories.length ? <RepositorySources sources={sources} /> : files?.length ? null :
+    {sources?.repositories.length ? <RepositorySources sources={sources} /> : files?.length || pages.size ? null :
       <p className="text-eyebrow leading-eyebrow text-muted-foreground">No sources configured.</p>}
   </WorkSection>;
 }

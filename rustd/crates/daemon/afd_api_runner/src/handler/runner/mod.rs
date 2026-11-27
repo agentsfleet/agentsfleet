@@ -11,6 +11,8 @@
 //! the other runner-management handlers in `afd_api_operator`.
 
 pub(crate) mod access;
+#[cfg(feature = "openapi")]
+mod access_schema;
 pub(crate) mod credential;
 pub(crate) mod decisions;
 pub(crate) mod durable_task_bindings;
@@ -30,3 +32,4 @@ pub(crate) mod self_record;
 pub(crate) mod stream;
 pub(crate) mod tool_call;
 pub(crate) mod trigger;
+pub(crate) mod web;

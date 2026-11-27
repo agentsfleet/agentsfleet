@@ -69,6 +69,11 @@ fn detail(call: CallAddress, row: &ToolCallRow) -> ToolCallDetail<'_> {
         truncated: row.truncated,
         // The column holds the list the record verb narrowed, so its text
         // always parses; the default is the parser's signature.
+        sources: row
+            .sources
+            .as_deref()
+            .and_then(|text| serde_json::from_str(text).ok())
+            .unwrap_or_default(),
         changes: row
             .changes
             .as_deref()

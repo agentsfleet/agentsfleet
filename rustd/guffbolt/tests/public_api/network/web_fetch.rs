@@ -30,7 +30,7 @@ async fn web_fetch_reads_a_page_as_text_and_masks_what_decoding_reveals() {
         "{}",
         output.text
     );
-    assert_eq!(hook.masked.load(Ordering::SeqCst), 1);
+    assert_eq!(hook.masked.load(Ordering::SeqCst), 2);
     assert_eq!(
         hook.sent(),
         [(
@@ -41,10 +41,10 @@ async fn web_fetch_reads_a_page_as_text_and_masks_what_decoding_reveals() {
                 headers: Vec::new(),
                 body: None,
                 placement: Placement::Nowhere,
-                redirects: Redirects::Stop,
+                redirects: Redirects::Follow,
             }
         )],
-        "a fetch carries no header, no body and no placeholder, and follows nothing"
+        "a fetch carries no header, no body and no placeholder, and re-admits each redirect"
     );
 }
 
@@ -88,8 +88,8 @@ async fn web_fetch_cuts_a_plain_body_at_max_chars_by_character() {
     );
     assert_eq!(
         hook.masked.load(Ordering::SeqCst),
-        0,
-        "plain text is not masked again"
+        3,
+        "each requested URL is checked before it becomes a citation"
     );
 }
 
@@ -154,10 +154,9 @@ async fn an_outbound_hook_looks_names_up_through_this_hosts_resolver_by_default(
     );
 }
 
-/// A page nested deeper than its text can be laid out in reads as the
-/// markup it came as, rather than failing the fetch.
+/// Unrenderable markup is refused so scripts never surface as fallback text.
 #[tokio::test]
-async fn web_fetch_reads_a_page_too_deep_to_lay_out_as_its_markup() {
+async fn web_fetch_refuses_a_page_too_deep_to_render() {
     let html = format!(
         "<html><body>{}quoted</body></html>",
         "<blockquote>".repeat(400)
@@ -175,10 +174,88 @@ async fn web_fetch_reads_a_page_too_deep_to_lay_out_as_its_markup() {
     )
     .await;
 
+    assert_eq!(output.error_code, Some(code::UNSUPPORTED_MEDIA));
+    assert!(!output.text.contains("<blockquote>"));
+}
+
+#[tokio::test]
+async fn a_fetched_page_comes_back_as_markdown_with_its_json_ld() {
+    let raw = r#"<h2>A guide</h2><ul><li>harbour</li></ul><a href="https://docs.test/a">text</a><script>hidden()</script><script type="application/ld+json">{"place":"A & B"}</script>"#;
+    let hook = Canned::ok(Response {
+        content_type: Some("text/html".into()),
+        ..response(200, raw)
+    });
+    let output = dispatch(
+        &web(&hook, &["web_fetch"]),
+        "web_fetch",
+        json!({"url":"https://docs.test/"}),
+    )
+    .await;
     assert_eq!(output.error_code, None);
-    assert!(
-        output.text.starts_with("<html><body><blockquote>"),
-        "{}",
-        output.text
+    for fragment in [
+        "## A guide",
+        "* harbour",
+        "[text][1]",
+        "## JSON-LD",
+        r#"{"place":"A & B"}"#,
+    ] {
+        assert_eq!(output.text.matches(fragment).count(), 1, "{}", output.text);
+    }
+    assert!(!output.text.contains("hidden()"));
+}
+
+#[tokio::test]
+async fn a_fetch_without_max_chars_stops_at_the_output_budget() {
+    let hook = Canned::ok(response(200, &"x".repeat(50_000)));
+    let output = dispatch(
+        &web(&hook, &["web_fetch"]),
+        "web_fetch",
+        json!({"url":"https://docs.test/"}),
+    )
+    .await;
+    assert_eq!(output.text.matches('x').count(), 40_000);
+    assert!(output.text.ends_with("total 50000 chars]"));
+}
+
+#[tokio::test]
+async fn a_binary_body_is_refused_with_its_type() {
+    let hook = Canned::ok(Response {
+        content_type: Some("application/pdf".into()),
+        ..response(200, "%PDF private bytes")
+    });
+    let output = dispatch(
+        &web(&hook, &["web_fetch"]),
+        "web_fetch",
+        json!({"url":"https://docs.test/a.pdf"}),
+    )
+    .await;
+    assert_eq!(output.text, "[unsupported_media] application/pdf");
+    assert_eq!(output.sources(), &[]);
+}
+
+#[tokio::test]
+async fn a_fetch_redacts_the_requested_link_before_truncating_the_page() {
+    let url = "https://docs.test/page?signature=private-value";
+    let hook = Canned::ok(response(200, &format!("Read {url} for details.")));
+    let output = dispatch(
+        &web(&hook, &["web_fetch"]),
+        "web_fetch",
+        json!({"url":url,"max_chars":37}),
+    )
+    .await;
+    assert!(!output.text.contains("signature"));
+    assert!(output.text.contains("https://docs.test/page"));
+    assert_eq!(
+        output.sources().first().map(|source| source.url.as_str()),
+        Some("https://docs.test/page")
     );
+}
+
+#[tokio::test]
+async fn a_requested_url_containing_a_minted_token_is_never_a_citation() {
+    let url = "https://docs.test/tok-123?signature=private-value";
+    let hook = Canned::ok(response(200, &format!("Read {url}")));
+    let output = dispatch(&web(&hook, &["web_fetch"]), "web_fetch", json!({"url":url})).await;
+    assert_eq!(output.sources(), &[]);
+    assert_eq!(output.text, "Read [redacted URL]");
 }

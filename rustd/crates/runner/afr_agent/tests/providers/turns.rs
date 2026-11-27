@@ -40,7 +40,6 @@ async fn streamed(
         instructions: "Read the run.",
         messages,
         tools: &[],
-        hosted: &[],
         cache_key: FLEET,
         max_output_tokens: None,
         single_attempt: false,

@@ -15,11 +15,11 @@ const HOPS: crate::Limits = crate::Limits {
 const FIRST: &str = "https://api.github.com/start";
 
 #[test]
-fn should_bound_total_redirect_work() {
+fn the_twenty_first_redirect_is_refused() {
     let first = Url::parse(FIRST).expect("fixture URL");
-    let mut chain = Chain::new(&first, Vec::new(), HOPS);
+    let mut chain = Chain::new(&first, Vec::new(), crate::Limits::DEFAULT);
     let mut current = first;
-    for index in 1..=3 {
+    for index in 1..=20 {
         let mut reply = redirected(302, &current, &format!("/hop/{index}"));
         let draft = chain
             .next(&mut reply)
@@ -29,9 +29,9 @@ fn should_bound_total_redirect_work() {
     }
     let mut final_reply = inbound(200, "actual job error");
     assert!(chain.next(&mut final_reply).expect("final body").is_none());
-    assert_eq!(final_reply.followed_redirects, 3);
-    let mut fourth = redirected(302, &current, "/hop/4");
-    assert!(matches!(chain.next(&mut fourth), Err(Stop::HopLimit)));
+    assert_eq!(final_reply.followed_redirects, 20);
+    let mut next = redirected(302, &current, "/hop/21");
+    assert!(matches!(chain.next(&mut next), Err(Stop::HopLimit)));
 }
 
 #[test]

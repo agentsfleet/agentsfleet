@@ -58,6 +58,15 @@ impl fmt::Display for ErrorCode {
     }
 }
 
+/// A page a tool actually returned. The observer decides which fields it can disclose.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Source {
+    /// The URL the tool read or returned in a search result.
+    pub url: String,
+    /// The title returned beside the URL, if any.
+    pub title: Option<String>,
+}
+
 /// What one call hands back to the loop.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToolOutput {
@@ -73,9 +82,15 @@ pub struct ToolOutput {
     /// [`crate::Ending::Waiting`] once the step's other calls ran, and the
     /// call's result is the answer the run is resumed with.
     pub asks: Option<String>,
-    /// What a subagent call asks of the loop, which runs it in the calling
-    /// loop's place before the call ends.
-    pub(crate) order: Option<Box<Order>>,
+    // Most calls return neither pages nor subagent work. Keep this result
+    // small enough for tools to return their refusals by value.
+    details: Option<Box<Details>>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct Details {
+    sources: Vec<Source>,
+    order: Option<Order>,
 }
 
 impl ToolOutput {
@@ -88,7 +103,7 @@ impl ToolOutput {
             error_code: None,
             image: None,
             asks: None,
-            order: None,
+            details: None,
         }
     }
 
@@ -103,7 +118,7 @@ impl ToolOutput {
             error_code: Some(code),
             image: None,
             asks: None,
-            order: None,
+            details: None,
         }
     }
 
@@ -118,7 +133,7 @@ impl ToolOutput {
             error_code: None,
             image: None,
             asks: Some(question),
-            order: None,
+            details: None,
         }
     }
 
@@ -127,7 +142,10 @@ impl ToolOutput {
     #[must_use]
     pub fn ordering(order: Order) -> Self {
         Self {
-            order: Some(Box::new(order)),
+            details: Some(Box::new(Details {
+                order: Some(order),
+                sources: Vec::new(),
+            })),
             ..Self::succeeded(String::new())
         }
     }
@@ -144,6 +162,42 @@ impl ToolOutput {
     #[must_use]
     pub fn cut(name: &str) -> Self {
         Self::failed(ErrorCode::OUTPUT_LIMIT_REACHED, &format!("{name} {CUT}"))
+    }
+
+    /// Attach pages obtained by this call to its observed completion.
+    #[must_use]
+    pub fn with_sources(mut self, sources: Vec<Source>) -> Self {
+        if sources.is_empty() {
+            drop(self.take_sources());
+        } else {
+            self.details.get_or_insert_default().sources = sources;
+        }
+        self
+    }
+
+    /// Pages returned by the tool, in their original order.
+    #[must_use]
+    pub fn sources(&self) -> &[Source] {
+        self.details
+            .as_deref()
+            .map_or(&[], |details| details.sources.as_slice())
+    }
+
+    /// Transfer the page results to the observer without cloning their strings.
+    #[must_use]
+    pub fn take_sources(&mut self) -> Vec<Source> {
+        let Some(details) = self.details.as_mut() else {
+            return Vec::new();
+        };
+        let sources = std::mem::take(&mut details.sources);
+        if details.order.is_none() {
+            self.details = None;
+        }
+        sources
+    }
+
+    pub(crate) fn take_order(&mut self) -> Option<Order> {
+        self.details.as_mut()?.order.take()
     }
 
     /// The same output, with the image the call read.

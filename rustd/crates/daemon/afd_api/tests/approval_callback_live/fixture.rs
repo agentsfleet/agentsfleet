@@ -224,6 +224,7 @@ impl Fixture {
                     name: ASKED_FOR,
                     kind: GrantKind::Secret,
                     scope: None,
+                    redirect: None,
                     turn,
                 },
                 af_core::clock::now(),

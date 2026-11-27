@@ -5,6 +5,9 @@
 //! place: a verb added here without a method, a name or a code does not
 //! compile.
 
+#[cfg(test)]
+mod all;
+
 use std::fmt;
 
 use af_core::error_code::{self, ErrorCode};
@@ -90,6 +93,10 @@ pub(crate) enum Verb {
     TriggerRemove,
     /// A secret or integration the held fleet asks a person to approve.
     Access,
+    /// Search through platform web vendors.
+    WebSearch,
+    /// Extract one public page.
+    WebExtract,
     /// The messages a person sent while the run works, assigned to it.
     Folds,
     /// Native event-owned recovery command.
@@ -133,57 +140,6 @@ pub(crate) enum Verb {
 }
 
 impl Verb {
-    /// Every verb, so a suite walks the whole vocabulary rather than a
-    /// hand-kept list that a new verb can miss.
-    #[cfg(test)]
-    pub(crate) const ALL: [Self; 45] = [
-        Self::Open,
-        Self::Heartbeat,
-        Self::Renew,
-        Self::Progress,
-        Self::Report,
-        Self::Load,
-        Self::Capture,
-        Self::Recall,
-        Self::Mint,
-        Self::Items,
-        Self::Me,
-        Self::ScheduleCreate,
-        Self::ScheduleList,
-        Self::ScheduleUpdate,
-        Self::ScheduleDelete,
-        Self::ScheduleRun,
-        Self::ScheduleRuns,
-        Self::Message,
-        Self::FleetList,
-        Self::FleetTurns,
-        Self::FleetSteer,
-        Self::TriggerAdd,
-        Self::TriggerList,
-        Self::TriggerRemove,
-        Self::Access,
-        Self::Folds,
-        Self::TurnCheckpoint,
-        Self::ContextLoad,
-        Self::ContextSave,
-        Self::DurableTaskInputs,
-        Self::DurableTaskBindings,
-        Self::DurableTaskInputReceipt,
-        Self::DurableTaskDecisionReserve,
-        Self::DurableTaskDecisionRecord,
-        Self::DurableTaskEffectPublish,
-        Self::DurableTaskEffects,
-        Self::DurableTaskEffect,
-        Self::DurableTaskCheckpointPlan,
-        Self::DurableTaskCheckpointCommit,
-        Self::DurableTaskCheckpointPageWrite,
-        Self::DurableTaskCheckpointPage,
-        Self::DurableTaskCheckpointObjectsRegister,
-        Self::DurableTaskCheckpointUploads,
-        Self::DurableTaskCheckpointAuthorizations,
-        Self::DurableTaskCheckpointPin,
-    ];
-
     /// The method this verb is sent with.
     pub(crate) const fn method(self) -> Method {
         match self {
@@ -219,6 +175,8 @@ impl Verb {
             | Self::FleetSteer
             | Self::TriggerAdd
             | Self::Access
+            | Self::WebSearch
+            | Self::WebExtract
             | Self::Folds
             | Self::TurnCheckpoint
             | Self::ContextLoad
@@ -262,6 +220,8 @@ impl Verb {
             Self::TriggerList => "trigger_list",
             Self::TriggerRemove => "trigger_remove",
             Self::Access => "access",
+            Self::WebSearch => "web_search",
+            Self::WebExtract => "web_extract",
             Self::Folds => "folds",
             Self::TurnCheckpoint => "turn_checkpoint",
             Self::ContextLoad => "context_load",
@@ -313,6 +273,8 @@ impl Verb {
             | Self::TriggerList
             | Self::TriggerRemove
             | Self::Access
+            | Self::WebSearch
+            | Self::WebExtract
             | Self::Folds
             | Self::TurnCheckpoint
             | Self::ContextLoad

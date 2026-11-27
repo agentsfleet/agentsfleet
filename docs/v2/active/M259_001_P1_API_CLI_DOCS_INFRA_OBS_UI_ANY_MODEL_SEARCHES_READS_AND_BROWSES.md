@@ -96,7 +96,8 @@ browser_open · browser · screenshot ─► afr_tools RunBrowser ─► CDP ove
 - **PR title (eventual):** feat(web): web_search over several vendors, routed web_fetch, host grants and a browser in the run's VM
 - **Intent (one sentence):** Any fleet on any model searches, reads what it found and acts on a page, reaching only what a person allowed.
 - **Authoring handshake:** Search works on every model through the daemon. Restricted fleets can request a named host. Browser development targets our own Firecracker after M258 merges.
-- **Implementer handshake:** recorded in the Pull Request Session Notes at PLAN, before any edit (SPEC-HANDSHAKE).
+- **Implementer handshake:** Deliver fleet-controlled search, page reads, host requests and citations on `feat/m259-web-tools`. Use the existing paid runtime and the platform-admin vault. A restricted fleet can request access to a named site. Its search and extraction remain disabled.
+- **Build assumptions:** §§1–5 use the daemon and runner on main at `ece273764`. Reconcile protocol and database changes when M258 lands. §6 uses the toolbox builder and Firecracker configuration from that merge.
 
 ## Implementing agent — read these first
 
@@ -193,13 +194,13 @@ Decode per-URL `errors[]` even on HTTP 200. For a temporary fetch failure (upstr
 
 A database failure or ambiguous commit ends the walk with 503 `web_reservation_unavailable`, zero dispatches under that reservation, and no local-read permission. A stale fence retains its existing refusal. A caller who receives this failure sees an unavailable tool result.
 
-- **Dimension 1.1** — `a_vendor_call_is_counted_before_it_leaves`: the fake vendor observes its committed reservation and the explicit fast mode. Crash after commit leaves one reservation and zero calls. A failed reservation or stale fence at fallback leaves the next vendor untouched.
+- **Dimension 1.1** — DONE. `a_vendor_call_is_counted_before_it_leaves`: the fake vendor observes its committed reservation and the explicit fast mode. Crash after commit leaves one reservation and zero calls. A failed reservation or stale fence at fallback leaves the next vendor untouched.
   Assert the 503 and its problem code, zero vendor requests, and no fallback after a reservation error.
-- **Dimension 1.2** — a failed vendor falls over → Test `a_failed_vendor_falls_over_to_the_next` (integration): Parallel answers 500, Exa answers 200 → `{vendor:"exa"}`, both counted. Both answer 500 → 502 naming each vendor's status, each upstream called once.
-- **Dimension 1.3** — only a named wait cools → Test `a_cooling_vendor_is_skipped_until_its_named_wait_ends` (integration, the clock seam): Parallel's 429 with `Retry-After: 30` → Exa alone answers next. At 31 seconds Parallel is tried again, and a 429 naming no wait cools nothing. Every vendor cooling → 503 with `Retry-After` and zero calls.
-- **Dimension 1.4** — a vendor without a key is skipped → Test `a_vendor_without_a_vault_key_is_skipped` (integration): only the `exa` bag → Parallel sees no call. No bag at all → 503 with the new code, zero calls and no row.
-- **Dimension 1.5** — a call that may not leave reaches no vendor → Test `a_web_call_that_may_not_leave_reaches_no_vendor` (integration): a `restricted` fleet → 403. A stale fence → the stale-fence code; an extract of `https://169.254.169.254/` or `http://example.org` → 400. Each case makes zero upstream calls and writes no row.
-- **Dimension 1.6** — no key leaves the daemon → Test `no_vendor_key_reaches_a_runner_or_a_log` (integration): a sentinel key per vendor. Each is absent from every verb answer, run payload, error sentence and captured log line, and present only in the upstream's header.
+- **Dimension 1.2** — DONE. a failed vendor falls over → Test `a_failed_vendor_falls_over_to_the_next` (integration): Parallel answers 500, Exa answers 200 → `{vendor:"exa"}`, both counted. Both answer 500 → 502 naming each vendor's status, each upstream called once.
+- **Dimension 1.3** — DONE. only a named wait cools → Test `a_cooling_vendor_is_skipped_until_its_named_wait_ends` (integration, the clock seam): Parallel's 429 with `Retry-After: 30` → Exa alone answers next. At 31 seconds Parallel is tried again, and a 429 naming no wait cools nothing. Every vendor cooling → 503 with `Retry-After` and zero calls.
+- **Dimension 1.4** — DONE. a vendor without a key is skipped → Test `a_vendor_without_a_vault_key_is_skipped` (integration): only the `exa` bag → Parallel sees no call. No bag at all → 503 with the new code, zero calls and no row.
+- **Dimension 1.5** — DONE. a call that may not leave reaches no vendor → Test `a_web_call_that_may_not_leave_reaches_no_vendor` (integration): a `restricted` fleet → 403. A stale fence → the stale-fence code; an extract of `https://169.254.169.254/` or `http://example.org` → 400. Each case makes zero upstream calls and writes no row.
+- **Dimension 1.6** — DONE. no key leaves the daemon → Test `no_vendor_key_reaches_a_runner_or_a_log` (integration): a sentinel key per vendor. Each is absent from every verb answer, run payload, error sentence and captured log line, and present only in the upstream's header.
 - **Dimension 1.7** — an extract reads a public page → Test `an_extract_returns_the_pages_markdown` (integration): `{url:"https://example.org/a"}` → the upstream's Markdown. One `parallel`/`extract` row reads 1.
   Exercise per-URL errors inside a 200, a successful full-content result, and a missing full-content field. Before live acceptance, capture sanitized fixtures for a known redirect, an unreachable page and a rate-limited call.
 - **Dimension 1.8** — `a_stalled_vendor_is_dispatched_once_and_answers_inside_the_deadline`: timeout and lost reply exercise the real runner client. Each vendor sees at most one request and the whole walk respects the caller deadline.
@@ -253,8 +254,8 @@ Example dashboard card after a restricted fleet follows a migration guide link:
 
 Approve or Deny resumes the turn that asked. The model chooses whether to call `web_fetch` again. The dashboard can show the recorded decision independently of whether another fetch succeeds.
 
-- **Dimension 4.1** — a host request raises one card → Test `a_host_request_raises_one_card_and_waits` (integration): `{host:"www.booking.com"}` → a `pending` `host` grant and one card. The turn settles waiting.
-- **Dimension 4.2** — an approved host opens no search → Test `an_approved_host_joins_the_allowlist_and_opens_no_search` (integration): Approve → the resumed run's `allow` holds the host. `POST L/searches` still answers 403.
+- **Dimension 4.1** — DONE. a host request raises one card → Test `a_host_request_raises_one_card_and_waits` (integration): `{host:"www.booking.com"}` → a `pending` `host` grant and one card. The turn settles waiting.
+- **Dimension 4.2** — DONE. an approved host opens no search → Test `an_approved_host_joins_the_allowlist_and_opens_no_search` (integration): Approve → the resumed run's `allow` holds the host. `POST L/searches` still answers 403.
 - **Dimension 4.3** — an address is refused → Test `a_host_request_for_an_address_is_refused` (integration): `10.0.0.5`, `localhost` and `169.254.169.254` → the refusal, no row and no card.
 - **Dimension 4.4** — one kind per request → Test `a_request_naming_both_a_name_and_a_host_is_refused` (unit, `afr_tools`): both, or neither → `invalid_arguments`, and nothing is posted.
 - **Dimension 4.5** — a person sees the host → Test `an access card for a host names it` (unit, vitest, `ui/packages/app/components/domain/approvals/FleetApprovalSummary.test.tsx`): the card names the ASCII host, originating host, refused tool, grant reach and lifetime. “Respond by” labels the advisory date. Deny leaves “Can access” unchanged. Feed a redirect with a signed path and query. Verify both are absent from the grant, gate, exact-action view and continuation.
@@ -356,7 +357,7 @@ POST L/extracts {fencing_token, call_number, url}    200 {vendor, url, title?, c
 POST L/access   {fencing_token, name, scope?} | {fencing_token, host, evidence?: {tool:"web_fetch", from_host, to_host}}   grant_id, state: raised|pending|covered, gate_id?
 ```
 
-**Codes.** Allocate new codes against merged M258. Reuse the stale-fence code.
+**Codes.** Web-specific failures occupy the UZ-WEB family. Recheck allocation against merged M258 before the browser spike. Stale fences keep the existing refusal.
 
 ```
 403  a private fleet's web call                 503  no vendor key is configured

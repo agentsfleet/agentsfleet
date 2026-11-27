@@ -1,95 +1,187 @@
-//! `web_fetch`: a credential-free `GET` of a page's text.
-//!
-//! The same hook as `http_request` with less reach: one method, no header, no
-//! body, and no placeholder anywhere, so a page fetched for reading never
-//! carries a run's credential. An HTML page comes back as its text, through
-//! a real HTML parser (`html2text`).
+//! Credential-free page reads. The embedder routes the request and masks
+//! text, including any secret revealed by decoding HTML entities.
 
 use schemars::JsonSchema;
 use serde::Deserialize;
+use url::Url;
 
-use super::answered;
+use super::{SearchBackend, answered};
+use crate::Source;
 use crate::tool::ToolOutput;
-use crate::tools::outbound::{Outbound, Placement, Redirects, Request};
-use crate::tools::{Context, Handler};
-
-/// The one method a fetch sends.
-const METHOD: &str = "GET";
-/// The columns a page's text wraps at: wide, so a paragraph stays a line.
-const TEXT_WIDTH: usize = 200;
-/// What marks a response as a page to read as text.
-const HTML: &str = "html";
+use crate::tools::outbound::{Outbound, Placement, Redirects, Refused, Request, Response};
+use crate::tools::process::output::DEFAULT_BYTES;
+use crate::tools::{Context, Handler, code};
 
 /// `web_fetch`'s arguments.
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Fetch {
-    /// An https URL on a host the network policy lists.
+    /// An HTTPS URL to read under the run's network policy.
     url: String,
-    /// The most characters to read back: the whole text when absent.
+    /// Maximum characters to return. The default output budget also applies.
     max_chars: Option<usize>,
 }
 
-backed! {
-    /// Fetches one page's text through the run's outbound hook.
-    WebFetch over Outbound
+/// Fetches one page through the run's web backend or standalone outbound hook.
+#[derive(Debug)]
+pub struct WebFetch<'a> {
+    outbound: &'a dyn Outbound,
+    search: Option<&'a dyn SearchBackend>,
+}
+
+impl<'a> WebFetch<'a> {
+    /// A local page reader over the supplied policy and transport.
+    #[must_use]
+    pub const fn new(outbound: &'a dyn Outbound) -> Self {
+        Self {
+            outbound,
+            search: None,
+        }
+    }
+
+    pub(crate) const fn with_search(mut self, search: Option<&'a dyn SearchBackend>) -> Self {
+        self.search = search;
+        self
+    }
+
+    async fn read(
+        &self,
+        url: &str,
+        context: Context<'_>,
+    ) -> Result<(Response, Option<String>), Refused> {
+        if let Some(search) = self.search {
+            return search.extract(context.call_ref, url).await;
+        }
+        let draft = Request {
+            method: "GET".to_owned(),
+            url: url.to_owned(),
+            headers: Vec::new(),
+            body: None,
+            placement: Placement::Nowhere,
+            redirects: Redirects::Follow,
+        };
+        self.outbound
+            .send(Self::NAME, draft)
+            .await
+            .map(|inbound| (inbound, None))
+    }
 }
 
 impl Handler for WebFetch<'_> {
     const NAME: &'static str = "web_fetch";
-    const DESCRIPTION: &'static str = "Fetch one https page from a host the network \
-        policy allows and read back its text. No credential is sent.";
+    const DESCRIPTION: &'static str = "Read one HTTPS page under the fleet's network policy. Returns text or Markdown. No credential is sent.";
     type Arguments = Fetch;
 
-    async fn run(&self, arguments: Fetch, _context: Context<'_>) -> ToolOutput {
-        let draft = Request {
-            method: METHOD.to_owned(),
-            url: arguments.url,
-            headers: Vec::new(),
-            body: None,
-            placement: Placement::Nowhere,
-            redirects: Redirects::Stop,
+    async fn run(&self, arguments: Fetch, context: Context<'_>) -> ToolOutput {
+        let (mut page, final_origin) = match self.read(&arguments.url, context).await {
+            Ok(page) => page,
+            Err(refused) => return refused.into(),
         };
-        match self.backend.send(Self::NAME, draft).await {
-            Ok(inbound) => {
-                let page = inbound
-                    .content_type
-                    .as_deref()
-                    .is_some_and(|media| media.contains(HTML));
-                // Masked again once decoded: an entity-encoded echo of a minted
-                // token only reads as the token after the page becomes text.
-                let text = if page {
-                    self.backend.mask(text_of(&inbound.body)).await
-                } else {
-                    inbound.body
-                };
-                let text = match arguments.max_chars {
-                    Some(limit) => at_most(text, limit),
-                    None => text,
-                };
-                answered(inbound.status, text)
+        let requested = arguments.url.as_str();
+        let masked = self.outbound.mask(requested.to_owned()).await;
+        let shown = (masked == requested)
+            .then(|| citation_url(requested))
+            .flatten();
+        let cleaned = |text: String| {
+            let visible = shown.as_deref().unwrap_or("[redacted URL]");
+            if (shown.is_some() && !requested.contains(['?', '#'])) || requested.is_empty() {
+                return text;
             }
-            Err(refused) => refused.into(),
+            let text = text.replace(requested, visible);
+            if masked != requested && !masked.is_empty() {
+                text.replace(&masked, visible)
+            } else {
+                text
+            }
+        };
+        let status = page.status;
+        page.body = cleaned(page.body);
+        let text = match content(page, self.outbound).await {
+            Ok(text) => text,
+            Err(refusal) => return refusal.into(),
+        };
+        let output = answered(status, bounded(cleaned(text), arguments.max_chars));
+        if output.error_code.is_some() {
+            return output;
         }
+        let sources = shown
+            .into_iter()
+            .chain(final_origin)
+            .map(|url| Source { url, title: None })
+            .collect();
+        output.with_sources(sources)
     }
 }
 
-/// An HTML page's text; the markup itself when the parser cannot read it.
-fn text_of(html: &str) -> String {
-    html2text::config::plain()
-        .raw_mode(true)
-        .string_from_read(html.as_bytes(), TEXT_WIDTH)
-        .unwrap_or_else(|_unparsed| html.to_owned())
+/// A requested link safe to quote on every output surface. A run's secret
+/// mask is checked separately before the URL reaches this function.
+fn citation_url(raw: &str) -> Option<String> {
+    let mut url = Url::parse(raw).ok()?;
+    if !matches!(url.scheme(), "http" | "https")
+        || !url.has_host()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || raw.chars().any(char::is_control)
+    {
+        return None;
+    }
+    url.set_query(None);
+    url.set_fragment(None);
+    Some(url.into())
 }
 
-/// `text` cut to `limit` characters, saying where and from how many.
-fn at_most(text: String, limit: usize) -> String {
-    match text.char_indices().nth(limit) {
-        Some((cut, _kept)) => {
-            let total = text.chars().count();
-            let kept = text.get(..cut).unwrap_or_default();
-            format!("{kept}\n\n[Content truncated at {limit} chars, total {total} chars]")
-        }
-        None => text,
+async fn content(page: Response, outbound: &dyn Outbound) -> Result<String, Refused> {
+    let media = page
+        .content_type
+        .as_deref()
+        .unwrap_or_default()
+        .split(';')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+    if page.lossy || page.body.contains('\0') || !text_media(&media) {
+        let media = if media.is_empty() {
+            "application/octet-stream"
+        } else {
+            &media
+        };
+        return Err(Refused::new(code::UNSUPPORTED_MEDIA, media));
     }
+    if matches!(media.as_str(), "text/html" | "application/xhtml+xml") {
+        let markdown = super::html::markdown(&page.body).map_err(|_render| {
+            Refused::new(
+                code::UNSUPPORTED_MEDIA,
+                "HTML could not be rendered as text",
+            )
+        })?;
+        return Ok(outbound.mask(markdown).await);
+    }
+    Ok(page.body)
+}
+
+fn text_media(media: &str) -> bool {
+    media.is_empty()
+        || media.starts_with("text/")
+        || media.ends_with("+xml")
+        || media.ends_with("+json")
+        || matches!(
+            media,
+            "application/json" | "application/xml" | "application/javascript"
+        )
+}
+
+/// Keep whole characters within the requested character and default byte budgets.
+pub(super) fn bounded(text: String, chars: Option<usize>) -> String {
+    let bytes = text.floor_char_boundary(DEFAULT_BYTES.min(text.len()));
+    let cut = chars
+        .and_then(|limit| text.char_indices().nth(limit))
+        .map_or(bytes, |(offset, _)| offset.min(bytes));
+    if cut == text.len() {
+        return text;
+    }
+    let kept = text.get(..cut).unwrap_or_default();
+    let count = kept.chars().count();
+    let total = text.chars().count();
+    format!("{kept}\n\n[Content truncated at {count} chars, total {total} chars]")
 }

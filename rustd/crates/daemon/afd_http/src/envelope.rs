@@ -40,6 +40,7 @@ pub struct ProblemResponse {
     etag: Option<String>,
     resolution: Option<Resolution>,
     effect: Option<af_wire::durable_task::DurableTaskEffect>,
+    local_read_permitted: bool,
 }
 
 /// The standing answer a 409 on an approval gate reports.
@@ -79,6 +80,21 @@ impl ProblemResponse {
             etag: None,
             resolution: None,
             effect: None,
+            local_read_permitted: false,
+        }
+    }
+
+    /// A temporary extract failure for which the daemon rechecked the live
+    /// fence and public fleet policy and permits one local read.
+    #[must_use]
+    pub fn extract_fallback(detail: String, request_id: impl Into<String>) -> Self {
+        Self {
+            local_read_permitted: true,
+            ..Self::new(
+                af_core::error_code::WEB_EXTRACT_UNAVAILABLE,
+                detail,
+                request_id,
+            )
         }
     }
 
@@ -199,6 +215,9 @@ impl ProblemResponse {
         if let Some(user_message) = self.problem.user_message() {
             body.insert("user_message".to_owned(), user_message.into());
         }
+        if self.local_read_permitted {
+            body.insert("local_read_permitted".to_owned(), true.into());
+        }
         if let Some(effect) = &self.effect {
             body.insert("effect".to_owned(), serde_json::json!(effect));
         }
@@ -244,5 +263,36 @@ impl IntoResponse for ProblemResponse {
             .into_response();
         response.extensions_mut().insert(refused);
         response
+    }
+}
+
+#[cfg(test)]
+mod web_tests {
+    use super::ProblemResponse;
+    use af_core::error_code;
+
+    #[test]
+    fn extract_permission_is_an_explicit_problem_extension() {
+        let denied = ProblemResponse::new(
+            error_code::WEB_RESERVATION_UNAVAILABLE,
+            "unavailable",
+            "req",
+        );
+        assert!(denied.body().get("local_read_permitted").is_none());
+        let authorized = ProblemResponse::extract_fallback("reader unavailable".to_owned(), "req");
+        assert_eq!(
+            authorized
+                .body()
+                .get("error_code")
+                .and_then(serde_json::Value::as_str),
+            Some(error_code::WEB_EXTRACT_UNAVAILABLE.as_str())
+        );
+        assert_eq!(
+            authorized
+                .body()
+                .get("local_read_permitted")
+                .and_then(serde_json::Value::as_bool),
+            Some(true)
+        );
     }
 }

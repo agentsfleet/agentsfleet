@@ -55,6 +55,7 @@ pub(crate) async fn ask(
                 name,
                 kind,
                 scope,
+                redirect: None,
                 turn,
             },
             NOW,

@@ -24,11 +24,13 @@ af_core::error_lifts!(Error, ErrorKind:
     garde::Report => Invalid,
 );
 
-/// The one field of a problem body the runner reads.
+/// Bounded problem fields used to classify the result of a call.
 #[derive(Deserialize)]
 struct Problem<'a> {
     #[serde(borrow)]
     error_code: Option<Cow<'a, str>>,
+    #[serde(default)]
+    local_read_permitted: bool,
 }
 
 /// Reports a setting the runner cannot start without.
@@ -75,10 +77,16 @@ pub(crate) fn unavailable(verb: Verb, status: u16) -> Error {
 
 /// Reports a retryable response while retaining its registered problem code.
 pub(crate) fn unavailable_with_body(verb: Verb, status: u16, body: &[u8]) -> Error {
+    let problem = af_core::json::object_from_slice::<Problem<'_>>(body).ok();
+    let code = problem.as_ref().and_then(Problem::code);
     ErrorKind::Unavailable {
         verb,
         status,
-        code: problem_code(body),
+        code,
+        local_read_permitted: verb == Verb::WebExtract
+            && matches!(status, 502 | 503)
+            && code == Some(af_core::error_code::WEB_EXTRACT_UNAVAILABLE)
+            && problem.is_some_and(|problem| problem.local_read_permitted),
     }
     .into()
 }
@@ -97,10 +105,15 @@ pub(crate) fn refused_with_body(verb: Verb, status: u16, body: &[u8]) -> Error {
 }
 
 fn problem_code(body: &[u8]) -> Option<ErrorCode> {
-    let named = af_core::json::object_from_slice::<Problem<'_>>(body)
+    af_core::json::object_from_slice::<Problem<'_>>(body)
         .ok()?
-        .error_code?;
-    ErrorCode::lookup(&named)
+        .code()
+}
+
+impl Problem<'_> {
+    fn code(&self) -> Option<ErrorCode> {
+        ErrorCode::lookup(self.error_code.as_deref()?)
+    }
 }
 
 /// Reports a runner that stopped because the daemon refused its token.

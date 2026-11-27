@@ -112,7 +112,6 @@ async fn a_chat_on_minimax_answers_through_the_messages_wire() {
         instructions: "Answer in one word.",
         messages: &messages,
         tools: &[],
-        hosted: &[],
         cache_key: "",
         max_output_tokens: None,
         single_attempt: false,

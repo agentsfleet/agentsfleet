@@ -68,6 +68,13 @@ async fn a_purge_deletes_the_live_run_and_keeps_the_settled_one() {
         .await
         .expect("the runner, event and runs seed");
 
+    for run in [&live, &settled] {
+        sqlx::query("INSERT INTO thread.run_web_calls (run_id, vendor, operation, call_count, created_at, updated_at) VALUES ($1, 'parallel', 'search', 1, now(), now())")
+            .bind(run)
+            .execute(&mut *lane.connection().await)
+            .await
+            .expect("web reservation");
+    }
     lane.archive(&fleet).await;
     lane.delete(&lane.workspace, &fleet)
         .await
@@ -80,6 +87,19 @@ async fn a_purge_deletes_the_live_run_and_keeps_the_settled_one() {
     assert!(
         exists(&lane, &settled).await,
         "a settled run stays as the runner's history"
+    );
+
+    let retained: Vec<Uuid7> =
+        sqlx::query_scalar("SELECT run_id FROM thread.run_web_calls WHERE run_id IN ($1, $2)")
+            .bind(&live)
+            .bind(&settled)
+            .fetch_all(&mut *lane.connection().await)
+            .await
+            .expect("retained reservations");
+    assert_eq!(
+        retained,
+        [settled],
+        "web counters follow the run's retention"
     );
 
     lane.cleanup().await;

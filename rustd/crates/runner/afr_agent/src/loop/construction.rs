@@ -38,8 +38,8 @@ impl<'s, 'run> Harness<'s, 'run> {
             depth: 0,
             stop: shared.stop.clone(),
             selection,
-            router: Router::new(offer::tools(selection, &shared.backed), selection),
-            hosted: offer::hosted(selection),
+            router: Router::new(offer::tools(selection, &shared.backed)),
+
             live: Live::new(shared.events, shared.scrub, shared.started),
             checkpoints: Checkpoints::new(shared.context),
             context: context::State::new(
@@ -103,8 +103,8 @@ impl<'s, 'run> Harness<'s, 'run> {
             depth,
             stop,
             selection,
-            router: Router::new(offer::tools(selection, &shared.backed), selection),
-            hosted: offer::hosted(selection),
+            router: Router::new(offer::tools(selection, &shared.backed)),
+
             live: Live::silent(shared.scrub, shared.started),
             checkpoints: Checkpoints::never(),
             context: context::State::new(0),

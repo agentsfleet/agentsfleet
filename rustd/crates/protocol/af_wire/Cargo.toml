@@ -22,6 +22,7 @@ garde.workspace = true
 # crate that bounds untrusted input. A leaf on garde alone, so the wire types
 # still carry no daemon crate.
 af_validate.workspace = true
+url.workspace = true
 # `concatcp!` composes each route from its segments at compile time, so the
 # router, the OpenAPI attributes and the runner read one spelling.
 const_format.workspace = true

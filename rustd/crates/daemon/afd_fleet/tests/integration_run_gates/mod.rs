@@ -37,6 +37,7 @@
 )]
 
 mod access;
+mod access_hosts;
 mod access_later;
 mod access_refusals;
 mod access_scopes;
@@ -55,6 +56,7 @@ pub(crate) mod seed;
 mod slack;
 mod stops;
 mod tenant_keys;
+mod web;
 mod window;
 mod witness;
 

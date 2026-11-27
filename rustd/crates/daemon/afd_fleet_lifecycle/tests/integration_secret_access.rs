@@ -36,6 +36,11 @@ async fn only_an_approved_grant_on_a_runnable_fleet_lists_access() {
             .await
             .expect("seeding a grant");
     }
+    let host_only = lane.fleet().await;
+    GrantSeed::new(&host_only, SECRET, grant_type::HOST, status::APPROVED)
+        .insert(&mut *lane.connection().await)
+        .await
+        .expect("a same-name host grant");
     lane.archive(&archived).await;
 
     let access = lane

@@ -139,7 +139,6 @@ impl guffbolt::Conversation for Harness<'_, '_> {
             instructions: &shared.instructions,
             messages: &window.messages,
             tools,
-            hosted: &self.hosted,
             cache_key: shared.fleet_id,
             max_output_tokens: window.max_output_tokens,
             single_attempt: false,

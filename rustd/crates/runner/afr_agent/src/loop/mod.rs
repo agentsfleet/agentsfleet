@@ -18,8 +18,8 @@ use af_providers::Connect;
 use af_secrets::Scrub;
 use af_wire::policy::ExecutionPolicy;
 use afr_tools::{Backends, Catalog, Selection};
+use guffbolt::Transcript;
 use guffbolt::agents::{Agents, Children};
-use guffbolt::{Hosted, Transcript};
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument as _;
 
@@ -211,7 +211,7 @@ pub(crate) struct Harness<'s, 'run> {
     pub(crate) selection: &'s Selection<'run>,
     /// Every tool this loop holds, and how a call reaches one.
     router: Router<'s, 'run>,
-    hosted: Vec<Hosted>,
+
     live: Live<'s>,
     checkpoints: Checkpoints,
     context: context::State,

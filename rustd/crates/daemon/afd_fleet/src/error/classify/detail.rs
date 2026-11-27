@@ -85,6 +85,7 @@ impl Error {
             ErrorKind::GithubMintFailed => DETAIL_MINT_FAILED,
             ErrorKind::ConnectorReconnectRequired => DETAIL_CONNECTOR_RECONNECT,
             ErrorKind::ConnectorMintFailed => DETAIL_CONNECTOR_MINT_FAILED,
+            ErrorKind::Web { ref reason, .. } => reason.sentence(),
             ErrorKind::GrantRequired => DETAIL_GRANT_REQUIRED,
         }
     }

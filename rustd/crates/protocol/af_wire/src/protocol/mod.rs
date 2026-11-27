@@ -12,7 +12,7 @@ pub use up::{Renewal, Up};
 /// Every assignment is a fleet's turn: its payload carries the fleet's name
 /// and unfinished tasks and no installed instructions, and a hello names no
 /// work kinds.
-pub const VERSION: &str = "agentsfleet.runner.v6";
+pub const VERSION: &str = "agentsfleet.runner.v7";
 /// Application version; independent of the negotiated HTTP version.
 pub const VERSION_HEADER: &str = "agentsfleet-runner-protocol";
 /// Which independently flow-controlled request this stream serves.

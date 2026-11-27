@@ -22,6 +22,30 @@ use jiff::Timestamp;
 
 /// The fenced HTTP operations that remain outside the host session.
 pub trait RunPlane: Send + Sync + std::fmt::Debug + 'static {
+    /// Send a fenced search request through the platform vendors.
+    ///
+    /// # Errors
+    /// Refuses stale ownership, restricted fleets and unavailable vendors.
+    fn web_search(
+        &self,
+        runner: &Uuid7,
+        run: Uuid7,
+        request: &garde::Valid<af_wire::web::SearchRequest>,
+        deadline: tokio::time::Instant,
+    ) -> impl Future<Output = afd_fleet::Result<af_wire::web::SearchResponse>> + Send;
+
+    /// Send a fenced extract request through the platform vendors.
+    ///
+    /// # Errors
+    /// Refuses stale ownership, restricted fleets and unavailable vendors.
+    fn web_extract(
+        &self,
+        runner: &Uuid7,
+        run: Uuid7,
+        request: &garde::Valid<af_wire::web::ExtractRequest>,
+        deadline: tokio::time::Instant,
+    ) -> impl Future<Output = afd_fleet::Result<af_wire::web::ExtractResponse>> + Send;
+
     /// The memory window that seeds one run.
     ///
     /// # Errors

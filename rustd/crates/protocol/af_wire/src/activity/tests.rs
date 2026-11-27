@@ -121,6 +121,7 @@ fn completed_frame() -> super::ToolCallCompleted<'static> {
         output_tail: None,
         output_line_count: None,
         exit_code: None,
+        sources: Vec::new(),
         changes: Vec::new(),
     }
 }

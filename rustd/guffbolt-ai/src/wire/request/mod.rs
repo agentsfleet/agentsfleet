@@ -1,18 +1,15 @@
 //! One turn's request in rig's terms.
 //!
 //! The system prompt leads, then the conversation, with each call's id kept so
-//! its result answers it, then the tools, and the hosted ones as the wire's own
-//! spec. Two things rig needs that the seam does not carry are rebuilt here:
+//! its result answers it, then the function tools. Two things rig needs that the seam does not carry are rebuilt here:
 //! a tool result's tool name, taken from the call it answers, and the
 //! reasoning a provider asked to have back, ahead of the turn's text and
 //! calls.
 
 use std::collections::HashMap;
 
-use crate::{Call, Hosted, Image, Message, Request};
-use rig_core::completion::{
-    CacheRetention, CompletionRequest, ProviderToolDefinition, ToolAnnotations, ToolDefinition,
-};
+use crate::{Call, Image, Message, Request};
+use rig_core::completion::{CacheRetention, CompletionRequest, ToolAnnotations, ToolDefinition};
 use rig_core::message::{
     AssistantContent, CallId, Message as RigMessage, ToolCall, ToolFunction, ToolName,
     ToolResultContent, UserContent,
@@ -25,10 +22,6 @@ use crate::error::Result;
 
 mod replay;
 
-/// Anthropic's server-side web search, as its tool spec names it.
-const WEB_SEARCH_MESSAGES: &str = "web_search_20250305";
-/// The key a Messages server tool is named under.
-const FIELD_NAME: &str = "name";
 /// The Responses field naming a conversation's prompt cache.
 const FIELD_PROMPT_CACHE_KEY: &str = "prompt_cache_key";
 
@@ -52,11 +45,6 @@ pub(crate) fn request(wire: Wire, request: &Request<'_>) -> Result<CompletionReq
             })
         })
         .collect::<Result<Vec<_>>>()?;
-    let hosted = request
-        .hosted
-        .iter()
-        .copied()
-        .filter_map(|tool| hosted(wire, tool));
     let mut built = CompletionRequest::new(RigMessage::user(String::new()));
     built.chat_history = history.into_iter().map(std::sync::Arc::new).collect();
     match wire {
@@ -75,21 +63,7 @@ pub(crate) fn request(wire: Wire, request: &Request<'_>) -> Result<CompletionReq
     Ok(built
         .model(request.model)
         .preamble(request.instructions)
-        .tools(tools)
-        .provider_tools(hosted.collect()))
-}
-
-/// The wire's own spec for a hosted tool, when the wire offers one. Chat
-/// offers none: a stray call reaches the router, which refuses it with a code.
-fn hosted(wire: Wire, tool: Hosted) -> Option<ProviderToolDefinition> {
-    match (tool, wire) {
-        (Hosted::WebSearch, Wire::Messages) => Some(
-            ProviderToolDefinition::new(WEB_SEARCH_MESSAGES)
-                .with_config(FIELD_NAME, serde_json::Value::from(tool.name())),
-        ),
-        (Hosted::WebSearch, Wire::Responses) => Some(ProviderToolDefinition::new(tool.name())),
-        (Hosted::WebSearch, Wire::Chat | Wire::Gemini | Wire::Ollama) => None,
-    }
+        .tools(tools))
 }
 
 /// The conversation as it is mapped: every call's tool by its id, the id

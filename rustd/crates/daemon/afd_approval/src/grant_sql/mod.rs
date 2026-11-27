@@ -28,10 +28,8 @@ pub(crate) const SELECT_FLEET_IN_WORKSPACE: &str = include_str!("select_fleet_in
 
 /// Every grant a fleet holds, newest first, its scopes as JSON text.
 ///
-/// Unpaged and unfiltered: a fleet holds at most one grant per name — the
-/// unique constraint on `(fleet_id, service)` says so — and the workspace's
-/// secrets and integrations bound the page. `requested_reason` is the wire's
-/// `reason`.
+/// Includes every grant kind and status. A name can appear under more than one
+/// kind, with separate decisions and row IDs. `requested_reason` is the wire's `reason`.
 ///
 /// `$1` fleet.
 pub(crate) const SELECT_FLEET_GRANTS: &str = include_str!("select_fleet_grants.sql");

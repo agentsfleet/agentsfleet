@@ -92,3 +92,19 @@ async fn local_outbound_refuses_a_host_whose_certificate_it_does_not_trust() {
     );
     assert_eq!(requests(&seen), Vec::<String>::new(), "nothing was asked");
 }
+
+#[tokio::test]
+async fn a_not_modified_response_does_not_follow_its_location() {
+    let unchanged = "HTTP/1.1 304 Not Modified\r\nLocation: https://unlisted.test/next\r\nConnection: close\r\n\r\n";
+    let (address, root, seen) = fake(&[("/start", unchanged)]).await;
+    let lookup = Arc::new(FixedLookup::default());
+    let outbound = LocalOutbound::routed(Arc::clone(&lookup), PUBLIC, address, root);
+
+    let answer = sent(&outbound, "https://public.test/start")
+        .await
+        .expect("the upstream responds");
+    assert_eq!(answer.status, 304);
+    assert_eq!(answer.followed_redirects, 0);
+    assert_eq!(requests(&seen), ["GET /start"]);
+    assert_eq!(lookup.asked(), Vec::<String>::new());
+}

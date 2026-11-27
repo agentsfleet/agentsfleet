@@ -1,4 +1,5 @@
 import * as v from "valibot";
+import type { WebSource } from "../api/turns";
 
 import type { FleetTurn, FleetToolCall } from "./fleet-stream-row";
 
@@ -44,6 +45,7 @@ export type ToolOutcome = {
   exitCode?: number;
   /** An edit's files and the lines each gained and lost; absent otherwise. */
   changes?: readonly FileChange[];
+  sources?: readonly WebSource[];
 };
 
 const LINE_COUNT = v.pipe(v.number(), v.safeInteger(), v.minValue(0));
@@ -70,6 +72,8 @@ const FILE_CHANGE = v.object({ path: NAMED, added: LINE_COUNT, removed: LINE_COU
  * the list rather than showing a count it cannot vouch for. */
 export const FILE_CHANGES = v.fallback(v.optional(v.array(FILE_CHANGE)), undefined);
 
+export const WEB_SOURCES = v.fallback(v.optional(v.array(v.object({ url: NAMED, title: v.optional(v.string()) }))), undefined);
+
 const OUTCOME = v.object({
   status: TOOL_CALL_STATUS_SCHEMA,
   output_head: v.fallback(v.optional(v.string()), undefined),
@@ -77,6 +81,7 @@ const OUTCOME = v.object({
   output_line_count: v.fallback(v.optional(LINE_COUNT), undefined),
   exit_code: v.fallback(v.optional(EXIT_CODE), undefined),
   changes: FILE_CHANGES,
+  sources: WEB_SOURCES,
 });
 
 const SAVED_CALL = v.object({
@@ -105,13 +110,14 @@ export function readToolOutcome(value: unknown): ToolOutcome | null {
   return parsed.success ? outcomeOf(parsed.output) : null;
 }
 
-function outcomeOf({ status, output_head, output_tail, output_line_count, exit_code, changes }: v.InferOutput<typeof OUTCOME>): ToolOutcome {
+function outcomeOf({ status, output_head, output_tail, output_line_count, exit_code, changes, sources }: v.InferOutput<typeof OUTCOME>): ToolOutcome {
   return {
     status,
     ...(output_head === undefined ? {} : { outputHead: output_head }),
     ...(output_tail === undefined ? {} : { outputTail: output_tail }),
     ...(output_line_count === undefined ? {} : { outputLineCount: output_line_count }),
     ...(exit_code === undefined ? {} : { exitCode: exit_code }),
+    ...(status === TOOL_CALL_STATUS.SUCCEEDED && sources?.length ? { sources } : {}),
     ...(changes === undefined || changes.length === 0 ? {} : { changes }),
   };
 }

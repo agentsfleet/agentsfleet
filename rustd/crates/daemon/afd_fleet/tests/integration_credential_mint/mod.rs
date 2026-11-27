@@ -260,7 +260,7 @@ async fn seed_scoped_grant(
         "INSERT INTO connector.integration_grants
            (id, fleet_id, service, grant_type, status, scope, requested_reason, created_at, updated_at)
          VALUES ($1, $2, $3, $5, $4, $6::jsonb, 'fixture', now(), now())
-         ON CONFLICT (fleet_id, service) DO UPDATE SET status = EXCLUDED.status",
+         ON CONFLICT (fleet_id, grant_type, service) DO UPDATE SET status = EXCLUDED.status",
     )
     .bind(mint_id())
     .bind(fleet)

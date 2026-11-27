@@ -49,12 +49,15 @@ WITH fleet AS MATERIALIZED (
   FROM resolved r
   WHERE g.fleet_id = r.fleet_id
     AND g.service  = r.evidence->>'service'
+    AND g.grant_type = r.evidence->>'kind'
     AND r.gate_type = $9
   RETURNING g.id
 )
 
 SELECT id AS gate_id, action_id, workspace_id,
        fleet_id, status, resolved_at, resolved_by, detail, turn_id, gate_type,
+       CASE WHEN evidence->>'kind' = $11 THEN evidence->>'service' END AS approved_host,
+       CASE WHEN evidence->>'kind' = $11 THEN evidence->'redirect'->>'tool' END AS refused_tool,
        (SELECT COUNT(*) FROM fleet.approval_gates g
          WHERE g.fleet_id = resolved.fleet_id AND g.resolved_at IS NULL
            AND g.id NOT IN (SELECT id FROM resolved)) AS pending_approvals

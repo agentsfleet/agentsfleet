@@ -152,11 +152,30 @@ async fn only_an_approved_grant_is_held() {
         ("jira", false),
     ] {
         assert_eq!(
-            hold_approved_on(&mut connection, &lane.fleet, name)
+            hold_approved_on(&mut connection, &lane.fleet, name, grant_type::INTEGRATION)
                 .await
                 .expect("the hold reads"),
             held,
             "{name}"
         );
     }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_host_only_grant_cannot_authorize_publication() {
+    let lane = Lane::seed().await;
+    lane.grant(&lane.fleet, "github", grant_type::HOST, status::APPROVED)
+        .await;
+    let mut connection = lane.database.acquire().await.expect("a connection");
+    assert!(
+        !hold_approved_on(
+            &mut connection,
+            &lane.fleet,
+            "github",
+            grant_type::INTEGRATION
+        )
+        .await
+        .expect("the hold reads")
+    );
 }

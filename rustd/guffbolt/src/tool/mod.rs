@@ -16,7 +16,7 @@ use std::pin::Pin;
 use guffbolt_ai::ToolSpec;
 use serde_json::Value;
 
-pub use self::output::{ErrorCode, ToolOutput};
+pub use self::output::{ErrorCode, Source, ToolOutput};
 
 /// One call's work, as a tool hands it to the loop.
 pub type ToolFuture<'a> = Pin<Box<dyn Future<Output = ToolOutput> + Send + 'a>>;

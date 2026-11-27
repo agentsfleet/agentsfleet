@@ -65,7 +65,9 @@ impl Live {
         let fence = self.payload.get("fencing_token").and_then(Value::as_u64);
         let request = AccessRequest {
             fencing_token: fence.expect("the run's fence"),
-            name: Cow::Owned(name.to_owned()),
+            name: Some(Cow::Owned(name.to_owned())),
+            host: None,
+            evidence: None,
             scope: scope.and_then(|scope| scope.as_object().cloned()),
         };
         let valid = garde::Unvalidated::new(request)

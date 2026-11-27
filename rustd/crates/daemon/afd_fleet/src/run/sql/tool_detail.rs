@@ -46,5 +46,5 @@ pub const SELECT_SERVED_TURNS: &str = include_str!("select_served_turns.sql");
 /// run, then one array per column: `$5` ids, `$6` sequences, `$7` arguments
 /// as JSON text, `$8` truncated arguments, `$9` outputs, `$10` line counts,
 /// `$11` truncated, `$13` turns, `$14` kinds, `$15` tools, `$16` statuses,
-/// `$17` changes as JSON text or NULL. Both stamps are `now()`.
+/// `$17` changes and `$18` sources as JSON text or NULL. Both stamps are `now()`.
 pub const UPSERT_RECORDS: &str = include_str!("upsert_tool_calls.sql");

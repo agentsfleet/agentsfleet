@@ -27,12 +27,16 @@ fn call(call_id: &str) -> ToolTraceCall<'static> {
         output_line_count: Some(214),
         exit_code: None,
         duration_ms: 12,
+        sources: Vec::new(),
         changes: Vec::new(),
     }
 }
 
 fn trace(calls: Vec<ToolTraceCall<'static>>) -> ToolTrace<'static> {
-    ToolTrace { calls }
+    ToolTrace {
+        calls,
+        sources_in_items: false,
+    }
 }
 
 /// A call whose arguments hold one string of `bytes` bytes under `key`.
@@ -230,7 +234,10 @@ fn a_trace_round_trips_with_every_status_and_optional_field() {
         let mut built = call("7:3");
         built.status = status;
         built.exit_code = Some(2);
-        let sent = ToolTrace { calls: vec![built] };
+        let sent = ToolTrace {
+            calls: vec![built],
+            sources_in_items: false,
+        };
         let text = serde_json::to_string(&sent).expect("encodes");
         let back: ToolTrace<'_> = serde_json::from_str(&text).expect("decodes");
         assert_eq!(back, sent);

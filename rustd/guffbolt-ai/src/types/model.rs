@@ -13,26 +13,6 @@ use futures_util::stream::BoxStream;
 
 use super::{Call, Message, Replay, ToolSpec};
 
-/// The name the provider's own web search is called by.
-const WEB_SEARCH: &str = "web_search";
-
-/// A tool the provider runs itself, offered as the wire's own spec.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Hosted {
-    /// The provider's web search.
-    WebSearch,
-}
-
-impl Hosted {
-    /// The name the model calls it by.
-    #[must_use]
-    pub const fn name(self) -> &'static str {
-        match self {
-            Self::WebSearch => WEB_SEARCH,
-        }
-    }
-}
-
 /// What one step asks the model.
 #[derive(Debug, Clone, Copy)]
 pub struct Request<'a> {
@@ -44,8 +24,6 @@ pub struct Request<'a> {
     pub messages: &'a [Message],
     /// The functions the model may call.
     pub tools: &'a [ToolSpec<'a>],
-    /// The provider-hosted tools offered, sent as the provider's own specs.
-    pub hosted: &'a [Hosted],
     /// The key the provider files the conversation's prompt cache under, so
     /// every request sharing it shares a cache.
     pub cache_key: &'a str,

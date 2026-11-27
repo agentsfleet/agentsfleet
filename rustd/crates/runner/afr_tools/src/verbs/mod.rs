@@ -86,6 +86,16 @@ pub enum Unanswered {
     Unreachable,
 }
 
+/// A page extraction either failed without permission or explicitly authorized
+/// the runner to make one local read under its current policy and deadline.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WebUnanswered {
+    /// The call failed or the outcome is unknown.
+    Unanswered(Unanswered),
+    /// The daemon rechecked live policy and returned explicit permission.
+    LocalReadPermitted,
+}
+
 impl Unanswered {
     /// The tool error the model reads.
     #[must_use]
@@ -150,6 +160,35 @@ pub(crate) fn answered_with<T>(
 /// run's id and fencing token to every call.
 #[async_trait::async_trait]
 pub trait RunVerbs: Send + Sync + fmt::Debug {
+    /// One tool deadline, shared by an extract and its optional local read.
+    fn web_timeout(&self) -> std::time::Duration {
+        af_wire::web::WEB_DEADLINE
+    }
+
+    /// Send a search once under this run's fence.
+    ///
+    /// # Errors
+    /// A policy refusal, a vendor failure, or an unknown delivery outcome.
+    async fn web_search(
+        &self,
+        _call_number: u64,
+        _query: &str,
+    ) -> Result<af_wire::web::SearchResponse, Unanswered> {
+        Err(Unanswered::Refused(None))
+    }
+
+    /// Send an extract once under this run's fence.
+    ///
+    /// # Errors
+    /// A reader or policy refusal. Only explicit permission allows a local fallback.
+    async fn web_extract(
+        &self,
+        _call_number: u64,
+        _url: &str,
+    ) -> Result<af_wire::web::ExtractResponse, WebUnanswered> {
+        Err(WebUnanswered::Unanswered(Unanswered::Refused(None)))
+    }
+
     /// Sends one schedules call and answers the reply body of a success.
     async fn schedules(&self, call: ScheduleCall<'_>) -> Result<String, Unanswered>;
 

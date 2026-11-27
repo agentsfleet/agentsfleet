@@ -25,6 +25,9 @@ pub const RUN_POLLS_TOTAL: Declared<CounterKind> = Declared::new("agentsfleet_ru
 pub const RUN_POLL_CANDIDATES_SCANNED_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_run_poll_candidates_scanned_total");
 
+/// Completed web vendor dispatches, by vendor, operation and outcome.
+pub const WEB_CALLS_TOTAL: Declared<CounterKind> = Declared::new("agentsfleet_web_calls_total");
+
 /// Bytes of earlier turns each chat run reads.
 pub const RUN_HISTORY_BYTES: Declared<HistogramKind> =
     Declared::new("agentsfleet_run_history_bytes");

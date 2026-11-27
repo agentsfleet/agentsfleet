@@ -56,4 +56,4 @@ pub use self::runtime::{CatalogTool, RunTool, Runtime, ToolContext, ToolErrorCod
 pub use self::selection::{Offered, Selection};
 #[cfg(any(test, feature = "test-util"))]
 pub use self::verbs::{CLOSED, Closed};
-pub use self::verbs::{Fenced, FleetsCall, RunVerbs, ScheduleCall, Unanswered};
+pub use self::verbs::{Fenced, FleetsCall, RunVerbs, ScheduleCall, Unanswered, WebUnanswered};

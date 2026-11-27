@@ -18,9 +18,14 @@ pub struct SearchRequest {
     #[garde(skip)]
     pub fencing_token: u64,
     /// The model's one-based tool call number.
+    #[cfg_attr(feature = "openapi", schema(minimum = 1))]
     #[garde(range(min = 1))]
     pub call_number: u64,
     /// Search terms submitted to the platform's configured vendors.
+    #[cfg_attr(
+        feature = "openapi",
+        schema(min_length = 1, max_length = 1_048_576, pattern = "\\S")
+    )]
     #[garde(length(chars, max = TEXT_MAX_CHARS), custom(nonblank), custom(nul_free))]
     pub query: String,
 }
@@ -42,9 +47,11 @@ pub struct ExtractRequest {
     #[garde(skip)]
     pub fencing_token: u64,
     /// The model's one-based tool call number.
+    #[cfg_attr(feature = "openapi", schema(minimum = 1))]
     #[garde(range(min = 1))]
     pub call_number: u64,
     /// The page's HTTPS URL. The daemon checks destination policy before dispatch.
+    #[cfg_attr(feature = "openapi", schema(min_length = 1, max_length = 1_048_576))]
     #[garde(length(chars, min = 1, max = TEXT_MAX_CHARS), custom(nul_free))]
     pub url: String,
 }

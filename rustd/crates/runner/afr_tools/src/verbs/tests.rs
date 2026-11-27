@@ -209,7 +209,9 @@ async fn the_fleet_and_context_verbs_a_seam_leaves_out_refuse_without_a_code() {
     assert_eq!(triggers.err(), refused);
     let access = af_wire::access_verb::AccessRequest {
         fencing_token: 1,
-        name: "sentry".into(),
+        name: Some("sentry".into()),
+        host: None,
+        evidence: None,
         scope: None,
     };
     assert_eq!(CLOSED.access(access).await.err(), refused);

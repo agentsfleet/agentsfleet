@@ -304,7 +304,6 @@ fn the_chat_model_measures_and_reads_images_as_its_own() {
         instructions: INSTRUCTIONS,
         messages,
         tools: &[],
-        hosted: &[],
         cache_key: "",
         max_output_tokens: None,
         single_attempt: false,

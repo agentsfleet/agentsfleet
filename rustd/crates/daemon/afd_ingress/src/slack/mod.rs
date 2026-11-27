@@ -80,6 +80,7 @@ impl Ingress {
             .bind(channel.as_str())
             .bind(SERVICE_GITHUB)
             .bind(status::APPROVED)
+            .bind(afd_api_wire::grant::grant_type::INTEGRATION)
             .fetch_all(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_MENTION_SUBSCRIBERS))?;

@@ -83,7 +83,6 @@ async fn turn(connector: &impl Connect, provider: &str) -> Vec<af_providers::Res
         instructions: INSTRUCTIONS,
         messages: &messages,
         tools: &tools,
-        hosted: &[],
         cache_key: FLEET,
         max_output_tokens: None,
         single_attempt: false,

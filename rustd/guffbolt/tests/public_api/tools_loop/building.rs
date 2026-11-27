@@ -12,6 +12,7 @@ fn a_missing_backend_refuses_at_build() {
         ("exec_command", Backend::Env),
         ("http_request", Backend::Outbound),
         ("web_fetch", Backend::Outbound),
+        ("web_search", Backend::Search),
         ("memory_store", Backend::Memory),
         ("cron_add", Backend::Scheduler),
         ("schedule", Backend::Scheduler),

@@ -12,7 +12,7 @@ use super::support::{Fake, KEY, Reply, payload};
 const GOOGLE: &str = "gemini";
 const OLLAMA: &str = "ollama";
 const MODEL: &str = "configured-model";
-const TOOL: &str = "inspect_build";
+const TOOL: &str = "web_search";
 const QUESTION: &str = "Inspect this build.";
 const ANSWER: &str = "Build inspected.";
 const SIGNATURE: &str = "c2lnbmVkLWdlbWluaS10aG91Z2h0";
@@ -60,7 +60,7 @@ async fn streamed(connector: &Native, provider: &str, messages: &[Message]) -> V
     // names in every request it asks.
     held.policy.context.model = MODEL.into();
     let model = connector.inner.connect(&held).unwrap();
-    let parameters = json!({"type":"object","properties":{}});
+    let parameters = json!({"type":"object","properties":{"query":{"type":"string"}}});
     let tools = [ToolSpec {
         name: TOOL,
         description: QUESTION,
@@ -71,7 +71,6 @@ async fn streamed(connector: &Native, provider: &str, messages: &[Message]) -> V
         instructions: QUESTION,
         messages,
         tools: &tools,
-        hosted: &[],
         cache_key: CACHE_KEY,
         max_output_tokens: None,
         single_attempt: false,
@@ -156,6 +155,8 @@ fn assert_google_endpoint(seen: &super::support::Seen) {
 }
 
 fn assert_google_request(body: &Value) {
+    assert_eq!(body["tools"].as_array().unwrap().len(), 1);
+    assert!(body["tools"][0].get("googleSearch").is_none());
     assert_eq!(body["tools"][0]["functionDeclarations"][0]["name"], TOOL);
 }
 
@@ -211,6 +212,7 @@ async fn test_native_ollama_streams_and_continues_the_exact_model_tag() {
     assert!(seen.iter().all(|request| request.path == "/api/chat"));
     assert!(seen.iter().all(|request| request.body["model"] == MODEL));
     assert_eq!(seen[0].headers["authorization"], format!("Bearer {KEY}"));
+    assert_eq!(seen[0].body["tools"][0]["function"]["name"], TOOL);
     assert_eq!(
         seen[1].body["messages"][2]["tool_calls"][0]["function"]["name"],
         TOOL

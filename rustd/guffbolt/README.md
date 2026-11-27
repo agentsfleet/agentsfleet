@@ -329,7 +329,6 @@ impl Conversation for Chat {
             instructions: "Note down what you are told.",
             messages: &window.messages,
             tools,
-            hosted: &[],
             cache_key: "chat-1",
             max_output_tokens: window.max_output_tokens,
             single_attempt: false,
@@ -670,6 +669,7 @@ A backend is what a tool calls to do its work. Each tool takes its backend when 
 |---|---|---|---|
 | `Env` | `with_env` | `shell`, `git`, `file_read`, `file_write`, `file_edit`, `apply_patch`, `image`, `ls`, `find`, `grep`, `browser_open`, `browser`, `screenshot` | `LocalEnv`: this host's processes, the files under one directory |
 | `Env` and `Sessions` | `with_env`, `with_sessions` | `exec_command`, `write_stdin` | `Sessions`: the processes a run keeps open |
+| `SearchBackend` | `with_search` | `web_search` and policy-routed reads for `web_fetch` | Supplied by the embedder |
 | `Outbound` | `with_outbound` | `http_request`, `web_fetch`, MCP servers over HTTP | `LocalOutbound`: HTTPS only, to the public hosts an `Allowlist` names |
 | `MemoryStore` | `with_memory` | `memory_store`, `memory_recall`, `memory_list`, `memory_forget` | `LocalMemory`: one process's map |
 | `Scheduler` | `with_scheduler` | `cron_add`, `cron_list`, `cron_update`, `cron_remove`, `cron_run`, `cron_runs`, `schedule` | `LocalScheduler`: a file under a directory you name |
@@ -863,7 +863,6 @@ impl Conversation for Agent<'_> {
             instructions: "Recall before you answer.",
             messages: &window.messages,
             tools,
-            hosted: &[],
             cache_key: "run-1",
             max_output_tokens: window.max_output_tokens,
             single_attempt: false,
@@ -1580,7 +1579,6 @@ impl Conversation for Task<'_> {
             instructions: "Ship the release.",
             messages: &window.messages,
             tools,
-            hosted: &[],
             cache_key: "task-1",
             max_output_tokens: window.max_output_tokens,
             single_attempt: false,
@@ -1840,7 +1838,6 @@ impl Conversation for Chat<'_, '_> {
             instructions: "Delegate what you can.",
             messages: &window.messages,
             tools,
-            hosted: &[],
             cache_key: "run-1",
             max_output_tokens: window.max_output_tokens,
             single_attempt: false,

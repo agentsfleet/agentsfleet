@@ -187,7 +187,7 @@ impl<'run> Shared<'run> {
             events: run.events,
             run: state,
             ledger: Ledger::new(&run.run.run_id, &run.run.event.turn_id, run.events, scrub)
-                .numbering(&state.calls),
+                .numbering(&state.calls, &state.minted_mask),
             meter: run.meter,
             registry,
             instructions: prompt.instructions,

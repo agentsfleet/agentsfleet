@@ -25,8 +25,8 @@ use super::{
     Response, client,
 };
 use crate::tools::code;
-/// The most redirects a request that follows them follows.
-const REDIRECTS_MAX: u8 = 3;
+/// The Fetch standard admits up to twenty consecutive redirects.
+const REDIRECTS_MAX: u8 = 20;
 /// How long one request may take, end to end.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 /// The methods a request may use.
@@ -143,6 +143,12 @@ impl LocalOutbound {
                 format!("{url} is not a URL: {failure}"),
             )
         })?;
+        if !parsed.username().is_empty() || parsed.password().is_some() {
+            return Err(Refused::new(
+                code::INVALID_ARGUMENTS,
+                "credentials are not allowed in the URL",
+            ));
+        }
         if parsed.scheme() != HTTPS {
             return Err(Refused::new(
                 code::HTTPS_REQUIRED,
@@ -218,9 +224,16 @@ impl LocalOutbound {
                 .and_then(|value| value.to_str().ok())
                 .map(str::to_owned);
             let follow = request.redirects == Redirects::Follow
-                && status.is_redirection()
-                && followed < REDIRECTS_MAX;
+                && method == Method::GET
+                && request.body.is_none()
+                && matches!(status.as_u16(), 301 | 302 | 303 | 307 | 308);
             if let (true, Some(target)) = (follow, location.as_deref()) {
+                if followed == REDIRECTS_MAX {
+                    return Err(Refused::new(
+                        code::UPSTREAM_UNREACHABLE,
+                        "redirect limit exceeded",
+                    ));
+                }
                 let next = url.join(target).map_err(|failure| {
                     Refused::new(code::INVALID_ARGUMENTS, failure.to_string())
                 })?;

@@ -11,7 +11,7 @@ use af_wire::tool_trace::ToolCallStatus;
 use afr_executor::{
     Executor, ExecutorSlot, FileContent, Listing, Process, ProcessId, Spawn, Unavailable,
 };
-use afr_tools::catalog::{FILE_READ, UPDATE_PLAN, WEB_SEARCH};
+use afr_tools::catalog::{FILE_READ, UPDATE_PLAN};
 use afr_tools::stub::{STUB_PATH, Stub};
 use afr_tools::{Catalog, CatalogTool, Entry, Run, Runtime, Selection, ToolContext, ToolErrorCode};
 use bytes::Bytes;
@@ -133,11 +133,10 @@ async fn a_sandbox_side_call_without_a_sandbox_is_a_tool_error() {
     assert!(output.text.contains("file_read"));
 }
 
-/// The model calls a tool its run was not offered, and one the provider
-/// hosts but did not run: each reads its own refusal and the run goes on.
+/// Unoffered tools each return their own refusal and the run goes on.
 #[tokio::test]
-async fn a_name_not_offered_and_a_hosted_name_are_refused_as_tool_errors() {
-    let names = ["shell", FILE_READ.name(), "teleport", WEB_SEARCH.name()];
+async fn names_not_offered_are_refused_as_tool_errors() {
+    let names = ["shell", FILE_READ.name(), "teleport"];
     let script = Script::new([
         names
             .iter()
@@ -149,7 +148,7 @@ async fn a_name_not_offered_and_a_hosted_name_are_refused_as_tool_errors() {
         vec![Stub::boxed(&UPDATE_PLAN), Stub::boxed(&FILE_READ)],
         &script,
     );
-    let run = payload(&[UPDATE_PLAN.name(), WEB_SEARCH.name()], unbounded());
+    let run = payload(&[UPDATE_PLAN.name()], unbounded());
 
     let (output, frames) = drive(&engine, &run, &CancellationToken::new()).await;
 
@@ -163,76 +162,17 @@ async fn a_name_not_offered_and_a_hosted_name_are_refused_as_tool_errors() {
         })
         .collect();
     assert_eq!(results.len(), names.len(), "every call answered");
-    for (name, result) in names.iter().take(3).zip(&results) {
+    for (name, result) in names.iter().zip(&results) {
         assert!(
             result.starts_with(&format!("[tool_not_offered] {name} ")),
             "{result}"
         );
     }
     assert!(
-        results[3].starts_with("[hosted_tool_unavailable] web_search "),
-        "{}",
-        results[3]
-    );
-    assert!(
         completions(&frames)
             .iter()
             .all(|(_id, status)| *status == ToolCallStatus::Failed)
     );
-}
-
-/// A handler that counts every call reaching it, then serves `served`'s.
-#[derive(Debug)]
-struct Counted {
-    served: Box<CatalogTool>,
-    calls: Arc<AtomicUsize>,
-}
-
-impl Describe for Counted {
-    fn spec(&self) -> ToolSpec<'_> {
-        self.served.spec()
-    }
-}
-
-impl<'call, 'run> Tool<ToolContext<'call, 'run>> for Counted {
-    fn call<'a>(
-        &'a self,
-        arguments: &'a serde_json::Value,
-        cx: ToolContext<'call, 'run>,
-    ) -> ToolFuture<'a>
-    where
-        ToolContext<'call, 'run>: 'a,
-    {
-        self.calls.fetch_add(1, Ordering::SeqCst);
-        self.served.call(arguments, cx)
-    }
-}
-
-/// A runtime is its published entry's, so no handler claims the provider's;
-/// a handler routed as the provider's anyway is never run.
-#[tokio::test]
-async fn a_handler_routed_as_the_providers_is_never_run() {
-    let calls = Arc::new(AtomicUsize::new(0));
-    let counted = Counted {
-        served: Stub::boxed(&UPDATE_PLAN),
-        calls: Arc::clone(&calls),
-    };
-    let slot = ExecutorSlot::unavailable(Unavailable::NoSandbox);
-
-    let output = Routed::new(&counted, Runtime::Provider)
-        .run(&json!({}), &slot, &Run::default(), &first_call())
-        .await;
-
-    assert_eq!(
-        output.error_code,
-        Some(ToolErrorCode::HostedToolUnavailable.into())
-    );
-    assert!(
-        output
-            .text
-            .starts_with("[hosted_tool_unavailable] update_plan ")
-    );
-    assert_eq!(calls.load(Ordering::SeqCst), 0, "the handler never ran");
 }
 
 /// A handler that keeps where each call it ran sits.

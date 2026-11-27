@@ -87,6 +87,9 @@ impl Runs {
             columns.kinds.push(record.kind.as_str());
             columns.tools.push(record.tool.into_owned());
             columns.statuses.push(record.status.as_str());
+            columns.sources.push(
+                (!record.sources.is_empty()).then(|| serde_json::json!(record.sources).to_string()),
+            );
             columns.changes.push(changes_text(&record.changes));
         }
         sqlx::query(statement::UPSERT_RECORDS)
@@ -107,6 +110,7 @@ impl Runs {
             .bind(columns.tools)
             .bind(columns.statuses)
             .bind(columns.changes)
+            .bind(columns.sources)
             .execute(&mut *connection)
             .await
             .map_err(query(CONTEXT_KEEP))?;
@@ -180,6 +184,7 @@ struct Columns {
     tools: Vec<String>,
     statuses: Vec<&'static str>,
     changes: Vec<Option<String>>,
+    sources: Vec<Option<String>>,
 }
 
 #[cfg(test)]

@@ -10,12 +10,11 @@ use af_egress::testing::RecordingTransport;
 use afr_executor::{ExecutorSlot, Unavailable};
 use afr_tools::catalog::{MEMORY_RECALL, TASK_INPUT, TASK_START, UPDATE_PLAN, WEB_SEARCH};
 use afr_tools::{Backends, Catalog, Run};
-use guffbolt::Hosted;
 use guffbolt::ToolSpec;
 use guffbolt::agents::{Agents, TOOLS};
 use tokio_util::sync::CancellationToken;
 
-use super::{hosted, names, run_by, tools};
+use super::{names, tools};
 use crate::fixture::{Canned, Script, decision_assignment, payload, say, unbounded};
 use crate::harness::shared::CAPS;
 use crate::harness::tests::{drive, engine};
@@ -26,7 +25,7 @@ fn no_sandbox() -> ExecutorSlot<'static> {
 }
 
 #[test]
-fn should_offer_each_tool_under_its_own_schema_and_search_as_hosted() {
+fn should_offer_each_tool_under_its_own_schema_including_web_search() {
     let (transport, _sent) = RecordingTransport::replying(200, "");
     let catalog = Catalog::hosted(Arc::new(transport));
     let selection = catalog
@@ -34,7 +33,9 @@ fn should_offer_each_tool_under_its_own_schema_and_search_as_hosted() {
         .unwrap();
     let (run, slot) = (Run::default(), no_sandbox());
     let backends = Backends::new(&run, &slot, None);
-    let backed = backends.tools(&[UPDATE_PLAN.name()]).unwrap();
+    let backed = backends
+        .tools(&[UPDATE_PLAN.name(), WEB_SEARCH.name()])
+        .unwrap();
 
     let offered = tools(&selection, &backed);
 
@@ -42,10 +43,8 @@ fn should_offer_each_tool_under_its_own_schema_and_search_as_hosted() {
     assert_ne!(spec.description, UPDATE_PLAN.name(), "a real description");
     assert_eq!(
         offered.specs().collect::<Vec<ToolSpec<'_>>>(),
-        [spec],
-        "a hosted tool is no function spec"
+        [spec, backed.tool(WEB_SEARCH.name()).unwrap().spec()]
     );
-    assert_eq!(hosted(&selection), [Hosted::WebSearch]);
 }
 
 /// A tool the run built over its backends is offered where its policy names
@@ -133,19 +132,6 @@ fn agentsfleet_defines_no_subagent_tool() {
     );
     assert_eq!(spelled, Vec::<String>::new(), "a runner crate names one");
     assert_eq!(offered.names().collect::<Vec<_>>(), TOOLS);
-}
-
-// The provider names its search as the catalog does, or the router would
-// not know the model's call to it.
-#[test]
-fn should_offer_web_search_under_the_catalogs_name() {
-    assert_eq!(run_by(&WEB_SEARCH), Some(Hosted::WebSearch));
-    assert_eq!(Hosted::WebSearch.name(), WEB_SEARCH.name());
-}
-
-#[test]
-fn should_host_nothing_the_catalog_runs_itself() {
-    assert_eq!(run_by(&UPDATE_PLAN), None);
 }
 
 /// A run with no decision profile is offered no task tool, whatever its

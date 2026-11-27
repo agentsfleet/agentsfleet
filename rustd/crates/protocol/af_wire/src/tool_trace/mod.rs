@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 use serde_json::{Map, Value};
 
-use self::rules::{argument_leaves_fit, arguments_fit, call_free_of_nul, call_number, edge};
+use self::rules::{argument_leaves_fit, arguments_fit, call_number, edge, valid_call};
 
 /// The largest arguments object one call may carry, encoded.
 pub const ARGS_MAX_BYTES: usize = 2048;
@@ -54,7 +54,7 @@ pub enum ToolCallStatus {
 #[serde(deny_unknown_fields)]
 // Every string the call carries, so NUL is one rule over the whole call
 // rather than a second rule beside each field's own.
-#[garde(custom(call_free_of_nul))]
+#[garde(custom(valid_call))]
 pub struct ToolTraceCall<'a> {
     /// Call number starting at 1, as a decimal string. Other formats are dropped. The server
     /// adds `{fence}:` to match the activity stream's identifier.
@@ -100,6 +100,10 @@ pub struct ToolTraceCall<'a> {
     #[serde(borrow, default, skip_serializing_if = "Vec::is_empty")]
     #[garde(dive)]
     pub changes: Vec<FileChange<'a>>,
+    /// Pages returned by this call, in their original order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[garde(dive)]
+    pub sources: Vec<WebSource>,
 }
 
 /// Every call one run made, oldest first.
@@ -115,6 +119,11 @@ pub struct ToolTrace<'a> {
     #[serde(borrow)]
     #[garde(dive)]
     pub calls: Vec<ToolTraceCall<'a>>,
+    /// The final report needed the room taken by duplicate citations. Settlement
+    /// restores them from this run's numbered items in the same transaction.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[garde(skip)]
+    pub sources_in_items: bool,
 }
 
 /// Which bound a trace broke.
@@ -248,6 +257,10 @@ pub fn edge_fits(edge: &str) -> bool {
 pub fn encoded_len<T: Serialize>(value: &T) -> usize {
     serde_json::to_vec(value).map_or(usize::MAX, |bytes| bytes.len())
 }
+
+mod source;
+pub use source::WebSource;
+pub(crate) use source::{requested_source, source_scope};
 
 mod call_id;
 mod change;

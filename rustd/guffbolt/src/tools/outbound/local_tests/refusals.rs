@@ -133,3 +133,19 @@ async fn local_outbound_refuses_a_redirect_to_a_location_it_cannot_read() {
     );
     assert_eq!(requests(&seen), ["GET /start"]);
 }
+
+#[tokio::test]
+async fn an_unlisted_redirect_host_is_refused_before_lookup() {
+    let onward = redirect("https://unlisted.test/next");
+    let (address, root, seen) = fake(&[("/start", &onward)]).await;
+    let lookup = Arc::new(FixedLookup::default());
+    let mut outbound = LocalOutbound::routed(Arc::clone(&lookup), PUBLIC, address, root);
+    outbound.allowlist = Allowlist::Hosts(vec![PUBLIC.to_owned()]);
+
+    let refused = sent(&outbound, "https://public.test/start")
+        .await
+        .expect_err("unlisted host");
+    assert_eq!(refused.code, code::HOST_NOT_ALLOWED);
+    assert_eq!(lookup.asked(), Vec::<String>::new());
+    assert_eq!(requests(&seen), ["GET /start"]);
+}

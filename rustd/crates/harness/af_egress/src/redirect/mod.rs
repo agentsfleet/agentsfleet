@@ -11,9 +11,9 @@ mod privacy;
 mod target;
 pub use target::Target;
 
-/// The largest number of continuations for a single tool call when the
+/// The Fetch standard permits twenty continuations. This is the default when the
 /// runner's `[egress] max_redirects` names nothing else.
-pub const MAX_REDIRECTS: u8 = 3;
+pub const MAX_REDIRECTS: u8 = 20;
 
 /// The memory the automaton masking a redirect's secrets in its response may
 /// build when the runner's `[egress] max_secret_mask_mib` names nothing else.
@@ -82,6 +82,12 @@ impl Chain {
         self.current.origin().ascii_serialization()
     }
 
+    /// The hostname of the current hop, for host-only access evidence.
+    #[must_use]
+    pub fn host(&self) -> &str {
+        self.current.host_str().unwrap_or_default()
+    }
+
     /// Whether private redirect metadata has entered this call.
     #[must_use]
     pub const fn started(&self) -> bool {
@@ -120,7 +126,7 @@ impl Chain {
             seen: BTreeSet::from([identity(current)]),
             privacy: privacy::Privacy::new(limits.mask_matcher_bytes),
             hops: 0,
-            max_hops: limits.max_redirects,
+            max_hops: limits.max_redirects.min(MAX_REDIRECTS),
             stripped: false,
             started: false,
             ending: "interrupted",
