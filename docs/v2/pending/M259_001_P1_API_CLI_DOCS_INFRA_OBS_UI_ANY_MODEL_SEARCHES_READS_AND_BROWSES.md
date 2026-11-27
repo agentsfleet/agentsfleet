@@ -22,11 +22,11 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Categories:** API, CLI, DOCS, INFRA, OBS, UI
 
-**Batch:** B1, after M258 merges; M259_002 follows as B2
+**Batch:** B1. Per Indy on Nov 27, all implementation starts after M258 merges. M259_002 follows as B2.
 
-**Depends on:** M258_001 (`…_FLEETS_RUN_IN_OUR_FIRECRACKER_MICROVMS.md`) and M258_003 (`…_RUNS_FOLLOW_ENGINE_POLICY_BUBBLEWRAP_RETIRED.md`), both pending. Chromium runs in the run's own virtual machine (VM), which their engines build and wall.
+**Depends on:** M258_001 (Firecracker engine), M258_003 (production switch and bubblewrap retirement), and M258_002 (checkpoint behavior). Review the three active M258 specs against the merged compute layer before starting.
 
-**Provenance:** LLM-drafted (Claude Opus 5.5, Nov 26, 2026) from the two pending M258 specs and the Nov 26 research. Each reference was re-read at `679002666`.
+**Provenance:** Originally drafted Nov 26, 2026. Readiness review on Nov 27 compared main at `ece273764` with the compute branch at `46723c018`.
 
 **Canonical architecture:** `docs/architecture/runner_execution.md` §Tool catalog and §Network egress, and `docs/architecture/billing.md`. This spec rewrites their web and browser rows.
 
@@ -36,7 +36,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Goal (testable):** Every model's `web_search` answers through the first working vendor, `web_fetch` and browser reach only what policy admits, and private fleets search nothing.
 
-**Terms.** Rust paths that start with a crate name are under `rustd/crates/<layer>/`; `guffbolt/` and `guffbolt-ai/` are under `rustd/`. L is `/v1/runners/me/runs/{run_id}`. Line references are at `679002666`, the worktree's `HEAD`.
+**Terms.** Rust paths that start with a crate name are under `rustd/crates/<layer>/`; `guffbolt/` and `guffbolt-ai/` are under `rustd/`. L is `/v1/runners/me/runs/{run_id}`.
 
 A **public** fleet has `http_egress` `public` ("Allow all" on); a **private** one has `restricted`, the default at birth. A **vendor** is a web search company the daemon calls with a platform key. The browser is driven over the Chrome DevTools Protocol (CDP).
 
@@ -53,26 +53,26 @@ A **public** fleet has `http_egress` `public` ("Allow all" on); a **private** on
 **Solution summary:**
 
 - **One search tool on every wire.** `web_search` is a guffbolt function tool over a `SearchBackend` trait. Provider-hosted search is deleted from guffbolt-ai, with no alias.
-- **Several vendors behind the daemon.** The daemon tries Parallel then Exa `[?]`, one vendor per call, falling over on any failure. A vendor is on while its key sits in the platform-admin vault.
+- **Search vendors.** The daemon sends Parallel an explicit `mode: fast` and tries Exa if Parallel is unavailable or fails. It reads each key from the vault of `PLATFORM_ADMIN_WORKSPACE_ID`.
 - **The policy decides first.** A private fleet's search and extract are refused before any call. A host the fleet's policy names is read locally, following redirects that are each re-checked.
-- **Counted, not billed per call.** The runtime fee covers vendor cost, and the daemon counts each run's calls per vendor and operation.
+- **Cost.** The runtime fee covers vendor cost. Reserve each dispatch in Postgres before sending. The per-run count bounds physical requests from above.
 - **The fleet can ask for a host,** a person approves it once, and sources reach the thread.
-- **The browser is our own tool, built like memory.** Typed verbs read an accessibility snapshot and act on its element references. Chromium runs inside the run's own VM, so there is no browser Sprite and no browser credential.
+- **Browser.** Typed tools read an accessibility snapshot and act on element references. Firecracker is the only supported engine.
 
-**What is unverified.** The second vendor, the cooldown default and every vendor's terms wait on Indy. Chromium starting in our microVM with its own sandbox is a hypothesis until §6's spike runs it. A dial to a port inside the VM, the browser image's delivery and §9's test page are `[?]`.
+**Unverified.** §6 measures Chromium confinement, transport, image size and recovery on merged M258. Discovery records pending privacy and browser decisions.
 
 **Design flow:**
 
 ```
 web_search {query} ─► runner SearchBackend ─► POST L/searches ─► daemon: fence · fleet public? · query valid
                          for vendor in [parallel, exa]: cooling or no vault key ─► next
-                         one call, key in a header ─► thread.run_web_calls (run, vendor, search) + 1
+                         commit reservation for run, vendor and operation ─► send one request
                          2xx ─► 200 {vendor, results} · named wait ─► cool it, next · any other failure ─► next
 web_fetch {url} ─► host in the fleet's policy? ─yes─► af_egress local GET, ≤20 redirects, each hop re-admitted
                    │no ─► public: POST L/extracts ─► the same loop    private: [network_restricted] names request_access
 request_access {host} ─► card ─► Approve ─► NetworkPolicy.allow gains the host
 browser_open · browser · screenshot ─► afr_tools RunBrowser ─► CDP over M258's stream into the run's VM
-   Chromium in the VM ─► every request pauses ─► the run's Outbound::connect + unblocked ─► continue or fail
+   Chromium in the VM ─► admit each paused request with its actual method, URL and body
                       ─► the engine's egress wall (M258) ─► the page
 ```
 
@@ -84,7 +84,7 @@ browser_open · browser · screenshot ─► afr_tools RunBrowser ─► CDP ove
 |---|---|
 | Order | The engine is replaced first (M258); this milestone holds web search with Parallel and other vendors, and the browser decision. |
 | Search | Our own function tool `web_search` on every wire, as Amp does. No provider-hosted search is sent. |
-| Vendors | Several vendors behind one `SearchBackend` trait, as opencode has them. Parallel is one. |
+| Vendors | Parallel Fast first, Exa search fallback. The platform owns both keys. |
 | Private fleets | A `restricted` fleet can neither search nor use a vendor's page reader. |
 | Gemini | Google Search grounding stays off; Gemini uses our `web_search`. |
 | Cost | The runtime fee, `RUN_NANOS_PER_SEC` = 100,000 nanos (`afd_billing/src/nanos.rs:25`), covers search and extraction. Calls are counted, not billed per call. |
@@ -95,18 +95,13 @@ browser_open · browser · screenshot ─► afr_tools RunBrowser ─► CDP ove
 
 - **PR title (eventual):** feat(web): web_search over several vendors, routed web_fetch, host grants and a browser in the run's VM
 - **Intent (one sentence):** Any fleet on any model searches, reads what it found and acts on a page, reaching only what a person allowed.
-- **Authoring handshake:** Indy wants search on every model from several vendors, private fleets kept private, and a browser that is ours. ASSUMPTIONS I'M MAKING:
-  1. The engine milestone is M258 and this is M259; this numbering was asked and not yet ruled.
-  2. M258 splits by engine: our Firecracker first, then Sprites, the engine policy and bubblewrap's removal.
-  3. Customers on Sprites alone wait on Fly's answer to its Terms of Service (ToS) §1.4(d).
-  4. Admission counts VM memory, so Chromium's memory counts against its run.
-  5. The daemon makes every vendor call, and nothing is backward compatible.
+- **Authoring handshake:** Search works on every model through the daemon. Restricted fleets can request a named host. Browser development targets our own Firecracker after M258 merges.
 - **Implementer handshake:** recorded in the Pull Request Session Notes at PLAN, before any edit (SPEC-HANDSHAKE).
 
 ## Implementing agent — read these first
 
 1. `rustd/crates/harness/af_providers/src/decision/client.rs` — a platform-keyed vendor call whose failure carries `retry_after` (`:132-136`); each vendor module mirrors it.
-2. `rustd/crates/runner/afr_tools/src/egress/mod.rs` — `Egressed`, `connect` (`:130`) and `get_chain` (`:195`); §3 reads through the chain and §8's check calls `connect`.
+2. `rustd/crates/runner/afr_tools/src/egress/mod.rs` — local reads re-admit each redirect. The existing connection check synthesizes a GET.
 3. `rustd/guffbolt/src/tools/memory/mod.rs` — `MemoryStore` (`:104`) and its typed tools; §7's browser takes the same shape.
 4. `rustd/crates/runner/afr_tools/src/verbs/access/mod.rs` — `request_access`, which §4 extends to a host.
 5. `docs/v2/reviews/m211-toolbox-spikes.md` — spike S1, why Chromium cannot start in bubblewrap, and the record format §6 mirrors.
@@ -121,15 +116,17 @@ browser_open · browser · screenshot ─► afr_tools RunBrowser ─► CDP ove
 | `rustd/crates/harness/af_providers/src/web/**` | CREATE | §1: the `Vendor` trait, one module per vendor |
 | `rustd/crates/harness/af_egress/src/{redirect,error}/**` | EDIT | §3: `MAX_REDIRECTS` 3 to 20; `host_not_allowed` names `request_access` |
 | `rustd/crates/protocol/af_wire/src/{activity,access_verb,protocol,paths}/**`, `af_wire/src/web/**` | EDIT/CREATE | §1 verb types; §4 the host request; §5 `sources`; the runner protocol `VERSION` moves once |
-| `rustd/crates/daemon/afd_api_runner/src/handler/runner/{web.rs,access.rs}`, `rustd/crates/daemon/afd_http/src/route/{runner.rs,route_inventory.rs,route_meta_total.rs}` | CREATE/EDIT | §1's two verbs and §4's host request; `INVENTORY` and the counts |
+| `rustd/crates/daemon/afd_api_runner/src/handler/runner/{web.rs,access.rs}`, `afd_http/src/route/runner.rs`, `afd_api/tests/{route_inventory,route_meta_total}.rs`, `af_wire/src/paths.rs` | CREATE/EDIT | runner routes, inventory and counts |
 | `rustd/crates/daemon/afd_fleet/src/run/web/**` | CREATE | §1: fence, network, the vendor walk, the cooldown cache and the count |
 | `rustd/crates/daemon/afd_db/schema/<UTC>_thread_run_web_calls.sql`, `rustd/crates/daemon/afd_db/src/migration.rs` | CREATE/EDIT | §1: one row per run, vendor and operation |
 | `rustd/crates/daemon/afd_db/schema/20261108122100_connector_integration_grants.sql`, `afd_api_wire/src/grant.rs`, `afd_approval/src/**`, `afd_gate/src/policy/{shape,build}/**` | EDIT | §4: `grant_type` `host` in the comment and the constants; an approved host joins `NetworkPolicy.allow` |
+| `afd_gate/src/policy/approved/**`, `afd_fleet/src/{run/access,durable_task/github}/**`, `afd_approval/src/{grant_sql,sql}/**` | EDIT | carry grant kind through request, approval, revoke and credential checks |
+| `afd_db/schema/20261108125110_thread_items.sql`, `afd_fleet/src/run/sql/**`, `afd_turns/src/view/history/**` | EDIT | persist sanitized sources and return them on reload |
 | `rustd/crates/foundation/af_core/src/{error_code,problem}/**` | EDIT | the new codes in Interfaces, each with its `REGISTRY` row and problem entry |
 | `rustd/crates/runner/afr_tools/src/{catalog,runtime,stub,verbs,egress,backed}/**`, `afr_tools/src/run.rs`, `afr_tools/src/generic/{browser/**,env/**,mod.rs}`, `afr_tools/src/sandbox/browser/**` | EDIT/CREATE | §2: `Runtime::Provider` and `HostedToolUnavailable` go; §7, §8: `RunBrowser`, `BrowserSource`, the check; the refusal text goes |
 | `rustd/crates/runner/afr_agent/src/{offer,router,loop,engine}/**`, `afr_agent/tests/providers/**` | EDIT | §2: no hosted list; §5: sources on the completed call; §7: the run's `BrowserSource` passed down |
-| `rustd/crates/runner/afr_supervisor/src/browser/**` | CREATE | §7: `BrowserSource`, a dial to Chromium's port in the run's VM |
-| `rustd/crates/runner/afr_engine/**` | EDIT `[?]` | §7: the transport's dial takes a guest port, with a conformance trial, unless M258_001 adds it first |
+| `rustd/crates/runner/afr_supervisor/src/{browser,client/run_verbs,verbs}/**` | CREATE/EDIT | §1 single-send web verbs, §4 typed access outcomes, §7 browser connection |
+| `rustd/crates/runner/{afr_engine_firecracker,afr_executor,afr_guest}/**` | REVIEW AFTER SPIKE | only the transport and confinement changes §6 demonstrates |
 | `rustd/crates/e2e/af_e2e/tests/support/definition_run.rs` | EDIT | it filters on `Runtime::Provider`, which goes |
 | `rustd/Cargo.toml`, `rustd/Cargo.lock` | EDIT | `chromiumoxide` 0.9.1, the CDP client |
 | `scripts/toolbox/**` | EDIT, with Indy's sign-off for any new script | §7: the browser image `[?]` |
@@ -165,34 +162,35 @@ browser_open · browser · screenshot ─► afr_tools RunBrowser ─► CDP ove
 
 - **Reference:** the decision call reads its vendor key from the platform-admin vault on every call (`af_providers/src/decision/**`; `afd_credential/src/provider/decision.rs`). §1 keeps that inside the daemon, so no runner holds a key.
 - **Reference:** `MemoryStore` and `RunMemory` (`afr_tools/src/generic/memory.rs`), a guffbolt trait the runner serves with no credential. §7 gives the browser the same split.
-- **Reference:** `get_chain` and `Egressed::connect`, one admission for every HTTP path. §3 and §8 call them unchanged.
+- **Reference:** use the redirect chain for local reads. Browser admission must supply the actual request to the same origin-policy rules.
 - **Divergence:** none from the HTTP standard. The CLI keeps its six practices (SPEC-PRIOR).
 
 ## Sections (implementation slices)
 
 Build order: §1; then §2 and §4; then §3 and §5; §6's spike before §7; then §8; §9 last.
 
-### §1 — The daemon walks the vendors, and each vendor call is counted on its run
+### §1 — The daemon reserves each vendor dispatch before sending
 
-`POST L/searches` and `POST L/extracts` are fenced run verbs. The daemon checks the fence, that the fleet row reads `http_egress` `public`, and the input against `garde`. It then walks a fixed list, Parallel then Exa `[?]`, a constant beside the vendor modules.
+The runner posts each search or extract once, including on timeout, lost response or 5xx. The daemon validates the input and the live public fleet before dispatch. Search visits each configured vendor at most once in one request, under one deadline inside the runner call timeout. Explicit new tool calls are distinct purchases.
 
 A vendor is skipped while it cools or while the platform-admin vault holds no key bag under its name. Otherwise the daemon makes one call, the key in a header and never in the URL. A 2xx answers `{vendor, results}`; any other outcome moves on to the next vendor.
 
-Each vendor module implements one `Vendor` trait in `af_providers/src/web/`. It takes the key per call, holds none, and never retries inside a call, as `DecisionEvaluator` documents (`af_providers/src/decision/mod.rs:21`). Every vendor is asked for 10 results, the count Parallel's and Exa's per-request prices include.
+Each vendor module implements one `Vendor` trait in `af_providers/src/web/`. It takes the key per call, holds none, and never retries inside a call, as `DecisionEvaluator` documents (`af_providers/src/decision/mod.rs:21`). Each search vendor is asked for 10 results, the count Parallel's and Exa's per-request prices include.
 
 **Cooldown.** A vendor cools only for a wait it names, parsed by `guffbolt_ai::wire::retry_after` (`guffbolt-ai/src/wire/retry/mod.rs:253`). No named wait means no cooldown. The cooldown lives in a `moka` cache in `afd_fleet` (`afd_fleet/Cargo.toml:77`), read through the daemon's clock seam.
 
-**Extract** walks the vendors that read a page. Until Exa's `/contents` text format is checked, that is Parallel alone `[?]`. Before any call it refuses a URL that is not `https` or whose host is a blocked literal (`af_egress/src/resolve/mod.rs:74`).
+**Extract.** Parallel reads unlisted public URLs. Admit a credential-free HTTPS URL before sharing it with a vendor. Retain the blocked-address checks. A vendor outage (502/503) can fall back to one local credential-free GET only after rechecking public policy, under the same deadline and redirect rules. A policy refusal ends the read.
 
-**State authority:** `thread.run_web_calls`, one row per run, vendor and operation, with `call_count` `CHECK (call_count >= 0)`. **Guarded transition:** after each physical call, an upsert adds one under the run's fencing token, before the next call or the answer. **Failure assumption:** a cooldown is a hint in process memory; a restarted daemon relearns it from the vendor's next refusal.
+**State authority.** For each eligible vendor, resolve its platform-admin key, revalidate run ownership, fence and public policy, and increment `thread.run_web_calls` in a committed reservation before dispatch. A refused or failed reservation sends nothing. Release database locks before network I/O. A crash between commit and send can leave one unused reservation. Counts bound physical attempts from above and do not reconcile invoices.
 
-- **Dimension 1.1** — a search is counted under its vendor → Test `a_search_answers_through_the_first_vendor_and_counts_it` (integration, fake vendor servers): a public fleet's query → 200 `{vendor:"parallel"}` and its results. One `parallel`/`search` row reads 1, and the key rode a header. The same call number again → 2.
+- **Dimension 1.1** — `a_vendor_call_is_counted_before_it_leaves`: the fake vendor observes its committed reservation and the explicit fast mode. Crash after commit leaves one reservation and zero calls. A failed reservation or stale fence at fallback leaves the next vendor untouched.
 - **Dimension 1.2** — a failed vendor falls over → Test `a_failed_vendor_falls_over_to_the_next` (integration): Parallel answers 500, Exa answers 200 → `{vendor:"exa"}`, both counted. Both answer 500 → 502 naming each vendor's status, each upstream called once.
 - **Dimension 1.3** — only a named wait cools → Test `a_cooling_vendor_is_skipped_until_its_named_wait_ends` (integration, the clock seam): Parallel's 429 with `Retry-After: 30` → Exa alone answers next. At 31 seconds Parallel is tried again, and a 429 naming no wait cools nothing. Every vendor cooling → 503 with `Retry-After` and zero calls.
 - **Dimension 1.4** — a vendor without a key is skipped → Test `a_vendor_without_a_vault_key_is_skipped` (integration): only the `exa` bag → Parallel sees no call. No bag at all → 503 with the new code, zero calls and no row.
 - **Dimension 1.5** — a call that may not leave reaches no vendor → Test `a_web_call_that_may_not_leave_reaches_no_vendor` (integration): a `restricted` fleet → 403. A stale fence → the stale-fence code; an extract of `https://169.254.169.254/` or `http://example.org` → 400. Each case makes zero upstream calls and writes no row.
 - **Dimension 1.6** — no key leaves the daemon → Test `no_vendor_key_reaches_a_runner_or_a_log` (integration): a sentinel key per vendor. Each is absent from every verb answer, run payload, error sentence and captured log line, and present only in the upstream's header.
 - **Dimension 1.7** — an extract reads a public page → Test `an_extract_returns_the_pages_markdown` (integration): `{url:"https://example.org/a"}` → the upstream's Markdown. One `parallel`/`extract` row reads 1.
+- **Dimension 1.8** — `a_stalled_vendor_is_dispatched_once_and_answers_inside_the_deadline`: timeout and lost reply exercise the real runner client. Each vendor sees at most one request and the whole walk respects the caller deadline.
 
 ### §2 — `web_search` is our function tool on every wire; hosted search is deleted
 
@@ -214,46 +212,52 @@ The runner's backend decides before any call. A host the fleet's policy names, t
 
 With no `max_chars`, a page stops at the command output budget, 40,000 bytes (`guffbolt/src/tools/process/output.rs:22-24`). The local path parses once with `html2text`'s `parse_html` (`src/lib.rs:3130`), renders Markdown from that tree, and appends each JSON-LD block under its own heading. It refuses a body that is not text.
 
-- **Dimension 3.1** — an allowlisted host is read locally → Test `an_allowlisted_page_is_read_locally_through_its_redirects` (integration, `afr_tools`, the `af_egress` test upstream): 301, 302, 200 → the text, no extract. A hop to an unlisted host → `host_not_allowed` naming `request_access`, and that host gets nothing.
+- **Dimension 3.1** — `an_allowlisted_page_is_read_locally_through_its_redirects`: test a local 301, 302, 200 chain. A public fleet reads across an unlisted public host if each hop is admitted. A restricted fleet stops before DNS or connection to the unlisted host. Its refusal gives the canonical hostname and names `request_access {host}`. Neither path forwards credentials across origins.
 - **Dimension 3.2** — the Fetch limit holds → Test `the_twenty_first_redirect_is_refused` (unit, `af_egress`): 20 redirects are followed. The 21st stops the chain with its hop-limit reason.
 - **Dimension 3.3** — an unlisted host routes by network → Test `an_unlisted_host_goes_to_extract_only_on_a_public_fleet` (unit, `afr_tools`, a fake verb): public → one extract call. Private → `[network_restricted]` naming `request_access`, with no extract and no local request.
 - **Dimension 3.4** — a page keeps its structured data → Test `a_fetched_page_comes_back_as_markdown_with_its_json_ld` (unit, guffbolt): an `<h2>`, a `<ul>`, a link and one `application/ld+json` block. The answer holds `## `, `* `, `[text][1]` and the JSON-LD once; a plain `<script>` stays dropped.
 - **Dimension 3.5** — the default budget holds → Test `a_fetch_without_max_chars_stops_at_the_output_budget` (unit, guffbolt): a 50,000-character page → 40,000 characters. A closing line names the total.
 - **Dimension 3.6** — a binary body is named → Test `a_binary_body_is_refused_with_its_type` (unit, guffbolt): `application/pdf` on the local path → `[unsupported_media] application/pdf`, with no body bytes.
+- **Dimension 3.7** — `an_extract_outage_falls_back_to_a_local_read`: one eligible public read on 502/503. Losing public access, a blocked destination or an expired deadline yields zero fallback connections.
 
 ### §4 — `request_access` asks for a host
 
-`request_access` takes `{name, scope?}` as today, or `{host}`. The argument type is an enum of the two shapes, so a call naming both fails parsing. The daemon reads the host with `af_egress::allowlist_host` (`af_egress/src/allowlist.rs:28`), refuses an address literal or `localhost`, and raises today's card.
+Add `{host}` alongside the existing `{name, scope?}` shape. Validate a bare DNS hostname and canonicalize it to ASCII. Refuse address literals, localhost, single-label names, and URLs with scheme, userinfo, port or path. A restricted fetch records the refused tool, original approved origin and refused destination with the runner. Bind this evidence to the run and tool call. Only the typed host argument comes from the model.
 
-The grant row has `grant_type` `host` (`afd_api_wire/src/grant.rs:47-49` gains it) and the host as its `service`. On Approve, the policy build adds the host to `NetworkPolicy.allow` (`afd_gate/src/policy/shape/mod.rs:36`). The local reads, the sandbox's allowlist and §8's check then admit it.
+Key grants by `(fleet_id, grant_type, service)`. Include kind in upsert, lookup, decision, revocation, policy build and every credential-only consumer, including the GitHub publisher. Existing secret and integration grants retain their behavior. The card names the host, refused tool and source of the redirect from recorded evidence. It says approval grants every run, tool and command of this fleet access to the host until revoked. Label the pending decision deadline “Card expires”.
 
-A host grant opens that host only, so search stays off on a private fleet. `host_not_allowed` names `request_access` (`af_egress/src/error/mod.rs:70-74`).
+An approval adds the exact host to the next run’s allowlist. A denial records revoked. Resolve both through the access continuation, with the host and outcome. On approval instruct the resumed agent to retry the original read under fresh policy. On denial explain the refusal and finish without re-asking. Revoking later affects newly built run policies. Search and extraction stay disabled on restricted fleets.
 
 - **Dimension 4.1** — a host request raises one card → Test `a_host_request_raises_one_card_and_waits` (integration): `{host:"www.booking.com"}` → a `pending` `host` grant and one card. The turn settles waiting.
 - **Dimension 4.2** — an approved host opens no search → Test `an_approved_host_joins_the_allowlist_and_opens_no_search` (integration): Approve → the resumed run's `allow` holds the host. `POST L/searches` still answers 403.
 - **Dimension 4.3** — an address is refused → Test `a_host_request_for_an_address_is_refused` (integration): `10.0.0.5`, `localhost` and `169.254.169.254` → the refusal, no row and no card.
 - **Dimension 4.4** — one kind per request → Test `a_request_naming_both_a_name_and_a_host_is_refused` (unit, `afr_tools`): both, or neither → `invalid_arguments`, and nothing is posted.
-- **Dimension 4.5** — a person sees the host → Test `an access card for a host names it` (unit, vitest, `ui/packages/app/components/domain/approvals/FleetApprovalSummary.test.tsx`): "wants to reach www.booking.com"; Deny leaves "Can access" unchanged.
+- **Dimension 4.5** — a person sees the host → Test `an access card for a host names it` (unit, vitest, `ui/packages/app/components/domain/approvals/FleetApprovalSummary.test.tsx`): the card names the ASCII host, originating host, refused tool, grant reach and lifetime. “Card expires” labels the decision deadline. Deny leaves “Can access” unchanged. Inspect the card and its serialized evidence for sensitive paths and query strings.
 - **Dimension 4.6** — the CLI lists it → Test `grant list shows a host grant` (unit, handler, `cli/test/`): a `host` grant renders its kind and host. `--json` carries `kind: "host"`.
+- **Dimension 4.7** — `a_host_and_a_credential_of_one_name_stay_two_grants`: approval and revocation apply independently and a host grant cannot authorize publication.
+- **Dimension 4.8** — preserve raised, already pending and already granted as distinct wire outcomes. Race two requests: one card, and the losing run cannot infer approval from an absent card id. Repeat after an actual approval and verify the covered outcome.
 
 ### §5 — Sources reach the thread
 
-`ToolCallCompleted` (`af_wire/src/activity/mod.rs:82`) gains `sources`, each `{url, title}`, for a `web_search` or `web_fetch` call and absent for any other. The runner fills it from the backend's answer, bounded by the runner frame. The run summary lists a run's sources under "Sources", linking each `http` or `https` URL and showing any other as text.
+Store bounded `sources: [{url,title}]` on the completed call in `thread.items`. Read it through run history and also emit it on `ToolCallCompleted`. Search records result URLs, fetch records the safely disclosable source of the page actually read, and browser navigation records the committed page, including after a click. Older calls and refused calls have no sources. Apply the same privacy filter before persistence and live emission. Preserve redirect masking until the disclosure decision in Discovery. For vendor extraction distinguish requested and final URL only when the vendor supplies that evidence.
 
 - **Dimension 5.1** — a search carries its sources → Test `a_completed_search_carries_its_sources` (unit, `afr_agent`): two results → both URLs and titles, in order. A `[network_restricted]` answer carries none.
 - **Dimension 5.2** — a hostile URL is not a link → Test `the run summary links only web sources` (unit, vitest, `ui/packages/app/components/domain/conversation/summary/recorded-run-resources.test.tsx`): two sources → two links with `rel="noopener noreferrer"`. `javascript:alert(1)` → text with no `href`.
+- **Dimension 5.3** — `a_redirected_fetch_keeps_its_source_after_a_reload`: compare the live list to history after a reload. Test a sensitive redirect path and query, and a browser click that alone introduced its destination. No protected URL is recoverable from stored sources or titles.
 
 ### §6 — Spike: Chromium in the run's VM, driven from the supervisor
 
-A throwaway program outside the repository answers seven checks on M258's engines. Discovery records the answers before §7 starts, and a disagreement amends this spec first.
+After M258 merges, run the spike on our Firecracker guest before building browser actions. Record the kernel, guest image and client revisions with the seven observations.
 
-1. `chrome-headless-shell` starts non-root with its own sandbox on, in a Sprite and in our Firecracker guest. Record `Browser.getVersion` and the Sprite's AppArmor state.
-2. Its real shared-library set (`ldd`), and that text renders with `fonts-liberation` and `fonts-dejavu-core`.
+1. Record the confinement and effective renderer sandbox from the chosen configuration. M258 supplies tenant confinement. The reviewed guest disables user namespaces. A browser-specific confinement requires a decision and a real launch test.
+2. Package the pinned shell, shared libraries and fonts. Measure the complete toolbox against its cap. Report the delta before proposing a cap change.
 3. `chromiumoxide` 0.9.1 against the pinned build: connect, navigate, `Accessibility.getFullAXTree`, click by `backendDOMNodeId`, `Page.captureScreenshot`. Record every deserialize failure, and which request kinds pause at the `Fetch` stage.
-4. The transport end to end: the Sprite's `/proxy` tunnel, and our engine's stream into the VM.
+4. Prove a lossless bidirectional CDP transport, including an intact 5 MiB screenshot. The existing executor route serves its own protocol. Probe supported client pipe or guest stream options before choosing an interface.
 5. The snapshot's size on three real pages, against the tool output budget.
 6. Memory after one page and after ten, and the time from start to the first snapshot, cold and warm.
-7. booking.com and one Cloudflare managed-challenge page, with the honest user agent (UA) and without it, from the engine's real address.
+7. Hold a browser open across a checkpoint, restore, and prove the disposition of old references and profile data. Verify the profile is outside the persisted workspace and that a restart clears it.
+
+Record `Browser.getVersion`, the ten-page memory measurement against the actual VM grant, transport integrity and save/restore results. Before shipping actions also pass §8’s origin-policy trial and §9.2 on Firecracker.
 
 - **Dimension 6.1** — the spike is recorded → Test `browser_spike_recorded` (manual): Indy reads the record. Expected: Discovery answers checks 1 to 7, and this line reads `DONE`. Evidence: this spec, in the Pull Request.
 
@@ -261,17 +265,17 @@ A throwaway program outside the repository answers seven checks on M258's engine
 
 guffbolt gains `Backend::Browser` and `with_browser`, as memory has `Backend::Memory` and `with_memory` (`guffbolt/src/tools/builder/catalog.rs:48-53`). A `Browser` trait in `tools/browser.rs` serves three tools with typed, `deny_unknown_fields` arguments. `Env::browser()` and `NO_BROWSER` (`guffbolt/src/tools/env/mod.rs:55,260,333`) go.
 
-`afr_tools` gains `RunBrowser`, one Chromium per run behind a `tokio::sync::Mutex`, which children share. It starts on the first browser call through a `BrowserSource` that `afr_supervisor` implements as a dial to Chromium's port in the run's VM `[?]`. Chromium runs non-root with its own sandbox and a profile directory that dies with the VM.
+One run owns a lazily started browser, shared with its children and serialized by a mutex. The supervisor supplies the transport and executor-selected confinement proved by §6. Use an ephemeral profile outside the checkpoint and prove its lifetime.
 
-The entries stay `Runtime::Sandbox`, because Chromium lives in the run's VM and the router waits for it. Reading answers an accessibility snapshot: title, URL, one line per node, and a reference such as `e7` per actionable node. Acting takes a reference from the latest snapshot and answers the fresh one.
+The three tools remain sandbox tools. A snapshot names the committed URL, title, nodes and opaque actionable references. Bind references to the browser generation and snapshot. After navigation, reconnect or restore, an old reference returns `stale_ref` even when node numbers repeat.
 
-`screenshot` takes the `image` tool's gate. It is refused before the capture on a wire with no image input, then fitted to 2048 pixels and 5 MiB (`guffbolt/src/tools/limits.rs:41-45`). `fitted` (`files/image.rs:258`) becomes a shared helper, and every description says page text is untrusted and a screenshot is for checking looks.
+`screenshot` takes the `image` tool's gate. It is refused before the capture on a wire with no image input, then fitted to 2048 pixels and 5 MiB (`guffbolt/src/tools/limits.rs:41-45`). `fitted` (`files/image.rs:258`) becomes a shared helper. M259_002 owns prompt text and model-specific tool filtering.
 
-M258_001's `Transport: dial()` reaches the executor only, so `afr_engine` gains a port on that dial: vsock `CONNECT <port>` on Firecracker, the `/proxy` tunnel on a Sprite `[?]`. **Implementation default:** `chromiumoxide` dials a `ws://` URL, so the supervisor bridges a loopback port to that dial with `tokio::io::copy_bidirectional`.
+M258 provides executor spawn/kill, tenant memory accounting, the egress wall and the guest confinement interface. Choose the browser byte route from §6 evidence on the merged revision.
 
 - **Dimension 7.1** — a malformed action is refused → Test `a_malformed_browser_action_is_refused_naming_the_field` (unit, guffbolt): `{action:"hover"}` → `invalid_arguments` naming `hover`. `{action:"click"}` → naming `target`; the backend is never called.
-- **Dimension 7.2** — opening answers a snapshot → Test `browser_open_answers_a_snapshot_with_references` (unit, `afr_tools`, a fake CDP endpoint): one link and one button. The answer holds the title, the URL and two lines carrying `e1` and `e2`.
-- **Dimension 7.3** — a click acts on a reference → Test `a_click_on_a_reference_answers_the_fresh_snapshot` (unit, a fake CDP endpoint): `click e1` → that node is clicked, then the new snapshot. `e2` from before the navigation → `[stale_ref] e2`, and no click is sent.
+- **Dimension 7.2** — opening answers a snapshot → Test `browser_open_answers_a_snapshot_with_references` (unit, `afr_tools`, a fake CDP endpoint): one link and one button. The answer holds the title, the URL and two distinct references for this snapshot.
+- **Dimension 7.3** — a click acts on a reference → Test `a_click_on_a_reference_answers_the_fresh_snapshot` (unit, a fake CDP endpoint): `click e1` → that node is clicked, then the new snapshot. `e2` from before the navigation → `[stale_ref] e2`, and no click is sent. Repeat after restore with a fresh browser that reuses a node number. No old reference can act.
 - **Dimension 7.4** — a screenshot takes the image gate → Test `a_screenshot_takes_the_image_gate` (unit, a fake CDP endpoint): a 4000-pixel-wide capture → a PNG 2048 pixels wide. On the Chat wire → `image_input_unavailable`, and no capture is taken.
 - **Dimension 7.5** — a browser that cannot answer says why → Test `a_browser_that_cannot_answer_says_why` (unit, `afr_tools`): no `BrowserSource` → `[browser_unavailable]` naming the engine. A session lost mid-load → `[browser_unavailable] the page closed`; no text names Firecracker.
 
@@ -279,9 +283,9 @@ M258_001's `Transport: dial()` reaches the executor only, so `afr_engine` gains 
 
 The engine's egress wall (M258) is the boundary. Intercepting requests over CDP misses WebRTC and Domain Name System (DNS) traffic, and may miss WebSocket and worker requests. The check below is the second line, and the source of our refusal texts.
 
-`RunBrowser` enables CDP's `Fetch` domain at the request stage on every target, before the first navigation. Each paused request passes the run's `Outbound::connect` (`afr_tools/src/egress/mod.rs:130`), the admission `http_request` uses, then the resolver and `af_egress::unblocked`. A pass continues with no header added, and a fail answers `failRequest`.
+Use CDP request interception before navigation on each target. Apply shared egress admission to the actual URL, method and policy-relevant body of each paused request. If required input is unavailable, refuse the request. Apply resolution and blocked-address checks and continue only admitted requests.
 
-**Implementation default:** `connect` rather than a copy of `listed()`, so one admission decides every HTTP path. An `http://` subresource is then refused, as `http_request` refuses it `[?]`. **Failure assumption:** a lost session leaves every paused request unanswered, so the page loads nothing.
+**Dimension 8.4** — `a_browser_form_post_is_judged_by_its_method_and_body`: test a host whose policy admits a GET and refuses a form POST at the same URL. Also exercise allowed and refused bodies for one method. Each refusal reaches zero upstream requests. The Firecracker wall remains in force if the CDP connection is lost.
 
 - **Dimension 8.1** — private and metadata addresses are refused → Test `the_browser_refuses_a_private_address` (unit, `afr_tools`, a fake CDP session, a stub resolver): a name resolving to `10.0.0.5` → failed. `169.254.169.254`, as a literal and through a name, → failed `blocked_address`.
 - **Dimension 8.2** — a private fleet reaches only its allowlist → Test `the_browser_refuses_a_host_a_private_fleet_lacks` (unit): `allow: [example.org]`. `www.booking.com` fails with `http_request`'s `host_not_allowed` sentence; `example.org` continues with no header.
@@ -291,6 +295,8 @@ The engine's egress wall (M258) is the boundary. Intercepting requests over CDP 
 
 - **Dimension 9.1** — search and read → Test `prime-curious-otter.spec.ts` (e2e, `make acceptance`, fixture `curious-otter`): with "Allow all" on, a person asks for a search and the top page. The turn holds a `web_search` and a `web_fetch` call, and "Sources" lists the URLs. The run has one `search` and one `extract` row.
 - **Dimension 9.2** — open, act, look → Test `prime-nosy-magpie.spec.ts` (e2e, `make acceptance`, fixture `nosy-magpie`, a Messages-wire model): the fleet opens the lane's test page `[?]`. It clicks a link by its reference and reports the new title, and its screenshot reaches the model.
+- **Dimension 9.3** — `approving_a_redirected_host_finishes_the_original_read` (af_e2e): zero contacts before Approve, one after the resumed fetch, and the final answer contains the page sentinel.
+- **Dimension 9.4** — `denying_a_redirected_host_contacts_neither_it_nor_a_vendor` (af_e2e): zero destination DNS lookups, connections, vendor requests and reservations. The grant is revoked and the resumed agent explains the denial.
 
 ## Interfaces
 
@@ -308,15 +314,15 @@ screenshot {}                       a PNG through the image gate
 refusals  [browser_unavailable] · [stale_ref] · [host_not_allowed] · [image_input_unavailable]
 ```
 
-**Run verbs.** Each carries `fencing_token` and `call_number`, as the trigger verbs do.
+**Run verbs.** Search and extract use the fence and call number. Each sends once. Access keeps its single-send client and reports the typed decision state.
 
 ```
 POST L/searches {fencing_token, call_number, query}  200 {vendor, results: [{url, title?, published?, excerpts[]}]}
 POST L/extracts {fencing_token, call_number, url}    200 {vendor, url, title?, content}   content is Markdown
-POST L/access   {fencing_token, name, scope?} | {fencing_token, host}     201 {grant_id, gate_id}; 200 as today
+POST L/access   {fencing_token, name, scope?} | {fencing_token, host, evidence?}   grant_id, state: raised|pending|covered, gate_id?
 ```
 
-**Codes.** New codes are numbered at PLAN from the next free in the family, each with its `REGISTRY` row and problem entry. The stale-fence code is reused.
+**Codes.** Allocate new codes against merged M258. Reuse the stale-fence code.
 
 ```
 403  a private fleet's web call                 503  no vendor key is configured
@@ -326,7 +332,7 @@ POST L/access   {fencing_token, name, scope?} | {fencing_token, host}     201 {g
 
 **Runner wire.** `ToolCallCompleted` gains `sources`, and `AccessRequest` takes `name` or `host`. guffbolt-ai's `Request` loses `hosted`. `VERSION` (`af_wire/src/protocol/mod.rs:15`) moves once.
 
-**Schema.** `thread.run_web_calls` is a new table: `run_id` (`uuid`, a foreign key to `thread.runs`), `vendor`, `operation`, `call_count` and the two time columns, keyed by the first three. Vendor, operation and the new `grant_type` `host` of `connector.integration_grants` are application constants.
+**Schema.** `thread.run_web_calls` is a new table: `run_id` (`uuid`, a foreign key to `thread.runs`), `vendor`, `operation`, `call_count` and the two time columns, keyed by the first three. Grant uniqueness includes fleet, kind and service. Completed tool call items have nullable sources. Vendor, operation and the new `grant_type` `host` of `connector.integration_grants` are application constants.
 
 ## Failure Modes
 
@@ -335,11 +341,11 @@ POST L/access   {fencing_token, name, scope?} | {fencing_token, host}     201 {g
 | A private fleet searches | security | the model calls `web_search` on a `restricted` fleet | the runner refuses first, the daemon again; zero vendor calls | `a_web_call_that_may_not_leave_reaches_no_vendor` |
 | Server-side request forgery (SSRF) by extract | security | a URL names a metadata or private literal | 400 before any call | `a_web_call_that_may_not_leave_reaches_no_vendor` |
 | Key leak | security | a key rides a payload, a sentence or a log | no key leaves the daemon | `no_vendor_key_reaches_a_runner_or_a_log` |
-| Redirect out of policy | security | an allowlisted host redirects to an unlisted one | `host_not_allowed`; the second host gets nothing | `an_allowlisted_page_is_read_locally_through_its_redirects` |
+| Redirect out of policy | security | a restricted fleet’s allowlisted host redirects to an unlisted one | `host_not_allowed`; the second host gets nothing | `an_allowlisted_page_is_read_locally_through_its_redirects` |
 | Vendor down or rate-limited | failure | a 5xx or 429 | the next vendor answers; 502 only when all fail | `a_failed_vendor_falls_over_to_the_next` |
 | Every vendor cooling | capacity | each named a wait | 503 with `Retry-After`; no call | `a_cooling_vendor_is_skipped_until_its_named_wait_ends` |
 | No vendor configured | failure | no key bag in the platform-admin vault | 503 with its code; no call | `a_vendor_without_a_vault_key_is_skipped` |
-| Replay | failure | the runner retries a verb | each physical call is counted, so the count stays our true cost | `a_search_answers_through_the_first_vendor_and_counts_it` |
+| Lost reply | failure | the runner cannot tell whether a call left | return the unknown outcome within the deadline and do not redispatch | Dimension 1.8 |
 | Stale run | failure | a superseded fence posts | the stale-fence code; no call | `a_web_call_that_may_not_leave_reaches_no_vendor` |
 | Hostile source | security | a result's URL is `javascript:` | shown as text, never linked | `the run summary links only web sources` |
 | Unreadable body | failure | a PDF on the local path | `[unsupported_media]` naming its type | `a_binary_body_is_refused_with_its_type` |
@@ -353,16 +359,16 @@ POST L/access   {fencing_token, name, scope?} | {fencing_token, host}     201 {g
 
 1. No vendor key leaves the daemon — only §1's handler reads a key bag, per call; no wire type has a field for one (Dimension 1.6).
 2. A private fleet sends a vendor nothing — the daemon reads `http_egress` from the fleet row before the vendor walk (Dimension 1.5).
-3. Every vendor call is counted — an upsert under the run's fence follows each physical call, before the next or the answer (Dimension 1.1).
+3. Every vendor dispatch has a committed reservation. A crash before dispatch can leave a reservation unused (Dimension 1.1).
 4. No wire sends a provider-hosted tool — `Hosted` is deleted, so no code can name one (Dimension 2.1).
-5. One admission decides every HTTP path — `web_fetch`, `http_request` and the browser check all call `Egressed` (Dimensions 3.1, 8.2).
+5. Local requests share the egress policy — `web_fetch`, `http_request` and the browser check all call `Egressed` (Dimensions 3.1, 8.2).
 6. No browser outlives its run — `RunBrowser` drops with the run's `Run`, and Chromium dies with the VM M258 tears down (Dimension 7.5).
 
 ## Metrics & Observability
 
 | Metric / event | Audience | Fires when | Properties allowed | Privacy guard | Test |
 |----------------|----------|------------|--------------------|---------------|------|
-| `web_call` (log) | operator | a vendor call returns | `run_id`, `fleet_id`, `vendor`, `operation`, `outcome`, `ms`, `vendor_status` | no query, no URL, no key | `a_search_answers_through_the_first_vendor_and_counts_it` |
+| `web_call` (log) | operator | a vendor call returns | `run_id`, `fleet_id`, `vendor`, `operation`, `outcome`, `ms`, `vendor_status` | no query, no URL, no key | `a_vendor_call_is_counted_before_it_leaves` |
 | `agentsfleet_web_calls_total{vendor,operation,outcome}` | operator | the same | vendor, operation, outcome | labels only | `a_failed_vendor_falls_over_to_the_next` |
 | `web_vendor_cooling` (log) | operator | a vendor names a wait | `vendor`, `wait_ms` | no key | `a_cooling_vendor_is_skipped_until_its_named_wait_ends` |
 | `fleet_access_changed` | product | a host grant is requested, approved, denied or revoked | `fleet_id`, `kind` (`host`), `change` | no host name | `a_host_request_raises_one_card_and_waits` |
@@ -372,7 +378,7 @@ POST L/access   {fencing_token, name, scope?} | {fencing_token, host}     201 {g
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | A search answers through the first working vendor, and every vendor call is counted (§1) | `make test-integration-rustd` | exit 0; `a_search_answers_through_the_first_vendor_and_counts_it ... ok`, `a_failed_vendor_falls_over_to_the_next ... ok`, `a_cooling_vendor_is_skipped_until_its_named_wait_ends ... ok` | P0 | |
+| R1 | A search answers through the first working vendor, and each dispatch has a committed reservation (§1) | `make test-integration-rustd` | exit 0; `a_vendor_call_is_counted_before_it_leaves ... ok`, `a_failed_vendor_falls_over_to_the_next ... ok`, `a_cooling_vendor_is_skipped_until_its_named_wait_ends ... ok` | P0 | |
 | R2 | A private fleet sends nothing, and no key leaves the daemon (§1) | `make test-integration-rustd` | exit 0; `a_web_call_that_may_not_leave_reaches_no_vendor ... ok`, `no_vendor_key_reaches_a_runner_or_a_log ... ok` | P0 | |
 | R3 | Every wire offers our `web_search` and no provider tool (§2) | `make test-unit-all` | exit 0; `every_wire_offers_web_search_as_a_function ... ok` | P0 | |
 | R4 | No hosted-search code is left (§2) | `git grep -n -w -e WEB_SEARCH_MESSAGES -e HOSTED_ELSEWHERE -e HostedToolUnavailable -e hosted_tool_unavailable -e web_search_20250305 -- rustd` | 0 matches | P0 | |
@@ -383,6 +389,8 @@ POST L/access   {fencing_token, name, scope?} | {fencing_token, host}     201 {g
 | R9 | The browser acts on references, takes the image gate and refuses what the policy refuses (§7, §8) | `make test-unit-all` | exit 0; `a_click_on_a_reference_answers_the_fresh_snapshot ... ok`, `a_screenshot_takes_the_image_gate ... ok`, `the_browser_refuses_a_private_address ... ok`, `the_browser_refuses_a_host_a_private_fleet_lacks ... ok` | P0 | |
 | R10 | No browser refusal text is left (§7) | `git grep -n -w -e WAITS_FOR_FIRECRACKER -e NO_BROWSER -e test_browser_tools_refuse_until_firecracker -- rustd` | 0 matches | P1 | |
 | R11 | The live paths work (§9) | `make acceptance SUITE=all` | exit 0; `prime-curious-otter.spec.ts` and `prime-nosy-magpie.spec.ts` passed | P1 | |
+| R12 | The original read resumes on approval and stops on denial (§9.3–4) | `make test-integration-rustd` | both af_e2e redirect grant cases pass | P0 | |
+| R13 | Host and credential grants keep separate authority, dispatch is bounded, and reloaded sources preserve redirect privacy (§1, §4, §5) | `make test-integration-rustd` | Dimensions 1.8, 4.7–8 and 5.3 pass | P0 | |
 | S1 | Lint | `make lint-all` | exit 0 | P0 | |
 | S2 | Unit | `make test-unit-all` | exit 0 | P0 | |
 | S3 | Integration | `make test-integration-rustd` | exit 0 | P0 | |
@@ -405,7 +413,7 @@ POST L/access   {fencing_token, name, scope?} | {fencing_token, host}     201 {g
 | the provider runtime | `git grep -n -e "Runtime::Provider" -- rustd` | no output |
 | the browser refusal | `git grep -n -w -e WAITS_FOR_FIRECRACKER -e NO_BROWSER -e test_browser_tools_refuse_until_firecracker -- rustd` | no output |
 
-**Every hit at `679002666`, for SPEC-BLAST.** Production: `guffbolt-ai/src/{lib.rs:47,types/mod.rs:10,types/model.rs:21,26,48,wire/request/mod.rs:12,29,79,84-91}`, `guffbolt/src/lib.rs:111`, `afr_agent/src/{loop/mod.rs:22,214,offer/mod.rs:11,55,65-66,router/mod.rs:23,119,172}`, `afr_tools/src/{catalog/mod.rs:64,315,runtime/mod.rs:66,128,152,stub/mod.rs:49,generic/env/mod.rs:48-49,304,generic/env/lazy.rs:12,95}`, `guffbolt/src/tools/env/mod.rs:55,334`, `guffbolt/examples/fireworks_live.rs:27,197`.
+**Original author’s symbol inventory. Recheck on merged main.** Production: `guffbolt-ai/src/{lib.rs:47,types/mod.rs:10,types/model.rs:21,26,48,wire/request/mod.rs:12,29,79,84-91}`, `guffbolt/src/lib.rs:111`, `afr_agent/src/{loop/mod.rs:22,214,offer/mod.rs:11,55,65-66,router/mod.rs:23,119,172}`, `afr_tools/src/{catalog/mod.rs:64,315,runtime/mod.rs:66,128,152,stub/mod.rs:49,generic/env/mod.rs:48-49,304,generic/env/lazy.rs:12,95}`, `guffbolt/src/tools/env/mod.rs:55,334`, `guffbolt/examples/fireworks_live.rs:27,197`.
 
 Tests: `guffbolt-ai/src/wire/request/tests.rs:8,79,243-254`, `guffbolt-ai/src/wire/route/tests/counting/unsupported.rs:13`, `afr_agent/src/{offer/tests.rs:13,48,142-143,router/tests.rs:173,222-233}`, `afr_agent/tests/providers/main.rs:51,202`, `afr_tools/src/{catalog/tests.rs:247,338,runtime/tests.rs:10-11,generic/env/tests.rs:17,135,sandbox/browser/tests.rs:40,85}`, `guffbolt/tests/public_api/{plain/answers.rs:135,seam.rs:87}`, `af_e2e/tests/support/definition_run.rs:237`.
 
@@ -413,7 +421,7 @@ Same spelling, other meaning, kept: `afd_http/src/openapi/mod.rs` ("Hosted sched
 
 ## Out of Scope
 
-- The engine, its egress wall and the stream into the VM: M258.
+- M258 owns the compute engine and its network wall. M259 owns the Firecracker browser spike and the changes it proves necessary.
 - The prompt's tool, speaker and environment text, the two approved tool fixes, and images in a message: M259_002.
 - A per-fleet or per-workspace vendor choice, and search on a private fleet: ruled out.
 - Browser cookies across runs, solving a CAPTCHA, and a forward proxy: not planned.
@@ -428,7 +436,7 @@ Same spelling, other meaning, kept: `afd_http/src/openapi/mod.rs` ("Hosted sched
 3. **Optimal-way check** — one search tool, a fixed vendor walk, one count table, and Chromium in the VM the run already has. The gap was hosted search on 8 of 21 models, and no browser.
 4. **Rebuild-vs-iterate** — rebuild how search reaches a model and how the browser is reached; iterate on `web_fetch` and `request_access`.
 5. **What we build** — two daemon verbs over a vendor walk with a per-vendor count, `SearchBackend`, `web_search` and a routed `web_fetch`. Also a host grant, sources, and three typed browser tools with a request check.
-6. **What we do NOT build** — a vendor choice per fleet, because the platform picks, or spreading and fan-out across vendors, which cost more. Search on private fleets or hosted search, both ruled out, and a browser Sprite per run.
+6. **What we do NOT build** — a vendor choice per fleet, because the platform picks, or spreading and fan-out across vendors, which cost more. Search on private fleets or hosted search, both ruled out, and externally hosted browsers.
 7. **Fit with existing features** — it compounds with "Allow all", the access card and the `image` gate. It must not destabilize the network policy's host rule, which every HTTP path now shares.
 8. **Surface order** — API and runner first, then the app's card and Sources, then the CLI's lists, because both read the daemon's new shapes.
 9. **Dashboard restraint** — "Sources" shows only when a run called a web tool; no search settings page exists.
@@ -441,7 +449,6 @@ Same spelling, other meaning, kept: `afd_http/src/openapi/mod.rs` ("Hosted sched
   - Hybrid search, hosted where a provider offers it: ruled first, then replaced by Indy.
   - A random vendor per session with a consent prompt: declined; the platform holds the keys and the fleet's `http_egress` is the consent.
   - A runner that calls a vendor with a per-call key: declined; a tenant runner never holds a key.
-  - A browser Sprite per run, or a vendor's hosted browser: replaced by the engine-first order, since the run's VM already exists.
   - CSS selectors as targets: declined; a model cannot know a selector it never read.
   - The CDP check as the only wall: declined; it misses WebRTC and DNS.
 - **Patch-vs-refactor verdict:** a **refactor** because the hosted path leaves two published crates, search moves into the daemon, and the browser leaves `Env`.
@@ -458,28 +465,15 @@ Same spelling, other meaning, kept: `afd_http/src/openapi/mod.rs` ("Hosted sched
 - > Owner (Indy, Nov 22, 2026): "the tool can be cut on the browser side keep it in the current form, to get the browser working what do we need to do" — context: the three tool names stay. M253_004's earlier fold into one `browser` was never built (`afr_tools/src/catalog/mod.rs:131-135`).
 - > Owner (Indy, Nov 26, 2026): "Essentially add missing features for guffbolt agent harness", "max 2 in 1 milestone for the guffbolt tool updates" and "I need the final scope to fix" — context: two Workstreams in this milestone.
 - **Owner decisions, Nov 26, 2026, on the gap matrix** — accepted: Gemini grounding off, and no search on a `restricted` fleet. Page reading goes through a vendor on public fleets only.
-- **Open owner decisions (`[?]`), each an agent default until ruled:**
-  - Numbering: the engine as M258 and this as M259 was asked and timed out unanswered.
-  - M258's split by engine matches its two pending files. Its `Transport: dial()` reaches only the executor, so a guest-port dial is added here or there.
-  - The second vendor: Exa, which returns highlights with dates, documents `Retry-After` and has a page reader. Tavily and Brave are the alternatives.
-  - No cooldown when a vendor names no wait. opencode uses 60 seconds; "No invented limits" needs Indy's number for any default.
-  - Extract on Parallel alone until Exa's `/contents` text format is checked.
-  - Each vendor's data-retention and resale terms, which the privacy page must name.
-  - The daemon makes every vendor call, for platform and tenant runners alike.
-  - No `mode` is sent, so Parallel's default `advanced` costs USD 5 per 1,000; `fast` costs USD 1.
-  - Customers on Sprites only wait on Fly's written answer to ToS §1.4(d); until then the browser on a Sprite serves platform fleets.
-  - Admission counts VM memory, with no overcommit; Chromium's memory counts against the run (§6 check 6 measures it).
-  - The transport: the forwarded port. The pipe transport needs a hand-written dispatcher, an exception to "donot handroll code".
-  - The honest `HeadlessChrome` UA in the first build. Hiding it presents the fleet as an ordinary Chrome.
-  - Who bumps the Chromium pin, and how often. Chrome for Testing "should only be used to consume trustworthy content" and does not update itself.
-  - An `http://` subresource is refused in the browser, as `http_request` refuses it.
-- **Unverified (`[?]`), each settled by a named step:**
-  - Chromium starting in our microVM guest with its own sandbox (§6 check 1). The guest kernel enables user namespaces and seccomp, which proves nothing yet.
-  - How the browser image reaches each engine. The amd64 toolbox refuses an image above 262,848,512 bytes (`runner_execution.md:264`); Debian's shell with `chromium-common` is about 297 MB.
-  - That M258_001's verdict matrix and kernel lane run Chromium for Dimension 8.3, and §9.2's test page.
-  - Parallel's 429 and `Retry-After` behaviour, and the 1Password item names for both keys.
+- **Nov 27 owner decisions.** Firecracker only. Parallel Fast, Exa search fallback and platform-owned vendor keys. All implementation waits for M258 to merge.
+- **Open browser and privacy decisions:**
+  - D1: choose browser confinement after reviewing the isolation trade-off. A disabled renderer sandbox is a proposal, not an accepted launch configuration.
+  - D2: should an open browser permit workspace saves? At `46723c018`, `pin_sandbox` checks executor idle before freezing. Test real behavior on merged M258. Recommendation: preserve workspace saves and restart browser state on restore. Skipping saves could replay earlier external actions.
+  - D3: which redirect destinations may a thread retain? Query stripping alone can expose a signed path. Recommendation: retain origin only for protected redirects and expose a deeper final URL only where the existing privacy rules permit it.
+  - D4: measure the Debian shell and dependencies in the single toolbox before deciding whether to raise its cap.
+- **Verify before live acceptance.** Confirm vendor retention and resale terms, Parallel’s returned extraction URL and rate-limit headers, vault provisioning, transport support, ephemeral profile behavior and the real Firecracker image size.
 - **Known limit, needs an owner disposition** — no browser engine passes a bot wall. Every headless stack failed a Cloudflare managed challenge in an October 2026 test, and so did a headed browser on a cloud address. A vendor's page reader stays the route for reading those sites.
-- **Named risk, the fee against the search** — the runtime fee is USD 0.0001 a second. One Parallel `advanced` search at USD 0.005 equals 50 seconds of fee; one Exa `auto` search, 70 seconds. `thread.run_web_calls` against the run's seconds shows where a fleet costs more than it earns.
+- **Cost monitoring.** Compare dispatch reservations with run duration as an upper bound on vendor spend. Reconcile actual charges with vendor records.
 - **Consults, search** — the vendor research read opencode at `44344bd22d` on Nov 26, 2026. Borrowed: the two-layer split, the at-most-once walk, the named-wait cooldown, the vendor named on every call and URL-free error sentences. Left: the random pick, the consent form, keyless tiers and the Model Context Protocol (MCP) transport.
 - **Consults, browser** — the snapshot with references is where Playwright MCP, Chrome DevTools MCP, agent-browser and opencode all converged.
 - **Engine choice** — `chrome-headless-shell`, version-pinned, driven by `chromiumoxide` 0.9.1, the most used maintained tokio CDP client. Firefox is blocked less when headless but has only WebDriver BiDi, with no maintained Rust client; Lightpanda stays dropped (AGPL-3.0, no pixels).
@@ -487,8 +481,7 @@ Same spelling, other meaning, kept: `afd_http/src/openapi/mod.rs` ("Hosted sched
   - The catalogue holds 21 models at `679002666` (Chat 11, Gemini 2), not 20.
   - The sources test file is `recorded-run-resources.test.tsx`; `RunResources.test.tsx` does not exist.
   - The blast list adds `afr_agent/src/router/tests.rs:173,233` and `afr_agent/tests/providers/main.rs:51,202`.
-  - CDP interception is not a complete network wall, and the Sprites API mints no per-Sprite credential.
 - **Restructure record** — this spec takes §1 to §5 and §8 of the web search spec and the browser from the browser spec, both drafted on Nov 26, 2026 and removed by the Pull Request that adds this one. The web spec's §6, §7 and §9 moved to M259_002.
-- **Model reviews** — none yet.
-- **Open blockers** — the open owner decisions above, and who adds the guest-port dial (this spec or M258_001), before this spec leaves `pending/`.
+- **Model review, Nov 27.** Fable 5.2 supplied eleven findings. Verified the key collision, retry and reservation boundaries, pending/covered ambiguity, redirect privacy, call history persistence, and compute prerequisites against `ece273764` and `46723c018`. The review also cites `680a26110`; recheck that revision or its successor after merge.
+- **Delivery.** Sync the feature branch to merged main before implementing §§1–5. Reconcile shared route inventories, schema registration, error codes, protocol version, OpenAPI and acceptance setup there. Run §6 before §§7–8 and the live browser fixture.
 - **Deferrals and transfers** — none. Each one needs an owner quote below, as `> Owner (<name>, <MMM DD, YYYY HH:MM>): "<quote>" — context: <item, why>`.
