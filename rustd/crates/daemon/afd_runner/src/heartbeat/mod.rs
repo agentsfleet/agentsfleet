@@ -19,7 +19,9 @@
 use af_core::error_code::{self, Coded as _, Logged};
 use af_core::id::Uuid7;
 use af_observability::producers;
-use af_wire::runner::{CapabilityReport, HeartbeatRequest, HeldFleets, HostFacts, SelftestReport};
+use af_wire::runner::{
+    CapabilityReport, HeartbeatRequest, HostFacts, ParkedFleets, SelftestReport,
+};
 use garde::{Valid, Validate as _};
 use jiff::Timestamp;
 use sqlx::{Executor as _, PgConnection};
@@ -46,7 +48,7 @@ const EVENT_LIVENESS_WRITE: &str = "heartbeat_bump_failed";
 pub const NO_REPORT: HeartbeatRequest<'static> = HeartbeatRequest {
     capability_report: None,
     selftest: None,
-    holds: HeldFleets(Vec::new()),
+    parked: ParkedFleets(Vec::new()),
     closing: false,
     host: HostFacts {
         cpu_count: None,
@@ -96,7 +98,7 @@ impl Runners {
         &self,
         runner: &Uuid7,
         beat: &HeartbeatRequest<'_>,
-        held: Option<&Valid<HeldFleets<'_>>>,
+        held: Option<&Valid<ParkedFleets<'_>>>,
         now: Timestamp,
     ) -> Result<Beat> {
         let mut connection = self.pool().acquire().await?;
@@ -121,7 +123,7 @@ impl Runners {
         &self,
         authority: &Authority,
         beat: &HeartbeatRequest<'_>,
-        held: Option<&Valid<HeldFleets<'_>>>,
+        held: Option<&Valid<ParkedFleets<'_>>>,
         now: Timestamp,
     ) -> Result<Decision<Beat>> {
         let mut connection = self.pool().acquire().await?;
@@ -165,7 +167,7 @@ impl Runners {
         connection: &mut PgConnection,
         runner: &Uuid7,
         beat: &HeartbeatRequest<'_>,
-        held: Option<&Valid<HeldFleets<'_>>>,
+        held: Option<&Valid<ParkedFleets<'_>>>,
         now: Timestamp,
         row: PolicyRow,
     ) -> Result<Decision<Beat>> {

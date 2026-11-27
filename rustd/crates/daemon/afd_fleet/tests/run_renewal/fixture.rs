@@ -6,7 +6,7 @@ use crate::{
     support::Fixtures,
 };
 use af_core::{clock, id::Uuid7};
-use af_wire::runner::{HeartbeatRequest, HeldFleets};
+use af_wire::runner::{HeartbeatRequest, ParkedFleets};
 use afd_billing::Posture;
 use afd_fleet::run::sql::meter::Metering;
 use afd_fleet::run::usage::Pricing;
@@ -42,7 +42,7 @@ impl Running {
                 &HeartbeatRequest {
                     capability_report: Some(requests::capable()),
                     selftest: None,
-                    holds: HeldFleets::default(),
+                    parked: ParkedFleets::default(),
                     closing: false,
                     host: af_wire::runner::HostFacts::default(),
                 },

@@ -1,4 +1,4 @@
-//! A run's sandbox at its end, when it is not held: killed now, so the report
+//! A run's sandbox at its end, when it is not parked: killed now, so the report
 //! can post, and released once the report is in.
 
 use std::time::Instant;
@@ -9,7 +9,7 @@ use afr_telemetry::labels::SandboxRelease;
 use afr_telemetry::record;
 
 use super::Run;
-use super::hold::Fate;
+use super::park::Fate;
 
 const EVENT_DESTROY_FAILED: &str = "sandbox_destroy_failed";
 const EVENT_KILL_STARTED: &str = "sandbox_kill_started";
@@ -48,7 +48,7 @@ impl Run<'_> {
     pub(super) async fn release(&self, fate: Fate) {
         let started = Instant::now();
         let destroyed = match fate {
-            Fate::Gone | Fate::Held(_) => return,
+            Fate::Gone | Fate::Parked(_) => return,
             Fate::Killed(sandbox) => self.destroy(sandbox).await,
             Fate::Unfiled(parked) => self.logged_destroy(parked.destroy().await),
         };

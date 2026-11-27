@@ -1,8 +1,8 @@
-//! A durable run's sandbox is never held: when its history cannot be saved
+//! A durable run's sandbox is never parked: when its history cannot be saved
 //! the task is blocked, and the sandbox is killed for its release.
 
 use super::*;
-use crate::run_loop::hold::{Fate, Kept};
+use crate::run_loop::park::{Fate, Kept};
 use af_wire::durable_task::{DecisionDurableTaskVersion, DurableTaskReport};
 
 /// The fixture's run, ended with history to save and a waiting task.
@@ -44,7 +44,7 @@ fn kept(fixture: &Fixture, sandbox: Box<dyn Sandbox>) -> Result<Kept> {
             base_paths: Vec::new(),
         }),
         sandbox,
-        key: HoldKey {
+        key: ParkKey {
             fleet: Uuid7::parse(&fixture.run.event.fleet_id)?,
             workspace: ID.to_owned(),
             limits: Limits::default(),
@@ -74,7 +74,10 @@ async fn a_durable_sandbox_that_cannot_save_its_history_is_killed_and_blocks_the
 
         let fate = run.keep(Some(kept), &mut ending).await;
 
-        assert!(matches!(fate, Fate::Killed(_)), "{fault}: killed, not held");
+        assert!(
+            matches!(fate, Fate::Killed(_)),
+            "{fault}: killed, not parked"
+        );
         let Ending::Ran { output, .. } = &ending else {
             return Err(error::config("the run no longer ran"));
         };

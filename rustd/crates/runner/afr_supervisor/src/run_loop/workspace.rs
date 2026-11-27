@@ -11,7 +11,7 @@
 //! first model call never waits for the sandbox, and only a sandbox-side call
 //! does. A build that fails leaves the turn going; its sandbox-side calls
 //! answer `sandbox_unavailable`. A sandbox that ends under the turn ends the
-//! run (`lost`). The sandbox goes back to the run, which holds it for the
+//! run (`lost`). The sandbox goes back to the run, which parks it for the
 //! fleet's next run or destroys it.
 
 use std::sync::OnceLock;
@@ -26,17 +26,17 @@ use tokio_util::sync::CancellationToken;
 
 use super::build::Build;
 use super::checkout::Plan;
-use super::hold::{Kept, Worked};
 use super::lost::Watched;
+use super::park::{Kept, Worked};
 use super::segments::Segment;
 use super::{Run, failed};
 use crate::activity::ActivitySink;
 use crate::egress::Bound;
-use crate::holds::Release;
+use crate::parks::Release;
 use crate::report::Ending;
 
 /// How long a turn that ended processed waits for its build, so the
-/// complete sandbox can be held: long enough for a checkout from a warm
+/// complete sandbox can be parked: long enough for a checkout from a warm
 /// mirror, short against the fleet's next turn, which waits on this run's
 /// report. The answer is already out; past this, the build is told to stop
 /// and the report goes once its current step ends, so a stalled token mint or
@@ -67,7 +67,7 @@ struct Admitted<'l> {
 
 impl Run<'_> {
     /// Admits the run's sandbox, then runs its build and its turn together
-    /// and hands the sandbox back with the turn's ending. A held sandbox keeps
+    /// and hands the sandbox back with the turn's ending. A parked sandbox keeps
     /// the repositories as its last run left them.
     /// The sandbox cell outlives the build and turn; the executor slot bounds its borrow.
     /// Sandbox setup timing covers admission through the build's completion.
@@ -82,7 +82,7 @@ impl Run<'_> {
             Ok(admitted) => admitted,
             Err(refused) => return (*refused).into(),
         };
-        let key = self.hold_key(admitted.limits, &admitted.bound);
+        let key = self.park_key(admitted.limits, &admitted.bound);
         let stop = self.interrupt.child_token();
         let recovery = OnceLock::new();
         let build = Build {
@@ -160,7 +160,7 @@ impl Run<'_> {
     /// Runs the build and the turn together, and answers the turn's ending
     /// once both are done. A turn that ended processed and uncut waits up to
     /// [`BUILD_AFTER_ANSWER`] for the build, so a complete sandbox can be
-    /// held; any other ending, or a build that outlasts the wait, stops the
+    /// parked; any other ending, or a build that outlasts the wait, stops the
     /// build first. Either way the build runs to its end, never dropped
     /// mid-step.
     async fn beside(
@@ -174,7 +174,7 @@ impl Run<'_> {
             biased;
             () = &mut building => driving.await,
             ending = &mut driving => {
-                // Only a sandbox `keep` would hold is worth waiting for, and
+                // Only a sandbox `keep` would park is worth waiting for, and
                 // only while it still would: an interrupt, or running that
                 // stops mid-wait, ends the wait as surely as the deadline.
                 let waits = ending.processed()
@@ -203,13 +203,13 @@ impl Run<'_> {
 
     /// Every check whose failure would repeat on each run, made before any
     /// model request: the egress and the checkout plan. A refusal
-    /// ends the run at startup and releases the fleet's hold.
+    /// ends the run at startup and releases the fleet's park.
     async fn admitted<'p>(
         &'p self,
         prepared: Option<&'p afr_agent::PreparedDurableTask>,
     ) -> Result<Admitted<'p>, Box<Ending>> {
         let refused = |ending: Box<Ending>| {
-            self.release_hold();
+            self.release_park();
             ending
         };
         let resolving = self.timeline.start(Segment::Egress);
@@ -224,14 +224,14 @@ impl Run<'_> {
         })
     }
 
-    /// Releases the fleet's held sandbox for a run refused before a sandbox
-    /// was chosen. Such a run settles with no hold, so the daemon records
-    /// none and answers the fleet's next assignment with `resume_hold` false: the
-    /// held sandbox could never be resumed, only wait out its idle window in
-    /// a worker's hold slot.
-    fn release_hold(&self) {
+    /// Releases the fleet's parked sandbox for a run refused before a sandbox
+    /// was chosen. Such a run settles with no park, so the daemon records
+    /// none and answers the fleet's next assignment with `resume_park` false: the
+    /// parked sandbox could never be resumed, only wait out its idle window in
+    /// a worker's park slot.
+    fn release_park(&self) {
         self.lessee
-            .holds
+            .parks
             .release(self.ids.fleet.clone(), Release::Mismatch);
     }
 

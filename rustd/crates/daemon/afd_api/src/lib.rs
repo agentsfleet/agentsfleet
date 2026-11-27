@@ -30,7 +30,7 @@ use {
     afd_runner as _, afd_setup as _, afd_sse as _, afd_state as _, afd_tenant as _, afd_turns as _,
     afd_vault as _, async_trait as _, base64 as _, bytes as _, futures_util as _, garde as _,
     hex as _, hyper as _, hyper_util as _, jiff as _, jsonwebtoken as _, reqwest as _, serde as _,
-    serde_json as _, sha2 as _, sqlx as _, tempfile as _, tokio as _, tokio_util as _, tower as _,
+    serde_json as _, sqlx as _, tempfile as _, tokio as _, tokio_util as _, tower as _,
 };
 
 use afd_http::{auth, envelope, in_flight, route};

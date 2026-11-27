@@ -324,7 +324,7 @@ pub(crate) const STILL_RUNNING: &str = "a process is stuck in the kernel";
 pub(crate) const NO_PARK: &str = "cgroup.freeze refused";
 /// What a sandbox that cannot tell whether a tenant process runs says.
 const NO_QUIESCENCE: &str = "cgroup.events unreadable";
-/// What a refused swap of a held sandbox's addresses says.
+/// What a refused swap of a parked sandbox's addresses says.
 pub(crate) const NO_REFILL: &str = "the egress set refused its new addresses";
 /// What a broken executor says once its sandbox is resumed.
 pub(crate) const EXECUTOR_GONE: &str = "the executor died while parked";

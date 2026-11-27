@@ -20,8 +20,8 @@ use super::{
 use crate::client::{Call, Verb};
 use crate::egress::Egress;
 use crate::halt::Halt;
-use crate::holds::Holds;
 use crate::identity::Whoami;
+use crate::parks::Parks;
 use crate::run_loop::Lessee;
 use crate::storage_home::StorageHome;
 use crate::test_util::Healthy;
@@ -55,17 +55,17 @@ impl Rig {
         engine: FakeEngine,
         agent: FakeAgent,
     ) -> Self {
-        Self::with_holds(answer, engine, agent, Holds::start(clock()))
+        Self::with_parks(answer, engine, agent, Parks::start(clock()))
     }
 
-    /// [`Rig::new`], keeping its sandboxes in `holds`.
-    pub(crate) fn with_holds(
+    /// [`Rig::new`], keeping its sandboxes in `parks`.
+    pub(crate) fn with_parks(
         answer: impl Fn(&Call) -> Answer + Send + Sync + 'static,
         engine: FakeEngine,
         agent: FakeAgent,
-        holds: Holds,
+        parks: Parks,
     ) -> Self {
-        Self::build(answer, engine, agent, holds, FakeResolver::default())
+        Self::build(answer, engine, agent, parks, FakeResolver::default())
     }
 
     /// [`Rig::new`], resolving each run's egress through `resolver`.
@@ -75,7 +75,7 @@ impl Rig {
         agent: FakeAgent,
         resolver: impl Resolve + 'static,
     ) -> Self {
-        Self::build(answer, engine, agent, Holds::start(clock()), resolver)
+        Self::build(answer, engine, agent, Parks::start(clock()), resolver)
     }
 
     /// [`Rig::new`], running each turn on `agent`, such as the scripted
@@ -91,7 +91,7 @@ impl Rig {
             answer,
             engine,
             (Box::new(agent), runs, peak),
-            Holds::start(clock()),
+            Parks::start(clock()),
             FakeResolver::default(),
         )
     }
@@ -100,7 +100,7 @@ impl Rig {
         answer: impl Fn(&Call) -> Answer + Send + Sync + 'static,
         engine: FakeEngine,
         mut agent: FakeAgent,
-        holds: Holds,
+        parks: Parks,
         resolver: impl Resolve + 'static,
     ) -> Self {
         let runs = Arc::clone(&agent.runs);
@@ -111,7 +111,7 @@ impl Rig {
             answer,
             engine,
             (Box::new(agent), runs, peak),
-            holds,
+            parks,
             resolver,
         );
         rig.lent = lent;
@@ -122,7 +122,7 @@ impl Rig {
         answer: impl Fn(&Call) -> Answer + Send + Sync + 'static,
         engine: FakeEngine,
         (agent, runs, peak): (Box<dyn AgentEngine>, Arc<AtomicUsize>, Arc<AtomicUsize>),
-        holds: Holds,
+        parks: Parks,
         resolver: impl Resolve + 'static,
     ) -> Self {
         let root = tempfile::tempdir().unwrap();
@@ -146,7 +146,7 @@ impl Rig {
             ),
             staging: home.staging(),
             limits: Limits::default(),
-            holds,
+            parks,
             clock: clock(),
             halt: Halt::new(shutdown.clone()),
             whoami: Whoami::default(),
@@ -268,9 +268,9 @@ fn acknowledge_report(call: &Call) -> Answer {
     Answer::Reply(
         serde_json::to_vec(&af_wire::report::ReportResponse {
             ok: true,
-            hold: request
-                .held_until
-                .map(|expires_at| af_wire::report::AcceptedHold {
+            park: request
+                .parked_until
+                .map(|expires_at| af_wire::report::AcceptedPark {
                     run_id: request.run_id.to_string(),
                     fencing_token: request.fencing_token,
                     expires_at,

@@ -1,22 +1,22 @@
-//! Attempt-keyed worker reservations survive held/busy transfers exactly once.
+//! Attempt-keyed worker reservations survive parked/busy transfers exactly once.
 
 use af_core::id::Uuid7;
 use tokio::sync::mpsc;
 
-use super::{Holds, Request};
+use super::{Parks, Request};
 
 /// One run of a fleet, which consumes a worker of the local budget.
 #[derive(Debug)]
 pub(crate) struct Occupant {
     /// The run.
     pub(crate) run: Uuid7,
-    /// The fleet it runs, whose hold a park transfers into.
+    /// The fleet it runs, whose park a park transfers into.
     pub(crate) fleet: Uuid7,
 }
 
-impl Holds {
+impl Parks {
     /// Reserves work before a fleet's run starts. Park transfers this same
-    /// run into a hold; a later drop cannot vacate another attempt.
+    /// run into a park; a later drop cannot vacate another attempt.
     pub(crate) fn occupy(&self, occupant: Occupant) -> Occupied {
         let run = occupant.run.clone();
         let _stopped = self.requests.send(Request::Occupy { occupant });

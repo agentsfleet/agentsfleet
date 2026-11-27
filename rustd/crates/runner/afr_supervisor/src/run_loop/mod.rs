@@ -2,8 +2,8 @@
 //!
 //! ```text
 //!   admit ─► turn ─► memory (the run's window, or read) ─► [egress, checkout plan] ─► run
-//!                                  └─► [take hold or prepare ─► checkout] ─┘ beside it
-//!   ─► [hold frozen, or kill] ─► current report retained in memory ─► report acknowledged
+//!                                  └─► [take park or prepare ─► checkout] ─┘ beside it
+//!   ─► [park frozen, or kill] ─► current report retained in memory ─► report acknowledged
 //!   ─► [release the killed sandbox's disk ∥ activity drained]
 //!   └──────────── renewal alongside, until the report is answered ─────────┘
 //! ```
@@ -11,8 +11,8 @@
 //! The engine admits the run first: a policy naming a tool it cannot host is
 //! refused before anything is prepared. A run whose tools all run in the
 //! supervisor starts no sandbox; any other builds one beside its turn, and a
-//! build that fails leaves the turn going without it. A sandbox that was built is held
-//! for the fleet's next run when the run ended processed (`crate::holds`) and
+//! build that fails leaves the turn going without it. A sandbox that was built is parked
+//! for the fleet's next run when the run ended processed (`crate::parks`) and
 //! destroyed exactly once otherwise — the type consumes it — and an engine that
 //! panics is caught so the teardown still runs. The report settles before the live tail
 //! is waited on, and that wait is bounded: the tail is best-effort, the report
@@ -43,9 +43,9 @@ mod build;
 mod checkout;
 mod drive;
 mod durable_task_workspace;
-mod hold;
 mod lessee;
 mod lost;
+mod park;
 pub(crate) mod pin;
 mod recovery;
 mod recovery_boundary;
@@ -58,8 +58,8 @@ mod turn_recovery;
 mod work;
 mod workspace;
 
-use self::hold::{Kept, Worked};
 pub(crate) use self::lessee::Lessee;
+use self::park::{Kept, Worked};
 use self::refusal::failed;
 use self::segments::{Segment, Timeline};
 
@@ -159,7 +159,7 @@ impl Lessee {
             started: Instant::now(),
             timeline: Timeline::default(),
         };
-        let _busy = self.holds.occupy(crate::holds::Occupant {
+        let _busy = self.parks.occupy(crate::parks::Occupant {
             run: run.ids.run.clone(),
             fleet: run.ids.fleet.clone(),
         });
@@ -224,7 +224,7 @@ impl Run<'_> {
             .await
     }
 
-    /// The hold or the kill, and the report, with the renewal and the live
+    /// The park or the kill, and the report, with the renewal and the live
     /// tail still polled beside them; then the release of a killed sandbox's
     /// disk beside the wait the tail gets to drain. Timed as the report
     /// segment up to the release.
@@ -241,8 +241,8 @@ impl Run<'_> {
             let settle = async {
                 let fate = self.keep(kept, &mut ending).await;
                 let reported = self.settle(&mut ending, &fate, &reporting).await;
-                if reported.is_err() && fate.held_until().is_some() {
-                    self.lessee.holds.supersede(self.ids.run.clone());
+                if reported.is_err() && fate.parked_until().is_some() {
+                    self.lessee.parks.supersede(self.ids.run.clone());
                 }
                 (fate, reported)
             };

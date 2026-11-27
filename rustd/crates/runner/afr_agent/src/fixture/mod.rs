@@ -53,7 +53,7 @@ pub(crate) fn payload(tools: &[&str], budget: serde_json::Value) -> RunPayload<'
             "mintable": [], "provider": "anthropic", "api_key": API_KEY,
             "inference_host": "h", "base_url": null, "repository_binding": null,
             "http_origin_policies": [], "context": null},
-        "name": FLEET_NAME, "history": [], "resume_hold": false, "inputs_waiting": true,
+        "name": FLEET_NAME, "history": [], "resume_park": false, "inputs_waiting": true,
         "owner": {"kind": "fleet", "fleet_id": "fleet-1"}
     });
     *document.pointer_mut(CONTEXT_POINTER).unwrap() = budget;

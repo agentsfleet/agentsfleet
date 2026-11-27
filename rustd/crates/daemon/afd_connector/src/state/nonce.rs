@@ -25,7 +25,6 @@ use std::time::Duration;
 use af_crypto::entropy::Entropy;
 use afd_db::Db;
 use jiff::Timestamp;
-use sha2::{Digest as _, Sha256};
 
 use crate::error::{Result, query};
 use crate::provider::Provider;
@@ -52,7 +51,7 @@ pub fn mint(entropy: &Entropy) -> Result<String> {
 
 /// The stored form of a nonce.
 fn digest(nonce: &str) -> Vec<u8> {
-    Sha256::digest(nonce.as_bytes()).to_vec()
+    af_crypto::digest::sha256(nonce.as_bytes()).to_vec()
 }
 
 /// Remembers `nonce` for `ttl`, as long as a connect round-trip may take.
@@ -146,5 +145,16 @@ mod tests {
 
         // pin test: literal is the contract
         assert_eq!(nonce, "0a".repeat(NONCE_BYTES));
+    }
+
+    /// A remembered nonce is stored as these bytes and spent by recomputing
+    /// them, so the digest is pinned: the plain SHA-256 of the nonce's text.
+    #[test]
+    fn the_stored_form_is_pinned_to_the_byte() {
+        // pin test: literal is the contract
+        assert_eq!(
+            hex::encode(digest("0123456789abcdef0123456789abcdef")),
+            "3eb1bd439947eb762998e566ccc2e099c791118b2f40579cc4f7da2b5061b7f9"
+        );
     }
 }

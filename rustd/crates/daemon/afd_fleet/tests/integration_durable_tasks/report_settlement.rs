@@ -34,7 +34,7 @@ pub(super) fn request(case: &Case, task: Option<DurableTaskReport>) -> ReportReq
             last_response: Cow::Borrowed("ordinary session cursor"),
         },
         tool_calls: None,
-        held_until: None,
+        parked_until: None,
         memory: Vec::new(),
     }
 }

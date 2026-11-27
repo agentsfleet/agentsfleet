@@ -56,6 +56,9 @@ pub(crate) enum ErrorKind {
     #[error("message authentication code did not verify")]
     MacMismatch,
 
+    #[error("signature did not verify")]
+    SignatureMismatch,
+
     #[error("the system entropy source failed")]
     Entropy,
 
@@ -107,6 +110,12 @@ impl Error {
         matches!(*self.kind(), ErrorKind::MacMismatch)
     }
 
+    /// Whether a signature did not verify against its key.
+    #[must_use]
+    pub const fn is_signature_mismatch(&self) -> bool {
+        matches!(*self.kind(), ErrorKind::SignatureMismatch)
+    }
+
     /// Whether the entropy source refused to produce bytes.
     #[must_use]
     pub const fn is_entropy(&self) -> bool {
@@ -124,6 +133,7 @@ impl Error {
             | ErrorKind::KeyHexDigit
             | ErrorKind::OpenFailed
             | ErrorKind::MacMismatch
+            | ErrorKind::SignatureMismatch
             | ErrorKind::Entropy
             | ErrorKind::Identifier { .. } => error_code::INTERNAL_OPERATION_FAILED,
         }

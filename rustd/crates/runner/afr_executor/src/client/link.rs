@@ -16,7 +16,7 @@ use tokio_util::codec::{AnyDelimiterCodec, FramedRead};
 use tokio_util::sync::CancellationToken;
 
 use super::call::{self, Call, CallIds, Reply};
-use super::transport::Stream;
+use super::route::ExecutorStream;
 use crate::api::{Ending, Process, ProcessId};
 use crate::error::{self, Result};
 use crate::events::{Events, Feed};
@@ -43,7 +43,7 @@ const EVENT_OUTPUT_OVERSIZED: &str = "executor_output_oversized";
 const FIELD_METHOD_OR_ID: &str = "method or id";
 
 /// Starts a link task over `stream`, numbering its own calls from `ids`.
-pub(super) fn start(stream: Box<dyn Stream>, ids: &Arc<CallIds>, sizes: Sizes) -> Linked {
+pub(super) fn start(stream: Box<dyn ExecutorStream>, ids: &Arc<CallIds>, sizes: Sizes) -> Linked {
     let (calls, queue) = mpsc::channel(CALL_BACKLOG);
     let lost = CancellationToken::new();
     let outbox = calls.downgrade();
@@ -86,8 +86,8 @@ struct Incoming<'a> {
 
 /// The stream and everything waiting on it.
 pub(super) struct Link {
-    lines: FramedRead<ReadHalf<Box<dyn Stream>>, AnyDelimiterCodec>,
-    write: WriteHalf<Box<dyn Stream>>,
+    lines: FramedRead<ReadHalf<Box<dyn ExecutorStream>>, AnyDelimiterCodec>,
+    write: WriteHalf<Box<dyn ExecutorStream>>,
     calls: mpsc::Receiver<Call>,
     /// Where a process's events queue their kill when their reader leaves;
     /// weak, so a process kept open never keeps the connection open.
@@ -109,7 +109,7 @@ impl Link {
     /// `outbox` each process's events queue their kill on, given up when
     /// `lost` is cancelled, reading lines and keeping output as `sizes` says.
     pub(super) fn new(
-        stream: Box<dyn Stream>,
+        stream: Box<dyn ExecutorStream>,
         calls: mpsc::Receiver<Call>,
         outbox: mpsc::WeakSender<Call>,
         ids: Arc<CallIds>,

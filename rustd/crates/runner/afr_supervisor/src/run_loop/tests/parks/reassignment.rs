@@ -1,6 +1,6 @@
-//! A reassignment between two of a fleet's runs: the hold the first run
+//! A reassignment between two of a fleet's runs: the park the first run
 //! left was built to reach what the runner was assigned then, so the next
-//! run, under another egress, builds fresh and the hold ends.
+//! run, under another egress, builds fresh and the park ends.
 
 #![expect(
     clippy::unwrap_used,
@@ -14,7 +14,7 @@ use af_wire::runner::NetworkPolicy;
 
 use super::tests::{Counted, NEXT_RUN_ID, released, releases, resumed, settled};
 use crate::egress::Egress;
-use crate::holds::Release;
+use crate::parks::Release;
 use crate::test_support::{
     Behaviour, FLEET_ID, FakeAgent, FakeEngine, FakeResolver, RUN_ID, Rig, assigned, daemon,
     payload,
@@ -24,8 +24,8 @@ use crate::test_support::{
 const MIRROR: &str = "mirror.example";
 const OTHER_MIRROR: &str = "other-mirror.example";
 
-/// A rig with room for holds, resolving both registries.
-fn holding() -> (Rig, Counted) {
+/// A rig with room for parks, resolving both registries.
+fn parking_rig() -> (Rig, Counted) {
     let engine = FakeEngine::default();
     let counted = Counted::of(&engine);
     let resolver = FakeResolver::answering(&[
@@ -38,16 +38,16 @@ fn holding() -> (Rig, Counted) {
         FakeAgent::new(Behaviour::Answer),
         resolver,
     );
-    rig.lessee.holds.resize(2);
+    rig.lessee.parks.resize(2);
     (rig, counted)
 }
 
 /// The fleet's next run is told to resume, but the runner's egress changed
-/// since its hold was built: from the host's network to none, and from one
-/// allowlist to another. Each time the run builds fresh and the hold ends as
+/// since its park was built: from the host's network to none, and from one
+/// allowlist to another. Each time the run builds fresh and the park ends as
 /// a mismatch, never serving it.
 #[tokio::test(start_paused = true)]
-async fn test_reassignment_retires_held_sandboxes() {
+async fn test_reassignment_retires_parked_sandboxes() {
     let reassignments: [(Egress, Egress); 2] = [
         (
             assigned(NetworkPolicy::AllowAll, &[]),
@@ -61,7 +61,7 @@ async fn test_reassignment_retires_held_sandboxes() {
 
     for (before, after) in reassignments {
         let capture = Capture::install();
-        let (rig, counted) = holding();
+        let (rig, counted) = parking_rig();
 
         rig.run_under(&payload(RUN_ID, FLEET_ID), &before)
             .await
@@ -86,10 +86,10 @@ async fn test_reassignment_retires_held_sandboxes() {
     }
 }
 
-/// The same egress at the next run keeps the hold: it is resumed and serves.
+/// The same egress at the next run keeps the park: it is resumed and serves.
 #[tokio::test(start_paused = true)]
-async fn an_unchanged_egress_keeps_the_hold() {
-    let (rig, counted) = holding();
+async fn an_unchanged_egress_keeps_the_park() {
+    let (rig, counted) = parking_rig();
     let egress = assigned(NetworkPolicy::AllowListEgress, &[MIRROR]);
 
     rig.run_under(&payload(RUN_ID, FLEET_ID), &egress)
@@ -102,6 +102,6 @@ async fn an_unchanged_egress_keeps_the_hold() {
     assert_eq!(
         counted.read(),
         (1, 2, 1, 0),
-        "one sandbox, resumed and held"
+        "one sandbox, resumed and parked"
     );
 }

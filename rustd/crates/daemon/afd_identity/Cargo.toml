@@ -48,16 +48,11 @@ tokio = { workspace = true, features = ["rt", "macros", "sync", "net", "io-util"
 base64.workspace = true
 # Tests SIGN tokens, so a claim shape the fixtures do not carry — an array
 # audience, a tenant nested under `metadata` — can be verified rather than
-# asserted about. `ring` signs as well as verifies, so this needs no crate the
-# library does not already link; the key is a throwaway fixture
-# (`tests/support/signing.rs`).
-# Was `ring`; see the workspace manifest for why one provider replaced two.
-#
-# `ring-io` is asked for HERE and nowhere else: it carries the
-# `modulus`/`exponent` accessors this test reads off a generated key pair to
-# build the public-key components the verifier takes. The library needs no
-# compatibility feature at all.
-aws-lc-rs = { workspace = true, features = ["ring-io"] }
+# asserted about. `af_crypto`'s RS256 signer signs through the AWS-LC the
+# library already links; the key is a throwaway fixture
+# (`tests/support/signing.rs`). The signer and the modulus and exponent it
+# publishes as a key set are behind `test-util`, so the library signs nothing.
+af_crypto = { workspace = true, features = ["test-util"] }
 # Tracing macros do not evaluate their fields without a subscriber installed,
 # so every diagnostic line here would read as unreachable without one
 # (`af_core::test_util::trace::install_subscriber`). The note beside `tracing`

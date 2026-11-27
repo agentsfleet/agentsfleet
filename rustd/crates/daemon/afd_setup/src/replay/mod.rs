@@ -15,7 +15,6 @@ use crate::{
 use af_core::id::Uuid7;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use sha2::{Digest as _, Sha256};
 use sqlx::PgConnection;
 use std::time::Duration;
 
@@ -27,7 +26,7 @@ pub(crate) fn digest(value: &impl Serialize) -> Result<String> {
     let bytes = serde_json::to_vec(&sorted(value)).map_err(stored)?;
     Ok(format!(
         "{HASH_PREFIX}{}",
-        hex::encode(Sha256::digest(bytes))
+        hex::encode(af_crypto::digest::sha256(&bytes))
     ))
 }
 

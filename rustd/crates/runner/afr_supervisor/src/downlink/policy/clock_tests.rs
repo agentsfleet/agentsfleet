@@ -10,7 +10,7 @@ use tokio::sync::watch;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
-use super::tests::{KEEP_GOING, answer, idle_holds, policy, probe};
+use super::tests::{KEEP_GOING, answer, idle_parks, policy, probe};
 use super::{Assignment, Heartbeat};
 use crate::halt::Halt;
 use crate::test_support::{Answer, plane_every};
@@ -47,7 +47,7 @@ async fn beats_and_workers_until(
         answering(beats.len())
     });
     let probe = probe();
-    let holds = idle_holds();
+    let parks = idle_parks();
     let (published, watching) = watch::channel(Assignment::initial());
     let shutdown = CancellationToken::new();
     let halt = Halt::new(shutdown.clone());
@@ -55,7 +55,7 @@ async fn beats_and_workers_until(
         &plane,
         &probe,
         crate::test_support::CAPABILITIES,
-        &holds,
+        &parks,
         std::path::Path::new("."),
     )
     .keep_beating(&published, &halt);
@@ -65,7 +65,7 @@ async fn beats_and_workers_until(
         shutdown.cancel();
     };
     tokio::join!(beating, driving);
-    holds.shutdown().await;
+    parks.shutdown().await;
     let beats = stamps
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -94,7 +94,7 @@ async fn a_pushed_policy_does_not_postpone_the_next_beat() {
                 .push_policy(&serde_json::json!({"status": KEEP_GOING,
                     "assigned_policy": policy(), "degraded": false, "degraded_reason": null,
                     "selftest_requested": false,
-                    "release_holds": []}))
+                    "release_parked": []}))
                 .await;
             assert!(pushed.is_ok(), "the policy frame is pushed: {pushed:?}");
         },
@@ -159,7 +159,7 @@ async fn a_policy_pushed_during_a_beat_is_answered_by_another_beat() {
                 .push_policy(&serde_json::json!({"status": KEEP_GOING,
                     "assigned_policy": policy(), "degraded": true,
                     "degraded_reason": "sandbox", "selftest_requested": false,
-                    "release_holds": []}))
+                    "release_parked": []}))
                 .await;
             assert!(pushed.is_ok(), "the policy frame is pushed: {pushed:?}");
         },

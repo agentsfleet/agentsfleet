@@ -7,7 +7,7 @@
 use af_core::id::Uuid7;
 use afd_runner::timing::SANDBOX_HOLD_IDLE;
 
-use af_wire::runner::{FLEET_ID_TEXT_BYTES, HOLDS_MAX, HeartbeatRequest};
+use af_wire::runner::{FLEET_ID_TEXT_BYTES, HeartbeatRequest, PARKED_MAX};
 use afd_db::test_util::mint_id;
 use afd_runner::{Beat, NO_REPORT};
 use jiff::Timestamp;
@@ -85,7 +85,7 @@ async fn test_an_out_of_bounds_holds_list_holds_nothing() {
     let fixtures = Fixtures::create().await;
     let runs = fixtures.runs();
     let stranger = mint_id();
-    let too_many = vec![stranger.as_str(); HOLDS_MAX + 1];
+    let too_many = vec![stranger.as_str(); PARKED_MAX + 1];
     let wrong_length = [stranger.as_str(), "not-a-fleet"];
     let shapes = [
         ("too many", beat(&too_many)),

@@ -1,5 +1,5 @@
 //! The set of addresses a slot may reach: made with its table, and refilled
-//! in place when the names a held sandbox reaches resolve anew.
+//! in place when the names a parked sandbox reaches resolve anew.
 
 use std::io;
 use std::net::Ipv4Addr;

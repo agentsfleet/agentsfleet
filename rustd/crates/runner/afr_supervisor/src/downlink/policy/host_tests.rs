@@ -10,7 +10,7 @@
 use af_core::test_util::trace::Capture;
 
 use super::Heartbeat;
-use super::tests::{KEEP_GOING, idle_holds, probe, reply, sent};
+use super::tests::{KEEP_GOING, idle_parks, probe, reply, sent};
 use crate::test_support::{drain, plane};
 
 /// A beat reports the processors the runner may use, the free bytes of the
@@ -21,7 +21,7 @@ use crate::test_support::{drain, plane};
 async fn a_beat_carries_the_hosts_processors_memory_and_free_disk() {
     let (plane, mut calls) = plane(|_call| reply(KEEP_GOING, true));
     let probe = probe();
-    let held = idle_holds();
+    let parked = idle_parks();
     let sandboxes = tempfile::tempdir().unwrap();
     let missing = sandboxes.path().join("missing");
 
@@ -29,7 +29,7 @@ async fn a_beat_carries_the_hosts_processors_memory_and_free_disk() {
         &plane,
         &probe,
         crate::test_support::CAPABILITIES,
-        &held,
+        &parked,
         sandboxes.path(),
     )
     .beat()
@@ -39,7 +39,7 @@ async fn a_beat_carries_the_hosts_processors_memory_and_free_disk() {
         &plane,
         &probe,
         crate::test_support::CAPABILITIES,
-        &held,
+        &parked,
         &missing,
     );
     let unread = unreadable.beat().await;

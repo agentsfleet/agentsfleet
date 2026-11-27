@@ -58,7 +58,7 @@ pub(crate) fn capable_beat() -> Value {
             "kvm": "usable",
         },
         "selftest": null,
-        "holds": [],
+        "parked": [],
         "closing": false,
         "host": {},
     })

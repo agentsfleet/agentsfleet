@@ -207,7 +207,7 @@ impl Chat {
                 last_response: Cow::Borrowed(answer),
             },
             tool_calls: None,
-            held_until: None,
+            parked_until: None,
             memory,
         };
         self.fixtures

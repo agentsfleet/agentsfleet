@@ -36,7 +36,6 @@ use http::{HeaderName, Method, StatusCode};
 use jsonwebtoken::{Algorithm, EncodingKey, Header};
 use serde::Serialize;
 use serde_json::Value;
-use sha2::{Digest as _, Sha256};
 
 /// Where a fire arrives.
 pub(crate) const PATH: &str = "/v1/ingress/qstash/schedules";
@@ -118,7 +117,7 @@ fn now() -> u64 {
 
 /// The `body` claim: SHA-256 of the delivery, base64url, unpadded.
 fn digest_of(body: &[u8]) -> String {
-    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(Sha256::digest(body))
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(af_crypto::digest::sha256(body))
 }
 
 /// Signs `claims` with `key`, as the scheduler would.

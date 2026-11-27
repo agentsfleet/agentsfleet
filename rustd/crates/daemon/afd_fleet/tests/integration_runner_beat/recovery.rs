@@ -10,7 +10,9 @@ use std::borrow::Cow;
 use af_core::error_code::INTERNAL_DB_QUERY;
 use af_core::id::Uuid7;
 use af_core::test_util::trace::Capture;
-use af_wire::runner::{CapabilityReport, HeartbeatRequest, HeldFleets, NetworkPolicy, SandboxTier};
+use af_wire::runner::{
+    CapabilityReport, HeartbeatRequest, NetworkPolicy, ParkedFleets, SandboxTier,
+};
 use afd_db::config::DbRole;
 use afd_db::test_util::mint_id;
 use afd_runner::heartbeat::holds::prove;
@@ -33,10 +35,10 @@ const MOVE_FLEETS: &str = "ALTER TABLE fleet.fleets RENAME TO fleets_moved";
 /// `runner` beats once at `now`, listing `fleet` as held.
 async fn beats_holding(fixtures: &Fixtures, runner: &Uuid7, fleet: &str, now: Timestamp) -> Beat {
     let request = HeartbeatRequest {
-        holds: HeldFleets(vec![Cow::Borrowed(fleet)]),
+        parked: ParkedFleets(vec![Cow::Borrowed(fleet)]),
         ..NO_REPORT
     };
-    let held = prove(request.holds.clone());
+    let held = prove(request.parked.clone());
     fixtures
         .runners()
         .heartbeat(runner, &request, held.as_ref(), now)
@@ -82,7 +84,7 @@ async fn test_a_lost_guarantee_degrades_the_row_on_the_next_beat() {
                 &HeartbeatRequest {
                     capability_report: Some(report),
                     selftest: None,
-                    holds: HeldFleets::default(),
+                    parked: ParkedFleets::default(),
                     closing: false,
                     host: af_wire::runner::HostFacts::default(),
                 },

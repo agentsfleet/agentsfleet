@@ -51,7 +51,7 @@ rig-core.workspace = true
 posthog = { workspace = true, default-features = false, features = ["async-client"] }
 # The event payloads, and the deduplication key a finished run reports under.
 serde_json.workspace = true
-sha2.workspace = true
+af_crypto.workspace = true
 hex.workspace = true
 tracing.workspace = true
 # The error type's derive. The standard's shape is a `thiserror` enum with

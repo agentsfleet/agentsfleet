@@ -32,7 +32,7 @@ use std::borrow::Cow;
 
 use af_core::id::Uuid7;
 
-use af_wire::runner::{HeartbeatRequest, HeldFleets};
+use af_wire::runner::{HeartbeatRequest, ParkedFleets};
 use afd_fleet::run::Runs;
 use afd_runner::Beat;
 use afd_runner::heartbeat::holds::prove;
@@ -76,7 +76,7 @@ async fn beats_at(
     request: &HeartbeatRequest<'_>,
     now: Timestamp,
 ) -> Beat {
-    let held = prove(request.holds.clone());
+    let held = prove(request.parked.clone());
     fixtures
         .runners()
         .heartbeat(runner, request, held.as_ref(), now)
@@ -114,7 +114,7 @@ fn beat<'a>(holds: &'a [&'a str]) -> HeartbeatRequest<'a> {
     HeartbeatRequest {
         capability_report: None,
         selftest: None,
-        holds: HeldFleets(holds.iter().map(|fleet| Cow::Borrowed(*fleet)).collect()),
+        parked: ParkedFleets(holds.iter().map(|fleet| Cow::Borrowed(*fleet)).collect()),
         closing: false,
         host: af_wire::runner::HostFacts::default(),
     }

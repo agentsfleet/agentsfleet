@@ -426,9 +426,6 @@ sha2 = { version = "0.11.1", default-features = false }
 # to go missing, and this workspace prefers a crate to a re-derivation.
 hex = { version = "0.4.3", default-features = false, features = ["std"] }
 
-# Constant-time comparison. RULE CTM: a byte-by-byte `==` over a secret leaks how
-# much of a guess was right through how long it took to reject.
-subtle = { version = "2.6.1", default-features = false }
 # No `derive`: `zeroize_derive` is the only crate in this graph still on syn 2,
 # and a duplicate syn fails `clippy::multiple_crate_versions`. Three hand-written
 # `Drop` impls are cheaper than a second proc-macro inside a crypto crate anyway.
@@ -442,7 +439,9 @@ zeroize = { version = "1.9.2", default-features = false, features = ["alloc"] }
 # Only `Builder::from_unix_timestamp_millis` is used: it takes the 48-bit
 # millisecond field and ten caller-supplied entropy bytes and sets the version
 # and variant nibbles. The entropy is still drawn by `af_crypto`, so the "one
-# system call" claim holds — nothing here asks uuid for randomness.
+# system call" claim holds — nothing here asks uuid for randomness. The builder
+# needs no feature: `v7` adds only `Uuid::now_v7`, which draws its own, so it is
+# off.
 #
 # The PARSE side stays hand-written in `af_core::id`, and that is not
 # duplication: `Uuid::parse_str` is case-INSENSITIVE and normalises, while this
@@ -456,7 +455,7 @@ url = { version = "2.5.9", default-features = false }
 # Return completed SQL sessions to the pool; detach cancelled task transactions.
 scopeguard = "1.2.0"
 
-uuid = { version = "1.29.3", default-features = false, features = ["v7", "std"] }
+uuid = { version = "1.29.3", default-features = false, features = ["std"] }
 
 # Civil-calendar arithmetic, for the monthly budget window.
 #
@@ -530,7 +529,10 @@ aws-sigv4 = "=1.6.6"
 aws-credential-types = "=1.3.1"
 
 # The ONE cryptographic backend this workspace links. `af_crypto` seals,
-# authenticates, digests and draws random bytes through it.
+# authenticates, digests, compares in constant time, verifies signatures and
+# draws random bytes through it, and every first-party crate above it calls
+# `af_crypto`. Two call AWS-LC directly: `af_core`, which `af_crypto` depends
+# on, and `guffbolt-ai`, which is published on its own.
 #
 # Was `ring`, chosen because a JWKS publishes raw big-endian `n` and `e` and
 # `ring::signature::RsaPublicKeyComponents` accepts exactly that, where rustls's
@@ -554,8 +556,8 @@ aws-credential-types = "=1.3.1"
 # signature (which takes `untrusted::Input`) — the verifier this workspace
 # actually calls, `RsaPublicKeyComponents::verify`, is ungated and already takes
 # `&[u8]`, so the feature bought nothing but a dependency. `ring-io` is needed by
-# ONE signing test and is declared on that crate's dev-dependency instead, where
-# it says who needs it.
+# ONE signer, the RS256 key a token-verifier suite publishes as a key set, and
+# is declared by `af_crypto`'s `test-util` feature, where it says who needs it.
 #
 # Both are aws-lc-rs DEFAULTS, so `default-features = false` is what makes the
 # question askable at all. Enabling them because a build failed — rather than

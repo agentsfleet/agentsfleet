@@ -73,7 +73,7 @@ fn offer(lessee: &Lessee, policy: &Assignment) -> Option<u32> {
             return None;
         }
     };
-    lessee.holds.resize(wanted);
+    lessee.parks.resize(wanted);
     lessee
         .plane
         .stream

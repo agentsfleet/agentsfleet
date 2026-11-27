@@ -24,7 +24,6 @@ mod fire_token;
 
 use afd_cron::SigningKeys;
 use afd_cron::verifier::{MAX_TOKEN_BYTES, verify_at};
-use sha2::Digest as _;
 
 use self::fire_token::{BODY, DESTINATION, FireClaims, mint, now};
 
@@ -228,7 +227,7 @@ fn scheduler_claims(body: &[u8]) -> serde_json::Value {
     use base64::Engine as _;
     serde_json::json!({
         "aud": "",
-        "body": base64::engine::general_purpose::URL_SAFE.encode(sha2::Sha256::digest(body)),
+        "body": base64::engine::general_purpose::URL_SAFE.encode(af_crypto::digest::sha256(body)),
         "exp": now() + 300,
         "iat": now(),
         "iss": "Upstash",

@@ -72,7 +72,7 @@ pub(crate) fn report<'a>(
             last_response: Cow::Borrowed(RESUME_RESPONSE),
         },
         tool_calls: None,
-        held_until: None,
+        parked_until: None,
         memory,
     }
 }

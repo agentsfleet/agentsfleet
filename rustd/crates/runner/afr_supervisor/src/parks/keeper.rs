@@ -1,29 +1,29 @@
-//! The task that owns every held sandbox, and the one way a hold ends.
+//! The task that owns every parked sandbox, and the one way a park ends.
 
 use std::{collections::BTreeMap, sync::Arc};
 
 use af_core::clock::{self, Clock};
 use af_core::id::Uuid7;
 use afr_engine::Parked;
-use afr_telemetry::labels::SandboxHold;
+use afr_telemetry::labels::SandboxPark;
 use afr_telemetry::record;
 use jiff::Timestamp;
 use tokio::sync::{Notify, mpsc};
 use tokio::task::JoinSet;
 
-use super::{HoldKey, Release, Request, Stowed, Taken};
+use super::{ParkKey, Release, Request, Stowed, Taken};
 
 /// The event a parked sandbox is logged under.
-const EVENT_HELD: &str = "sandbox_held";
-/// The event a hold that ended without reuse is logged under.
-const EVENT_RELEASED: &str = "sandbox_hold_released";
-/// The event a released hold that did not tear down is logged under.
-const EVENT_DESTROY_FAILED: &str = "sandbox_hold_destroy_failed";
+const EVENT_PARKED: &str = "sandbox_parked";
+/// The event a park that ended without reuse is logged under.
+const EVENT_RELEASED: &str = "sandbox_park_released";
+/// The event a released park that did not tear down is logged under.
+const EVENT_DESTROY_FAILED: &str = "sandbox_park_destroy_failed";
 
-/// One held sandbox, oldest first in [`Keeper::held`].
+/// One parked sandbox, oldest first in [`Keeper::parked`].
 #[derive(Debug)]
 struct Entry {
-    key: HoldKey,
+    key: ParkKey,
     /// The run that parked it, which alone may end it as superseded.
     run: Uuid7,
     sandbox: Box<dyn Parked>,
@@ -31,14 +31,14 @@ struct Entry {
     until: Timestamp,
 }
 
-/// Every hold, how many workers the runner has, and how many are busy.
+/// Every park, how many workers the runner has, and how many are busy.
 #[derive(Debug)]
 pub(super) struct Keeper {
     clock: Arc<dyn Clock>,
-    held: Vec<Entry>,
+    parked: Vec<Entry>,
     workers: usize,
     busy: BTreeMap<Uuid7, Uuid7>,
-    /// Set once the runner takes no new run; nothing is held after.
+    /// Set once the runner takes no new run; nothing is parked after.
     closed: bool,
     /// Every teardown in flight, so shutdown can wait for each one.
     destroying: JoinSet<()>,
@@ -49,7 +49,7 @@ impl Keeper {
     pub(super) fn new(clock: Arc<dyn Clock>, saturated: Arc<Notify>) -> Self {
         Self {
             clock,
-            held: Vec::new(),
+            parked: Vec::new(),
             workers: 0,
             busy: BTreeMap::new(),
             closed: false,
@@ -59,7 +59,7 @@ impl Keeper {
     }
 
     /// Answers requests until the runner shuts down or every handle is gone,
-    /// then destroys every hold and waits for each teardown.
+    /// then destroys every park and waits for each teardown.
     pub(super) async fn run(mut self, mut requests: mpsc::UnboundedReceiver<Request>) {
         while let Some(request) = requests.recv().await {
             while self.destroying.try_join_next().is_some() {}
@@ -84,10 +84,10 @@ impl Keeper {
                             self.destroying
                                 .spawn(async move { tear_down(&fleet, sandbox).await });
                         }
-                        // Held for a run that stopped waiting: no report will
-                        // name the hold, so it is superseded now, not at its
+                        // Parked for a run that stopped waiting: no report will
+                        // name the park, so it is superseded now, not at its
                         // lapse.
-                        Err(Stowed::Held(_)) => self.release(&fleet, Release::Superseded),
+                        Err(Stowed::Parked(_)) => self.release(&fleet, Release::Superseded),
                         Ok(()) | Err(Stowed::Gone) => {}
                     }
                 }
@@ -107,7 +107,7 @@ impl Keeper {
                     self.cap(self.room(), Release::Capped);
                 }
                 Request::Fleets { reply } => {
-                    let fleets = self.held.iter().map(|entry| entry.key.fleet.clone());
+                    let fleets = self.parked.iter().map(|entry| entry.key.fleet.clone());
                     let _unasked = reply.send(fleets.collect());
                 }
                 Request::Close => self.close(),
@@ -121,32 +121,32 @@ impl Keeper {
         self.finish().await;
     }
 
-    /// Hands out `key.fleet`'s hold when the rest of `key` matches it, and
+    /// Hands out `key.fleet`'s park when the rest of `key` matches it, and
     /// destroys it when it does not.
-    fn take(&mut self, key: &HoldKey) -> Option<Taken> {
+    fn take(&mut self, key: &ParkKey) -> Option<Taken> {
         let at = self.position(&key.fleet)?;
-        let entry = self.held.remove(at);
+        let entry = self.parked.remove(at);
         if entry.key != *key {
             self.retire(entry, Release::Mismatch);
             return None;
         }
-        let held = clock::elapsed(entry.since, self.clock.now());
+        let parked = clock::elapsed(entry.since, self.clock.now());
         Some(Taken {
             sandbox: entry.sandbox,
-            held,
+            parked,
         })
     }
 
-    /// Holds `sandbox` for its fleet until the idle window lapses, after
-    /// making room: an older hold of the same fleet goes, then the oldest
-    /// until one fewer than the cap remain. A closed keeper holds nothing.
-    fn park(&mut self, key: HoldKey, run: Uuid7, sandbox: Box<dyn Parked>) -> Stowed {
+    /// Parks `sandbox` for its fleet until the idle window lapses, after
+    /// making room: an older park of the same fleet goes, then the oldest
+    /// until one fewer than the cap remain. A closed keeper parks nothing.
+    fn park(&mut self, key: ParkKey, run: Uuid7, sandbox: Box<dyn Parked>) -> Stowed {
         if self.closed {
             released(&key.fleet, Release::Shutdown);
             return Stowed::Refused(sandbox);
         }
         if let Some(at) = self.position(&key.fleet) {
-            let stale = self.held.remove(at);
+            let stale = self.parked.remove(at);
             self.retire(stale, Release::Superseded);
         }
         // A successful park consumes this run's busy reservation atomically.
@@ -163,24 +163,24 @@ impl Keeper {
         }
         self.cap(room - 1, Release::Capped);
         let since = self.clock.now();
-        // The hold asks for the most a daemon may grant, the ceiling of its
+        // The park asks for the most a daemon may grant, the ceiling of its
         // `max_idle_hold_seconds`; the daemon commits its configured length and the
-        // report's acknowledgement narrows the hold to it, so the setting is the one
-        // source of how long a sandbox stays held.
+        // report's acknowledgement narrows the park to it, so the setting is the one
+        // source of how long a sandbox stays parked.
         let until = clock::after(since, af_core::timing::DAY);
         let run_id = run.as_str();
         let fleet_id = key.fleet.as_str();
-        let event = EVENT_HELD;
+        let event = EVENT_PARKED;
         tracing::info!(run_id, fleet_id, deadline = %until, event);
-        record::sandbox_hold(SandboxHold::Parked);
-        self.held.push(Entry {
+        record::sandbox_park(SandboxPark::Parked);
+        self.parked.push(Entry {
             key,
             run,
             sandbox,
             since,
             until,
         });
-        Stowed::Held(until)
+        Stowed::Parked(until)
     }
 
     fn room(&self) -> usize {
@@ -191,22 +191,22 @@ impl Keeper {
 
     fn release(&mut self, fleet: &Uuid7, reason: Release) {
         if let Some(at) = self.position(fleet) {
-            let entry = self.held.remove(at);
+            let entry = self.parked.remove(at);
             self.retire(entry, reason);
         }
     }
 
-    /// Ends the hold `run` parked, for a superseded report; a hold a later
+    /// Ends the park `run` parked, for a superseded report; a park a later
     /// run parked is that run's.
     fn supersede(&mut self, run: &Uuid7) {
-        if let Some(at) = self.held.iter().position(|entry| entry.run == *run) {
-            let entry = self.held.remove(at);
+        if let Some(at) = self.parked.iter().position(|entry| entry.run == *run) {
+            let entry = self.parked.remove(at);
             self.retire(entry, Release::Superseded);
         }
     }
 
     fn accept(&mut self, run: &Uuid7, until: Timestamp) {
-        if let Some(entry) = self.held.iter_mut().find(|entry| entry.run == *run)
+        if let Some(entry) = self.parked.iter_mut().find(|entry| entry.run == *run)
             && until < entry.until
         {
             entry.until = until;
@@ -219,19 +219,19 @@ impl Keeper {
         self.retire_where(|entry| entry.until <= now, Release::Expired);
     }
 
-    /// A hold transferring into a busy fleet is already charged by that worker.
+    /// A park transferring into a busy fleet is already charged by that worker.
     fn cap(&mut self, keep: usize, reason: Release) {
         let busy = &self.busy;
         let protected = |entry: &Entry| busy.values().any(|fleet| *fleet == entry.key.fleet);
         let mut over = self
-            .held
+            .parked
             .iter()
             .filter(|entry| !protected(entry))
             .count()
             .saturating_sub(keep);
         let mut retired = Vec::new();
         let mut kept = Vec::new();
-        for entry in std::mem::take(&mut self.held) {
+        for entry in std::mem::take(&mut self.parked) {
             if over > 0 && !protected(&entry) {
                 over -= 1;
                 retired.push(entry);
@@ -239,17 +239,17 @@ impl Keeper {
                 kept.push(entry);
             }
         }
-        self.held = kept;
+        self.parked = kept;
         for entry in retired {
             self.retire(entry, reason);
         }
     }
 
     fn retire_where(&mut self, gone: impl Fn(&Entry) -> bool, reason: Release) {
-        let (retired, kept) = std::mem::take(&mut self.held)
+        let (retired, kept) = std::mem::take(&mut self.parked)
             .into_iter()
             .partition::<Vec<_>, _>(|entry| gone(entry));
-        self.held = kept;
+        self.parked = kept;
         for entry in retired {
             self.retire(entry, reason);
         }
@@ -271,16 +271,18 @@ impl Keeper {
     }
 
     fn position(&self, fleet: &Uuid7) -> Option<usize> {
-        self.held.iter().position(|entry| entry.key.fleet == *fleet)
+        self.parked
+            .iter()
+            .position(|entry| entry.key.fleet == *fleet)
     }
 
-    /// Ends every hold, and holds nothing from here on.
+    /// Ends every park, and parks nothing from here on.
     fn close(&mut self) {
         self.closed = true;
         self.retire_where(|_every| true, Release::Shutdown);
     }
 
-    /// Ends every hold and waits for each teardown in flight.
+    /// Ends every park and waits for each teardown in flight.
     async fn finish(&mut self) {
         self.close();
         while self.destroying.join_next().await.is_some() {}
@@ -293,7 +295,7 @@ pub(super) fn released(fleet: &Uuid7, reason: Release) {
     let reason = outcome.as_str();
     let event = EVENT_RELEASED;
     tracing::info!(fleet_id, reason, event);
-    record::sandbox_hold(outcome);
+    record::sandbox_park(outcome);
 }
 
 async fn tear_down(fleet: &Uuid7, sandbox: Box<dyn Parked>) {
@@ -303,7 +305,7 @@ async fn tear_down(fleet: &Uuid7, sandbox: Box<dyn Parked>) {
         let event = EVENT_DESTROY_FAILED;
         {
             let (message,) = (format_args!(
-                "a released hold's sandbox did not tear down cleanly"
+                "a released park's sandbox did not tear down cleanly"
             ),);
             tracing::warn!(message, error_code, fleet_id, event);
         };

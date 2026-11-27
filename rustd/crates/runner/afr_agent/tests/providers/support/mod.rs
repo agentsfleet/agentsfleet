@@ -226,7 +226,7 @@ pub(crate) fn payload(provider: &str, tools: &[&str], message: &str) -> RunPaylo
             "base_url": null, "repository_binding": null, "http_origin_policies": [],
             "context": {"tool_window": 0, "memory_checkpoint_every": 0,
                 "stage_chunk_threshold": 0.75, "model": "model-1", "context_cap_tokens": 200_000}},
-        "name": "support-triage", "history": [], "resume_hold": false, "inputs_waiting": true,
+        "name": "support-triage", "history": [], "resume_park": false, "inputs_waiting": true,
         "owner": {"kind": "fleet", "fleet_id": "f"}
     });
     // Leaked so the borrowed payload lives as long as the test that reads it.

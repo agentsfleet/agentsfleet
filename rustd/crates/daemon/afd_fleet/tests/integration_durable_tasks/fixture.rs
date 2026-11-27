@@ -250,25 +250,25 @@ pub(super) async fn exercise(scenario: impl AsyncFnOnce(&Case)) {
 
 /// Only this durable-task suite opts its native runner into the guarded protocol.
 pub(super) async fn durable_task_capability(held: &Held, enabled: bool) {
-    use af_wire::runner::{HeartbeatRequest, HeldFleets};
+    use af_wire::runner::{HeartbeatRequest, ParkedFleets};
     use std::borrow::Cow;
 
     for runner in [&held.runner, &held.spare] {
         let mut capability = crate::requests::capable();
         capability.durable_tasks_v1 = enabled;
         let holds = if runner == &held.runner {
-            HeldFleets(vec![Cow::Borrowed(held.fleet.as_str())])
+            ParkedFleets(vec![Cow::Borrowed(held.fleet.as_str())])
         } else {
-            HeldFleets::default()
+            ParkedFleets::default()
         };
         let request = HeartbeatRequest {
             capability_report: Some(capability),
             selftest: None,
-            holds,
+            parked: holds,
             closing: false,
             host: af_wire::runner::HostFacts::default(),
         };
-        let held_fleets = afd_runner::heartbeat::holds::prove(request.holds.clone());
+        let held_fleets = afd_runner::heartbeat::holds::prove(request.parked.clone());
         held.fixtures
             .runners()
             .heartbeat(

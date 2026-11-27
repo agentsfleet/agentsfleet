@@ -8,7 +8,7 @@
 )]
 
 use af_core::id::Uuid7;
-use af_wire::runner::{HeartbeatRequest, HeldFleets, NetworkPolicy, SandboxTier};
+use af_wire::runner::{HeartbeatRequest, NetworkPolicy, ParkedFleets, SandboxTier};
 use afd_db::test_util::mint_id;
 use afd_fleet::run::{Acquired, Runs};
 use afd_runner::heartbeat::holds::prove;
@@ -98,11 +98,11 @@ pub(crate) async fn reports_capable(fixtures: &Fixtures, runner: &Uuid7) {
     let request = HeartbeatRequest {
         capability_report: Some(capable()),
         selftest: None,
-        holds: HeldFleets(Vec::new()),
+        parked: ParkedFleets(Vec::new()),
         closing: false,
         host: af_wire::runner::HostFacts::default(),
     };
-    let held = prove(request.holds.clone());
+    let held = prove(request.parked.clone());
     fixtures
         .runners()
         .heartbeat(runner, &request, held.as_ref(), fixtures.enrolled_at())

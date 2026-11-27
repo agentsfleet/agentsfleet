@@ -44,7 +44,7 @@ pub(crate) enum Ending {
 
 impl Ending {
     /// Whether the run ended as the fleet meant it to: the report says
-    /// `processed`, which is the one ending whose sandbox is worth holding.
+    /// `processed`, which is the one ending whose sandbox is worth parking.
     pub(crate) fn processed(&self) -> bool {
         verdict(self).0 == Outcome::Processed
     }
@@ -108,8 +108,8 @@ impl Ending {
 }
 
 /// The report for `run`, which ran for `wall`, carrying `trace`: the run's
-/// trace encoded, when it called a tool, and `held_until`: when the sandbox it
-/// left held for the fleet's next run lapses, if it left one. It carries the
+/// trace encoded, when it called a tool, and `parked_until`: when the sandbox it
+/// left parked for the fleet's next run lapses, if it left one. It carries the
 /// request lines no renewal recorded, at most one body's worth, since the
 /// settle renews the rest away first. A run that never finished still bills
 /// what it spent; its token total is the result's when the run handed one back,
@@ -120,7 +120,7 @@ pub(crate) fn report<'a>(
     meter: &Meter,
     wall: Duration,
     trace: Option<af_wire::tool_trace::RawToolTrace<'a>>,
-    held_until: Option<Timestamp>,
+    parked_until: Option<Timestamp>,
 ) -> ReportRequest<'a> {
     let (outcome, failure_reason, failure_detail) = verdict(ending);
     let (result, first_chunk) = match ending {
@@ -163,7 +163,7 @@ pub(crate) fn report<'a>(
         },
         tool_calls: trace,
         // The wire still spells this instant as epoch milliseconds.
-        held_until,
+        parked_until,
         // Only a processed run's folds settle with its answer; any other
         // ending leaves them for the fleet's next run.
         folded_through_sequence: folded_through(ending, outcome),

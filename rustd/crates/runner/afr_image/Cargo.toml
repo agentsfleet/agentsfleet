@@ -22,17 +22,16 @@ afr_engine.workspace = true
 # A loop device the kernel has not finished attaching is retried on a
 # constant delay without a hand-written loop.
 backon.workspace = true
-# The toolbox image is named by its SHA-256, streamed through the hasher.
-digest-io.workspace = true
+# The toolbox image is named by its SHA-256, streamed through the hasher, and
+# a release's manifest signature is checked against the key the runner is
+# built with (ECDSA P-256 over SHA-256, as `cosign` signs).
+af_crypto.workspace = true
 hex.workspace = true
 # A toolbox image is staged in a copy of its own and published with one
 # rename; a copy that is refused is removed when it drops.
 tempfile.workspace = true
-# A toolbox release: its manifest's signature checked against the key the
-# runner is built with (ECDSA P-256 over SHA-256, as `cosign` signs), the key
-# read from its PEM, the signature from its base64, and the manifest's fields
-# parsed and bounded before verification reads one.
-aws-lc-rs.workspace = true
+# A toolbox release: the key read from its PEM, the signature from its base64,
+# and the manifest's fields parsed and bounded before verification reads one.
 base64.workspace = true
 garde.workspace = true
 # The digest's charset, a rule garde does not ship.
@@ -40,7 +39,6 @@ af_validate.workspace = true
 rustls-pki-types.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-sha2.workspace = true
 # The mount, loop-device and ownership calls an image is made with.
 rustix.workspace = true
 thiserror.workspace = true
@@ -55,4 +53,6 @@ procfs-core.workspace = true
 
 [dev-dependencies]
 af_core = { workspace = true, features = ["test-util"] }
+# The release key the toolbox suites sign with.
+af_crypto = { workspace = true, features = ["test-util"] }
 tokio = { workspace = true, features = ["macros", "process", "rt", "rt-multi-thread", "time"] }

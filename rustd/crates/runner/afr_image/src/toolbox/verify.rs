@@ -7,11 +7,10 @@ use std::os::unix::fs::OpenOptionsExt as _;
 use std::path::Path;
 
 use af_core::error_code::{Coded as _, Logged};
+use af_crypto::digest::Sha256Writer;
 use afr_engine::MECHANISM_TOOLBOX_FILESYSTEM as EROFS;
-use digest_io::IoWrapper;
 use rustix::fs::FileType;
 use rustix::mount::MountFlags;
-use sha2::{Digest as _, Sha256};
 
 use super::adopt;
 use super::{Manifest, Toolbox, loop_device};
@@ -141,10 +140,10 @@ fn open_image(image: &Path) -> Result<File> {
 
 /// The SHA-256 of everything `file` holds, read through its descriptor.
 pub(super) fn sha256_of(file: &File) -> Result<String> {
-    let mut hasher = IoWrapper(Sha256::new());
+    let mut hasher = Sha256Writer::new(io::sink());
     io::copy(
         &mut BufReader::with_capacity(HASH_BUFFER_BYTES, file),
         &mut hasher,
     )?;
-    Ok(hex::encode(hasher.0.finalize()))
+    Ok(hex::encode(hasher.finish().0))
 }

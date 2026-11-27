@@ -20,7 +20,7 @@ use crate::run::installed::{FRESH_CONTEXT, Installed};
 use crate::run::test_dead;
 
 /// Where the rendered answer says whether to resume the held sandbox.
-const RESUME_HOLD: &str = "/run/resume_hold";
+const RESUME_PARK: &str = "/run/resume_park";
 
 /// Where the rendered answer names the fleet to its runner.
 const NAME: &str = "/run/name";
@@ -110,7 +110,7 @@ fn a_rendered_run_names_its_fleet() {
 fn test_a_rendered_run_says_whether_the_assignment_resumes_the_hold() {
     for resume_hold in [true, false] {
         assert_eq!(
-            rendered(resume_hold).pointer(RESUME_HOLD),
+            rendered(resume_hold).pointer(RESUME_PARK),
             Some(&Value::Bool(resume_hold)),
             "the assignment's resume_hold is {resume_hold}"
         );

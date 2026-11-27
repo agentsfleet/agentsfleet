@@ -175,7 +175,7 @@ async fn every_bound_repository_is_checked_out_with_one_token() {
     assert_eq!(reported(&calls)[OUTCOME], PROCESSED);
 }
 
-/// A held sandbox serves its fleet's next run with the clone exactly as the
+/// A parked sandbox serves its fleet's next run with the clone exactly as the
 /// last run left it: no token is minted and nothing is fetched or written,
 /// so an edit the fleet has not committed is still there. The host never
 /// writes into a working copy a tenant has had write access to.
@@ -186,14 +186,14 @@ async fn test_reuse_leaves_the_clone_untouched() {
     let workspace = tempfile::tempdir().unwrap();
     let mut rig = rig(Some(workspace.path().to_owned()), |_| None);
     served(&rig);
-    rig.lessee.holds.resize(2);
+    rig.lessee.parks.resize(2);
 
     rig.run(&bound(&[GIT.name()], WORKSPACE_ID)).await.unwrap();
     let edited = workspace.path().join(NAME).join("README.md");
     fs::write(&edited, UNCOMMITTED).unwrap();
     let mut next = bound(&[GIT.name()], WORKSPACE_ID);
     next.run_id = NEXT_RUN_ID.into();
-    next.resume_hold = true;
+    next.resume_park = true;
     rig.run(&next).await.unwrap();
 
     let calls = rig.calls();

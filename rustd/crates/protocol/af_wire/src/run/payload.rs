@@ -88,9 +88,9 @@ pub struct RunPayload<'a> {
     /// A resumed run reconciles them before it acts again. Empty for a turn's first run.
     #[serde(borrow, default, skip_serializing_if = "Vec::is_empty")]
     pub finished_calls: Vec<EarlierCall<'a>>,
-    /// True when the runner can reuse its latest held sandbox for a new turn. Reassigned
+    /// True when the runner can reuse its latest parked sandbox for a new turn. Reassigned
     /// turns and expired or outdated sandboxes require a fresh sandbox.
-    pub resume_hold: bool,
+    pub resume_park: bool,
     /// Reviewed runner decision selection frozen at issue; no provider key.
     /// Absent on hosts without an enabled reviewed selection.
     pub decision: Option<Box<crate::decision::DecisionAssignment>>,

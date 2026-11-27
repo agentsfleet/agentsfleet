@@ -17,7 +17,6 @@
 use base64::Engine as _;
 use jsonwebtoken::{Algorithm, EncodingKey, Header};
 use serde::Serialize;
-use sha2::{Digest as _, Sha256};
 
 /// The destination this fixture deployment's schedules are registered against.
 pub(crate) const DESTINATION: &str = "https://api.fixture.test/v1/ingress/qstash/schedules";
@@ -66,7 +65,7 @@ impl FireClaims {
 
 /// The `body` claim the scheduler puts in a token: base64url, unpadded.
 pub(crate) fn digest_of(body: &[u8]) -> String {
-    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(Sha256::digest(body))
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(af_crypto::digest::sha256(body))
 }
 
 /// Signs `claims` with `key`, as the scheduler would.

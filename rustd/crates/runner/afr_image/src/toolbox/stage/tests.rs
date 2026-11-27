@@ -170,3 +170,21 @@ fn should_refuse_a_publish_the_rename_cannot_make_and_leave_no_copy() {
     assert!(occupied.join("in-the-way").is_dir(), "nothing replaced it");
     assert_eq!(staged(dir.path()), [] as [String; 0]);
 }
+
+/// A release names its image by SHA-256 in lowercase hex, so the digest the
+/// copy computes is pinned to the byte: the manifest names a literal, and the
+/// image is published only if the streamed copy hashes to that literal.
+#[test]
+fn should_hash_the_copy_to_the_digest_a_release_names() {
+    let dir = tempfile::tempdir().unwrap();
+    let source = dir.path().join("download");
+    fs::write(&source, image()).unwrap();
+    let manifest = Signer::new().manifest(&image());
+    // pin test: literal is the contract
+    assert_eq!(
+        manifest.sha256(),
+        "6b0751ba5e64fc9c13ddfb44778fa7d6a1f7d7aa9d6a5e38a1f0a1502c3fb9e3"
+    );
+
+    stage(&manifest, &source, dir.path()).unwrap();
+}

@@ -6,8 +6,8 @@
 //! so the property keys live here with the arms that write them rather than
 //! being named in one file and used in another.
 
+use af_crypto::digest::Sha256;
 use posthog::Event;
-use sha2::{Digest as _, Sha256};
 
 use super::{FleetStep, Telemetry};
 
@@ -208,5 +208,5 @@ fn insert_id(fleet_id: &str, turn_id: &str) -> String {
     hasher.update(fleet_id.as_bytes());
     hasher.update(HASH_SEPARATOR);
     hasher.update(turn_id.as_bytes());
-    hex::encode(hasher.finalize())
+    hex::encode(hasher.finish())
 }

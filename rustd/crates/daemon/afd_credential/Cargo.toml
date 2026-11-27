@@ -27,8 +27,9 @@ af_core = { workspace = true, features = ["sqlx"] }
 # The route a model's saved settings name, and whether a key's endpoint
 # may authorize it.
 af_providers.workspace = true
-# The secret types a handle is edited through, and the key and entropy source
-# the provider store builds its vault from.
+# The secret types a handle is edited through, the key and entropy source
+# the provider store builds its vault from, and the SHA-256 a minted token's
+# cache scope is keyed by.
 af_crypto.workspace = true
 # The secret store: by-name and locked reads, share-locked inspection, the
 # refresh-token rewrite and the typed bag reader. The registry page renders
@@ -57,7 +58,6 @@ moka = { workspace = true, features = ["future"] }
 # The platform key cache counts its lookups.
 af_observability.workspace = true
 reqwest.workspace = true
-sha2.workspace = true
 # A credential's bytes are wiped when the value holding them is dropped.
 zeroize.workspace = true
 serde.workspace = true

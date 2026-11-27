@@ -49,3 +49,25 @@ fn should_reject_unknown_fields_nul_in_each_notes_array_and_aggregate_oversize()
     invalid["constraints"] = json!(["x".repeat(20_000), "y".repeat(20_000)]);
     Summary::decode(&invalid.to_string()).unwrap_err();
 }
+
+/// A checkpoint stores this chain and a restore recomputes it, so it is pinned:
+/// each link the SHA-256 of the previous hex, the sequence and the length as
+/// eight big-endian bytes, and the text.
+#[test]
+fn the_source_digest_chain_is_pinned_to_the_byte() {
+    let groups = [
+        af_context::Group {
+            sequence: 1,
+            text: "first".to_owned(),
+        },
+        af_context::Group {
+            sequence: 2,
+            text: String::new(),
+        },
+    ];
+    // pin test: literal is the contract
+    assert_eq!(
+        af_context::digest_groups("seed", &groups),
+        "a194bf82d121e8b2bf1d7b0b7a2f88777ff2d29017fcb72bb7014fa4961d15ba"
+    );
+}

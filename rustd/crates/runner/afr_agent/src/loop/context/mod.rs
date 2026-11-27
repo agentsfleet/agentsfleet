@@ -12,7 +12,7 @@
 use super::Harness;
 use af_context::{Checkpoint, Identity, Plan, Window};
 use af_core::clock::{Clock as _, SystemClock};
-use sha2::{Digest as _, Sha256};
+use af_crypto::digest::sha256;
 
 mod effects;
 mod estimate;
@@ -65,8 +65,8 @@ pub(super) fn digests(
     let measured = serde_json::to_vec(&(ESTIMATOR, model, inference, context_tokens))
         .map_err(af_context::Error::boundary)?;
     Ok((
-        hex::encode(Sha256::digest(measured)),
-        hex::encode(Sha256::digest(fixed.as_bytes())),
+        hex::encode(sha256(&measured)),
+        hex::encode(sha256(fixed.as_bytes())),
     ))
 }
 
@@ -185,5 +185,25 @@ impl Harness<'_, '_> {
             .with_operating_tokens(self.shared.context.context_cap_tokens)
             .with_trigger_percent(percent);
         Ok((identity, window))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// A saved checkpoint carries these two digests and a restore compares
+    /// them, so both are pinned: the SHA-256 of the measured identity's JSON
+    /// and of the fixed prompt text, lowercase hex.
+    #[test]
+    fn the_checkpoint_digests_are_pinned_to_the_byte() {
+        let digests = super::digests("model-a", None, 128_000, "fixed prompt")
+            .unwrap_or_else(|_| unreachable!("a tuple serializes"));
+        // pin test: literal is the contract
+        assert_eq!(
+            digests,
+            (
+                "f78c5f07cf93c3dcf45bbf1092155b8200217e68d38a1bc8f7086467f26f757f".to_owned(),
+                "e2760cba06354f227757ddb1ab77a2ce872fa40982a9ef49fffc461107a845e4".to_owned()
+            )
+        );
     }
 }

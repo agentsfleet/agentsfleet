@@ -34,14 +34,14 @@ pub use self::engine::fresh_sandbox_id;
 pub use self::engine::volume::{Paused, Resumed, WorkspaceVolume, pin_paused};
 pub use self::engine::{
     AdmissionBound, Cap, Capabilities, DEFAULT_CPU_MILLIS, DEFAULT_DISK_BYTES,
-    DEFAULT_MEMORY_BYTES, DEFAULT_PIDS, DEFAULT_READY_TIMEOUT, EgressPlan, Enforcer, Engine,
+    DEFAULT_MEMORY_BYTES, DEFAULT_PIDS, DEFAULT_READY_TIMEOUT, EgressEnforcer, EgressPlan, Engine,
     Environment, Generation, Granted, Killed, Limits, Overcommitted, ParkMode, Parked, Quiescence,
     Resource, ResourceFacts, Root, Sandbox, SandboxSpec, SandboxState, SnapshotRef, Snapshots,
     Sweep, Swept, enforce, until_in_force,
 };
 #[cfg(feature = "test-util")]
 pub use self::error::ambiguous;
-pub use self::error::{EgressRefusal, Error, Failure, Result};
+pub use self::error::{EgressRefusal, EngineFailure, Error, Result};
 pub use self::network::{
     Allowlist, Network, NetworkKind, RESOLV_CONF, SANDBOX_HOSTS, SANDBOX_RESOLV_CONF,
 };

@@ -35,7 +35,7 @@ New code calls the owner; it never writes a second copy.
 | A coded failure's log fields | `Coded::logged()` and `Coded::told()` in `af_core` | which code a line names |
 | Egress slots | `afr_firewall`'s `Kernel::slots()` | one pool per running kernel; a fake per test |
 | Sandbox engines | `afr_engine`'s `Engine`, `Sandbox` and `Parked` traits | one `afr_engine_*` crate per engine; only the runner binary and `af_e2e` name one |
-| Egress plan read-back | `afr_engine::enforce`, retried through `backon` | each engine's `Enforcer` and the stale-plan refusal |
+| Egress plan read-back | `afr_engine::enforce`, retried through `backon` | each engine's `EgressEnforcer` and the stale-plan refusal |
 | Trees into and out of a sandbox | `afr_executor::tree`, over `tar` and `cap-std` | the confinement checks, run by both the executor and the host stage |
 | Toolbox and workspace images | `afr_image` | verify, stage, adopt and holds; loop devices and mounts |
 | Cgroup limits and the freezer | `afr_cgroup` | tenant attribution |

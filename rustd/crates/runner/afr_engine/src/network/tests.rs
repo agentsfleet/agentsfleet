@@ -46,7 +46,7 @@ fn test_each_name_counts_once() {
     assert_eq!(allowlist.addresses().len(), 2);
 }
 
-/// The names a held sandbox is filed under come once each, in the order they
+/// The names a parked sandbox is filed under come once each, in the order they
 /// were merged, however many addresses each answered with and whichever
 /// addresses they share: one run's hosts, resolved twice, file one key.
 #[test]

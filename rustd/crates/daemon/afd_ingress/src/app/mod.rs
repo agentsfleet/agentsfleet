@@ -27,7 +27,6 @@
 use af_core::id::Uuid7;
 use af_wire::trigger_verb::TriggerKind;
 use afd_fleet_lifecycle::FleetStatus;
-use sha2::{Digest as _, Sha256};
 
 use crate::binding::{Binding, StoredTrigger};
 use crate::error::{self, Result};
@@ -153,7 +152,7 @@ impl Ingress {
 /// happened once, never a command sent twice on purpose.
 #[must_use]
 pub fn replay_id(body: &[u8]) -> String {
-    hex::encode(Sha256::digest(body))
+    hex::encode(af_crypto::digest::sha256(body))
 }
 
 /// [`sql::SELECT_APP_SUBSCRIBERS`]'s row: one active, subscribed fleet.

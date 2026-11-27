@@ -131,7 +131,7 @@ impl Error {
     }
 }
 
-impl afr_engine::Failure for Error {
+impl afr_engine::EngineFailure for Error {
     fn seam(&self) -> Option<&afr_engine::Error> {
         Self::seam(self)
     }

@@ -13,17 +13,17 @@ use af_core::error_code::{Coded, ErrorCode};
 use super::Error;
 
 /// A failure an engine or a building block raises, crossing the seam.
-pub trait Failure: Coded + Send + Sync + 'static {
+pub trait EngineFailure: Coded + Send + Sync + 'static {
     /// The seam refusal this failure carries when that is what it is — a host
     /// missing a mechanism, a refused egress plan — so a caller of the seam
     /// still tells it apart.
     fn seam(&self) -> Option<&Error>;
 }
 
-/// A [`Failure`] the seam holds: told as itself, its code and sentence its
+/// An [`EngineFailure`] the seam holds: told as itself, its code and sentence its
 /// own, its causes beneath it.
 pub struct Fault {
-    failure: Box<dyn Failure>,
+    failure: Box<dyn EngineFailure>,
     /// Read once, when the failure crossed, so the seam's code stays a
     /// constant function.
     code: ErrorCode,
@@ -31,7 +31,7 @@ pub struct Fault {
 
 impl Fault {
     /// Holds `failure`.
-    pub(super) fn new(failure: impl Failure) -> Self {
+    pub(super) fn new(failure: impl EngineFailure) -> Self {
         let code = failure.code();
         Self {
             failure: Box::new(failure),

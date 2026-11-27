@@ -22,7 +22,7 @@ use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider, Temporality};
 use super::{
     ACTIVITY_FRAMES_DROPPED, DECISION_DURATION, DECISION_EVALUATIONS, Families,
     MEMORY_PUSH_FAILURES, OTLP_ENTRIES_DISCARDED, PROVIDER_RETRIES, PROVIDER_TURN_DURATION,
-    SANDBOX_BUILDS, SANDBOX_HOLDS, SANDBOX_RELEASE_DURATION, SANDBOX_START_DURATION,
+    SANDBOX_BUILDS, SANDBOX_PARKS, SANDBOX_RELEASE_DURATION, SANDBOX_START_DURATION,
     SANDBOX_WAIT_DURATION, SPANS_SUPPRESSED, TOOL_CALL_DURATION, TOOL_OUT_OF_MEMORY, registry,
 };
 use af_observability::metrics::label::models::CallOutcome;
@@ -32,7 +32,7 @@ use af_providers::observe::labels::{
 };
 
 use crate::labels::{
-    FrameDrop, PushFailure, SandboxBuild, SandboxHold, SandboxRelease, SandboxStart, SandboxWait,
+    FrameDrop, PushFailure, SandboxBuild, SandboxPark, SandboxRelease, SandboxStart, SandboxWait,
     Tool, ToolOutcome, TurnOutcome,
 };
 use crate::record::Recorder;
@@ -169,7 +169,7 @@ fn label_products() -> [(&'static str, usize); 16] {
             Tool::COUNT * ToolOutcome::ALL.len(),
         ),
         (TOOL_OUT_OF_MEMORY.wire_name(), 1),
-        (SANDBOX_HOLDS.wire_name(), SandboxHold::ALL.len()),
+        (SANDBOX_PARKS.wire_name(), SandboxPark::ALL.len()),
         (SPANS_SUPPRESSED.wire_name(), 1),
         (
             OTLP_ENTRIES_DISCARDED.wire_name(),
@@ -282,7 +282,7 @@ fn record_every_family(families: &Families) {
     families.push_failed(PushFailure::Upstream);
     families.tool_call(Tool::of("file_read"), ToolOutcome::Succeeded, elapsed);
     families.out_of_memory();
-    families.sandbox_hold(SandboxHold::Parked);
+    families.sandbox_park(SandboxPark::Parked);
     families.spans_suppressed(2);
     families.export_discarded(Signal::Traces, DiscardReason::ExportRejected, 4);
 }

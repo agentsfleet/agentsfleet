@@ -12,7 +12,7 @@ use afr_telemetry::labels::SandboxBuild;
 use afr_telemetry::testing::{Recorded, Tally, scoped};
 
 use super::super::workspace::{BUILD_AFTER_ANSWER, EVENT_BUILD_OUTLASTED};
-use super::build::{HELD_UNTIL, bound, build_failures, checking_out, served, stalled};
+use super::build::{PARKED_UNTIL, bound, build_failures, checking_out, served, stalled};
 use super::*;
 use crate::test_support::{Builds, GRANTED_UNTIL};
 
@@ -93,7 +93,7 @@ async fn test_a_build_stopped_before_it_starts_prepares_nothing() {
 }
 
 /// A build that fails after the turn already answered keeps the turn's
-/// ending in the report, holds nothing, and logs the failure.
+/// ending in the report, parks nothing, and logs the failure.
 #[tokio::test(start_paused = true)]
 async fn test_late_build_failure_keeps_the_run_ending() {
     let capture = Capture::install();
@@ -107,15 +107,15 @@ async fn test_late_build_failure_keeps_the_run_ending() {
 
     let report = reported(&rig.calls());
     assert_eq!(report[OUTCOME], PROCESSED, "{report}");
-    assert!(report.get(HELD_UNTIL).is_none(), "{report}");
+    assert!(report.get(PARKED_UNTIL).is_none(), "{report}");
     assert_eq!(build_failures(&capture), 1);
 }
 
 /// A turn that fails while its build still runs stops the build: the sandbox
-/// it finishes is destroyed once, nothing is held, and the report carries the
+/// it finishes is destroyed once, nothing is parked, and the report carries the
 /// turn's own failure.
 #[tokio::test(start_paused = true)]
-async fn test_a_failed_turn_stops_its_build_and_holds_nothing() {
+async fn test_a_failed_turn_stops_its_build_and_parks_nothing() {
     let engine = stalled();
     let parked = Arc::clone(&engine.parked);
     let mut rig = rig(healthy, engine, Behaviour::Break);
@@ -124,10 +124,10 @@ async fn test_a_failed_turn_stops_its_build_and_holds_nothing() {
 
     let report = reported(&rig.calls());
     assert_eq!(report[FAILURE_REASON], RUNNER_CRASH, "{report}");
-    assert!(report.get(HELD_UNTIL).is_none(), "{report}");
+    assert!(report.get(PARKED_UNTIL).is_none(), "{report}");
     assert_eq!(rig.prepared.load(Ordering::SeqCst), 1);
     assert_eq!(rig.destroyed.load(Ordering::SeqCst), 1, "destroyed once");
-    assert_eq!(parked.load(Ordering::SeqCst), 0, "never held");
+    assert_eq!(parked.load(Ordering::SeqCst), 0, "never parked");
 }
 
 /// The daemon mints a token only long after the turn could wait for it.
@@ -146,7 +146,7 @@ fn stalled_mint(call: &Call) -> Option<Answer> {
 
 /// A turn that answered waits a bounded time for its build: a checkout
 /// stalled on its token past [`BUILD_AFTER_ANSWER`] is stopped, the report
-/// goes processed with nothing held, and the stop is logged and counted.
+/// goes processed with nothing parked, and the stop is logged and counted.
 #[tokio::test(start_paused = true)]
 async fn test_a_build_that_outlasts_its_answer_is_stopped() {
     let capture = Capture::install();
@@ -164,7 +164,10 @@ async fn test_a_build_that_outlasts_its_answer_is_stopped() {
     let took = started.elapsed();
     let report = reported(&rig.calls());
     assert_eq!(report[OUTCOME], PROCESSED, "{report}");
-    assert!(report.get(HELD_UNTIL).is_none(), "nothing held: {report}");
+    assert!(
+        report.get(PARKED_UNTIL).is_none(),
+        "nothing parked: {report}"
+    );
     assert_eq!(counted, [SandboxBuild::Stopped]);
     assert!(
         took < BUILD_AFTER_ANSWER.saturating_mul(2),
@@ -180,7 +183,7 @@ async fn test_a_build_that_outlasts_its_answer_is_stopped() {
 const STOPS_LEASING_AFTER: Duration = Duration::from_secs(1);
 
 /// Leasing that stops while an answered turn waits for its build ends the
-/// wait then: no run could take the hold any more, so the build is stopped
+/// wait then: no run could take the park any more, so the build is stopped
 /// at that moment, not at the deadline.
 #[tokio::test(start_paused = true)]
 async fn test_leasing_that_stops_mid_wait_ends_the_wait() {
@@ -210,7 +213,7 @@ async fn test_leasing_that_stops_mid_wait_ends_the_wait() {
     );
 }
 
-/// A runner that takes no further run holds no sandbox, so a turn that
+/// A runner that takes no further run parks no sandbox, so a turn that
 /// answered waits for no build: the build is stopped at once, and nothing
 /// is logged as outlasting the turn.
 #[tokio::test(start_paused = true)]
@@ -237,6 +240,6 @@ async fn test_a_runner_that_stopped_leasing_waits_for_no_build() {
             .events()
             .iter()
             .all(|event| event.field("event") != Some(EVENT_BUILD_OUTLASTED)),
-        "a build nobody would hold is not waited for"
+        "a build nobody would park is not waited for"
     );
 }

@@ -37,7 +37,8 @@ afd_db.workspace = true
 # The admin workspace's vault, where the `qstash` bag holds the scheduler's
 # token and signing keys; read on use, as `afd_mail` reads `smtp-relay`.
 afd_vault.workspace = true
-# Where a new schedule's identifier comes from — see `store::Schedules::mint`.
+# Where a new schedule's identifier comes from — see `store::Schedules::mint` —
+# and the body claim's SHA-256, compared in constant time (RULE CTM).
 af_crypto.workspace = true
 # The event type and stream field names a fire is appended under.
 afd_api_wire.workspace = true
@@ -50,16 +51,12 @@ jiff.workspace = true
 # The `TIMESTAMPTZ` bridge for those instants: a row's stamps decode through it
 # and a one-off's fire instant binds through it.
 jiff-sqlx.workspace = true
-# The constant-time comparison a body claim is checked with — the same
-# primitive `af_crypto::mac` compares a tag through (RULE CTM).
-subtle.workspace = true
 # Parsing the deployment url a callback destination is built from, so a query
 # or fragment is found by a parser rather than by a substring search.
 url.workspace = true
-# The digest a fire token binds its body with, and the base64url rendering the
-# scheduler emits it in. Compared as text against the claim — see `verifier`.
+# The base64url rendering the scheduler emits a fire token's body digest in.
+# Compared as text against the claim — see `verifier`.
 base64.workspace = true
-sha2.workspace = true
 # The QStash JWT verifier. Pinned to an explicit `Validation` — see `verifier`
 # on why every default this crate does not want is turned off by name.
 jsonwebtoken.workspace = true
@@ -109,7 +106,6 @@ afd_db = { workspace = true, features = ["test-util"] }
 base64.workspace = true
 jsonwebtoken.workspace = true
 serde.workspace = true
-sha2.workspace = true
 # `net` for the retry suite's hung-scheduler listener; `test-util` for its
 # paused clock; `rt-multi-thread` so the fire race's callers run in parallel.
 tokio = { workspace = true, features = ["net", "rt-multi-thread", "test-util"] }

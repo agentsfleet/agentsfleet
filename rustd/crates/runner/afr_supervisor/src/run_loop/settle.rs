@@ -5,7 +5,7 @@ use std::mem;
 use af_wire::tool_detail::ToolCallRecord;
 use zeroize::Zeroizing;
 
-use super::{Run, hold::Fate, segments::Stopwatch};
+use super::{Run, park::Fate, segments::Stopwatch};
 use crate::report::{Ending, delivery::until_acknowledged, report};
 use crate::{Result, error, memory::CapturedMemory, records};
 
@@ -50,7 +50,7 @@ impl Run<'_> {
                 .map(|encoded| serde_json::from_str(encoded))
                 .transpose()
                 .map_err(error::encode)?,
-            fate.held_until(),
+            fate.parked_until(),
         );
         request.memory = memory.views();
         request.telemetry.segments = Some(self.timeline.reported(settling.elapsed()));
@@ -60,20 +60,20 @@ impl Run<'_> {
                 self.lessee.plane.report(&bytes).await.map(Some)
             })
             .await?;
-        let accepted = response.hold.as_ref().is_some_and(|hold| {
-            hold.run_id == self.ids.run.as_str()
-                && hold.fencing_token == self.payload.fencing_token
-                && hold.expires_at > self.lessee.clock.now()
+        let accepted = response.park.as_ref().is_some_and(|park| {
+            park.run_id == self.ids.run.as_str()
+                && park.fencing_token == self.payload.fencing_token
+                && park.expires_at > self.lessee.clock.now()
                 && fate
-                    .held_until()
-                    .is_some_and(|requested| hold.expires_at <= requested)
+                    .parked_until()
+                    .is_some_and(|requested| park.expires_at <= requested)
         });
-        if let Some(hold) = response.hold.filter(|_| accepted) {
+        if let Some(park) = response.park.filter(|_| accepted) {
             self.lessee
-                .holds
-                .accept(self.ids.run.clone(), hold.expires_at);
+                .parks
+                .accept(self.ids.run.clone(), park.expires_at);
         } else {
-            self.lessee.holds.supersede(self.ids.run.clone());
+            self.lessee.parks.supersede(self.ids.run.clone());
         }
         Ok(())
     }

@@ -128,9 +128,6 @@ afd_cron = { workspace = true, features = ["test-util"] }
 # under the wrong key — so each has to be signed here. `afd_cron`'s own
 # verifier suite carries these two for the same reason.
 jsonwebtoken.workspace = true
-# The `body` claim a scheduler token carries is a SHA-256 of the delivery,
-# base64url-unpadded. Minting one means computing it.
-sha2.workspace = true
 # `test_util::FakeSlack`, the loopback Slack a mention's thread read is
 # answered by.
 afd_connector = { workspace = true, features = ["test-util"] }
@@ -141,6 +138,8 @@ afd_admin = { workspace = true, features = ["test-util"] }
 afd_approval.workspace = true
 afd_billing = { workspace = true, features = ["test-util"] }
 afd_credential.workspace = true
+# Also the SHA-256 a scheduler token's `body` claim carries, base64url-unpadded:
+# minting one means computing it.
 af_crypto = { workspace = true, features = ["test-util"] }
 afd_fleet = { workspace = true, features = ["test-util"] }
 # The interim message poster the harness builds its services with.

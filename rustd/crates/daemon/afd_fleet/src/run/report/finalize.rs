@@ -67,7 +67,7 @@ impl RunService {
                 self.announce_folds(&run, run_id.as_str(), folds, answer)
                     .await;
                 let mut result = reconciled(run, false, tokens, completed_at);
-                result.hold = accepted_hold.map(|expires_at| af_wire::report::AcceptedHold {
+                result.hold = accepted_hold.map(|expires_at| af_wire::report::AcceptedPark {
                     run_id: run_id.to_string(),
                     fencing_token: request.fencing_token,
                     expires_at,
@@ -80,7 +80,7 @@ impl RunService {
         &self,
         runner: &Uuid7,
         run: &Uuid7,
-    ) -> Result<Option<af_wire::report::AcceptedHold>> {
+    ) -> Result<Option<af_wire::report::AcceptedPark>> {
         let mut connection = self.runs.pool().acquire().await?;
         let row: Option<(i64, jiff_sqlx::Timestamp)> =
             sqlx::query_as(crate::run::sql::shared::REPORT_HOLD)
@@ -91,7 +91,7 @@ impl RunService {
                 .await
                 .map_err(crate::error::query("read current report hold receipt"))?;
         row.map(|(fence, until)| {
-            Ok(af_wire::report::AcceptedHold {
+            Ok(af_wire::report::AcceptedPark {
                 run_id: run.to_string(),
                 fencing_token: u64::try_from(fence).map_err(|_negative| stale_fence())?,
                 expires_at: until.into(),

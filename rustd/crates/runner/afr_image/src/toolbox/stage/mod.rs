@@ -11,8 +11,7 @@ use std::io::{self, BufReader, Read as _};
 use std::os::unix::fs::{DirBuilderExt as _, PermissionsExt as _};
 use std::path::{Path, PathBuf};
 
-use digest_io::HashWriter;
-use sha2::{Digest as _, Sha256};
+use af_crypto::digest::Sha256Writer;
 use tempfile::Builder;
 
 use super::Manifest;
@@ -76,11 +75,13 @@ fn copy_verified(manifest: &Manifest, source: &Path, output: &mut File) -> Resul
         COPY_BUFFER_BYTES,
         File::open(source)?.take(manifest.length().saturating_add(1)),
     );
-    let mut writer = HashWriter::<Sha256, _>::new(output);
+    // Hashes only what the copy accepted, so the digest checked is the digest
+    // of the bytes on disk.
+    let mut writer = Sha256Writer::new(output);
     let copied = io::copy(&mut input, &mut writer)?;
-    let (sha256, output) = writer.into_parts();
+    let (sha256, output) = writer.finish();
     manifest.check_length(copied)?;
-    manifest.check_digest(&hex::encode(sha256.finalize()))?;
+    manifest.check_digest(&hex::encode(sha256))?;
     Ok(output.sync_all()?)
 }
 

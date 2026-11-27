@@ -20,7 +20,7 @@
 //! that one connection, owning every process it starts. Taking the link is
 //! split from serving so a caller takes it before it confines itself.
 //! [`Client`] is the supervisor's end and implements [`Executor`] over the
-//! socket, or over any byte stream a [`Transport`] dials and dials again
+//! socket, or over any byte stream an [`ExecutorRoute`] dials and dials again
 //! when the link closes. Both read the other's messages as untrusted.
 
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
@@ -44,7 +44,7 @@ pub use self::api::{
     Process, ProcessEvent, ProcessId, Search, Spawn, Stream,
 };
 pub use self::client::Client;
-pub use self::client::transport::{self, Transport};
+pub use self::client::route::{self, ExecutorRoute};
 pub use self::edges::EDGE_BYTES;
 pub use self::error::{Error, Result};
 pub use self::events::{Events, Feed};

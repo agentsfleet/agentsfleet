@@ -6,7 +6,7 @@ use super::{
     Heartbeat,
     tests::{probe, sent},
 };
-use crate::holds::Holds;
+use crate::parks::Parks;
 use crate::test_support::{drain, json, plane};
 use af_core::clock::SystemClock;
 use std::sync::Arc;
@@ -22,16 +22,16 @@ async fn disabling_new_durable_work_keeps_software_capability_and_ordinary_worke
                     "registry_allowlist": [], "worker_count": 1, "extra_binds": [],
                 },
                 "degraded": false, "degraded_reason": null, "selftest_requested": false,
-                "release_holds": [],
+                "release_parked": [],
             }))
         });
         let probe = probe();
-        let holds = Holds::start(Arc::new(SystemClock));
+        let parks = Parks::start(Arc::new(SystemClock));
         let mut heartbeat = Heartbeat::new(
             &plane,
             &probe,
             crate::test_support::CAPABILITIES,
-            &holds,
+            &parks,
             std::path::Path::new("."),
         );
         let assignment = heartbeat.beat().await.expect("saved assignment decodes");

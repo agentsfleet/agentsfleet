@@ -84,7 +84,7 @@ pub(crate) const TRIALS: &[(&str, Body)] = &[
         killed_mid_build,
     ),
     (
-        "test_a_stopped_hold_resumes_on_its_own_disk",
+        "test_a_stopped_park_resumes_on_its_own_disk",
         stopped_resumes,
     ),
     (

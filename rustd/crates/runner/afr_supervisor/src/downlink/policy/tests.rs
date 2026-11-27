@@ -20,26 +20,26 @@ use super::{Assignment, Heartbeat};
 use crate::client::{Call, Verb};
 use crate::error;
 use crate::halt::Halt;
-use crate::holds::{BuiltUnder, HoldKey, Holds};
+use crate::parks::{BuiltUnder, ParkKey, Parks};
 use crate::test_support::{self, Answer, FakeEngine, INTERVAL_MS, drain, json, plane, plane_every};
 
-/// The fleet whose sandbox the runner holds.
+/// The fleet whose sandbox the runner parks.
 pub(super) const FLEET: &str = "01890a5d-ac96-774b-bcce-b302099a80a1";
 const RUN: &str = "01890a5d-ac96-774b-bcce-b302099a80b1";
 /// A round long enough that a beat inside it came early.
 pub(super) const TICK_MS: u32 = 3_600_000;
 /// The event every release is logged under.
-pub(super) const RELEASED: &str = "sandbox_hold_released";
+pub(super) const RELEASED: &str = "sandbox_park_released";
 /// The status of a daemon that wants the runner to keep going.
 pub(super) const KEEP_GOING: &str = "ok";
 /// The status of a daemon that wants the runner to stop.
 pub(super) const STOP: &str = "stop";
-/// The beat's field listing the fleets the runner holds.
-pub(super) const HOLDS_FIELD: &str = "holds";
+/// The beat's field listing the fleets the runner parks.
+pub(super) const PARKED_FIELD: &str = "parked";
 
-/// A registry holding nothing, as a runner that has run no run.
-pub(super) fn idle_holds() -> Holds {
-    Holds::start(Arc::new(SystemClock))
+/// A registry parking nothing, as a runner that has run no run.
+pub(super) fn idle_parks() -> Parks {
+    Parks::start(Arc::new(SystemClock))
 }
 
 pub(super) fn probe() -> HostProbe {
@@ -64,7 +64,7 @@ pub(super) fn reply(status: &str, selftest: bool) -> Answer {
     answer(status, &policy(), selftest, &[])
 }
 
-/// An answer whose `release_holds` names `released`.
+/// An answer whose `release_parked` names `released`.
 pub(super) fn releasing(status: &str, released: &[&str]) -> Answer {
     answer(status, &policy(), false, released)
 }
@@ -79,29 +79,29 @@ pub(super) fn answer(
     json(
         &serde_json::json!({"status": status, "assigned_policy": assigned, "degraded": false,
         "degraded_reason": null, "selftest_requested": selftest,
-        "release_holds": released}),
+        "release_parked": released}),
     )
 }
 
-/// A registry over a stopped clock with room for `workers`, holding a sandbox
+/// A registry over a stopped clock with room for `workers`, parking a sandbox
 /// for [`FLEET`] that `engine` built.
-pub(super) async fn holding(engine: &FakeEngine, workers: usize) -> Holds {
-    let holds = Holds::start(Arc::new(FixedClock::at(jiff::Timestamp::UNIX_EPOCH)));
-    holds.resize(workers);
-    let parked = park(&holds, engine).await;
+pub(super) async fn with_parked(engine: &FakeEngine, workers: usize) -> Parks {
+    let parks = Parks::start(Arc::new(FixedClock::at(jiff::Timestamp::UNIX_EPOCH)));
+    parks.resize(workers);
+    let parked = park(&parks, engine).await;
     assert!(
-        matches!(parked, crate::holds::Stowed::Held(_)),
+        matches!(parked, crate::parks::Stowed::Parked(_)),
         "parked: {parked:?}"
     );
-    holds
+    parks
 }
 
-/// Parks a sandbox `engine` builds for [`FLEET`], and answers as `holds` did:
+/// Parks a sandbox `engine` builds for [`FLEET`], and answers as `parks` did:
 /// a sandbox it refuses is still the caller's to end.
-pub(super) async fn park(holds: &Holds, engine: &FakeEngine) -> crate::holds::Stowed {
+pub(super) async fn park(parks: &Parks, engine: &FakeEngine) -> crate::parks::Stowed {
     let run = Uuid7::parse(RUN).unwrap();
     let spec = SandboxSpec::granted_by(engine, &run, Limits::default()).unwrap();
-    let key = HoldKey {
+    let key = ParkKey {
         fleet: Uuid7::parse(FLEET).unwrap(),
         workspace: RUN.to_owned(),
         limits: Limits::default(),
@@ -109,7 +109,7 @@ pub(super) async fn park(holds: &Holds, engine: &FakeEngine) -> crate::holds::St
     };
     let sandbox = engine.prepare(spec).await.unwrap();
     let sandbox = sandbox.park(ParkMode::Pause).await.unwrap();
-    let parked = holds.park(key, run, sandbox);
+    let parked = parks.park(key, run, sandbox);
     test_support::bounded("the keeper's answer to a park", parked).await
 }
 
@@ -129,12 +129,12 @@ async fn an_assignment_reaches_the_runs_and_labels_the_self_test_it_asks_for() {
         _later => answer("drain", &serde_json::Value::Null, false, &[]),
     });
     let probe = probe();
-    let held = idle_holds();
+    let parked = idle_parks();
     let mut heartbeat = Heartbeat::new(
         &plane,
         &probe,
         test_support::CAPABILITIES,
-        &held,
+        &parked,
         std::path::Path::new("."),
     );
 
@@ -199,12 +199,12 @@ async fn a_failed_beat_retries_and_a_stop_ends_runs_in_flight() {
     let halt = Halt::new(CancellationToken::new());
     let started = tokio::time::Instant::now();
 
-    let held = idle_holds();
+    let parked = idle_parks();
     Heartbeat::new(
         &plane,
         &probe,
         test_support::CAPABILITIES,
-        &held,
+        &parked,
         std::path::Path::new("."),
     )
     .keep_beating(&published, &halt)
@@ -235,22 +235,22 @@ async fn a_refused_token_ends_the_runner_and_a_shutdown_ends_the_beat() {
     let stopped = CancellationToken::new();
     stopped.cancel();
 
-    let held = idle_holds();
+    let parked = idle_parks();
     Heartbeat::new(
         &plane,
         &probe,
         test_support::CAPABILITIES,
-        &held,
+        &parked,
         std::path::Path::new("."),
     )
     .keep_beating(&published, &refused)
     .await;
-    let held = idle_holds();
+    let parked = idle_parks();
     Heartbeat::new(
         &plane,
         &probe,
         test_support::CAPABILITIES,
-        &held,
+        &parked,
         std::path::Path::new("."),
     )
     .keep_beating(&published, &Halt::new(stopped))

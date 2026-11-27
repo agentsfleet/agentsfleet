@@ -6,7 +6,7 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
-use super::{EgressPlan, Enforcer, Generation, enforce};
+use super::{EgressEnforcer, EgressPlan, Generation, enforce};
 use crate::error::{EgressRefusal, Result, egress_refused};
 use crate::network::Network;
 
@@ -26,7 +26,7 @@ struct Lagging {
 }
 
 #[async_trait::async_trait]
-impl Enforcer for Lagging {
+impl EgressEnforcer for Lagging {
     async fn apply(&mut self, plan: EgressPlan<'_>) -> Result<()> {
         self.applies += 1;
         if self.refuses {

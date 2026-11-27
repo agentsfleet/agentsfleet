@@ -87,7 +87,7 @@ fn request() -> ReportRequest<'static> {
             last_response: Cow::Borrowed("done"),
         },
         tool_calls: None,
-        held_until: None,
+        parked_until: None,
         memory: Vec::new(),
     }
 }

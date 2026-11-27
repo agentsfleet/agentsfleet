@@ -24,7 +24,7 @@ pub const ATTR_RUNNER_HOST: &str = "agentsfleet.runner.host";
 /// The run a runner span belongs to.
 pub const ATTR_RUN_ID: &str = "agentsfleet.run.id";
 
-/// Whether a run ran in the sandbox its fleet's previous run left held,
+/// Whether a run ran in the sandbox its fleet's previous run left parked,
 /// rather than a fresh one; absent from a run that used no sandbox.
 pub const ATTR_SANDBOX_REUSED: &str = "agentsfleet.sandbox.reused";
 
@@ -37,7 +37,7 @@ pub const ATTR_RUNNER_SANDBOX_MS: &str = "agentsfleet.runner.sandbox_ms";
 /// Inside the sandbox segment: the egress bind.
 pub const ATTR_RUNNER_EGRESS_MS: &str = "agentsfleet.runner.egress_ms";
 
-/// Inside the sandbox segment: a held sandbox thawed, or a fresh one built.
+/// Inside the sandbox segment: a parked sandbox thawed, or a fresh one built.
 pub const ATTR_RUNNER_PREPARE_MS: &str = "agentsfleet.runner.prepare_ms";
 
 /// Inside the sandbox segment: the bound repositories checked out.

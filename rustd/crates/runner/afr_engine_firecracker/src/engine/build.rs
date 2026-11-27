@@ -30,7 +30,7 @@ use crate::guest::{EXECUTOR_PORT, GuestEntry};
 use crate::jail::{self, Furnishing, JailId};
 use crate::lock::ImageLock;
 use crate::machine::{self, Boot, GuestNetwork};
-use crate::vsock::VsockTransport;
+use crate::vsock::VsockRoute;
 
 /// What a process writes to `cgroup.procs` to move itself.
 const SELF: &[u8] = b"0";
@@ -229,9 +229,9 @@ async fn ready(
 ) -> Result<Client> {
     let waited = config.tuning.ready_timeout;
     let (jail, socket) = layout.socket();
-    let transport = VsockTransport::new(jail.to_owned(), socket, uid, EXECUTOR_PORT, waited);
+    let route = VsockRoute::new(jail.to_owned(), socket, uid, EXECUTOR_PORT, waited);
     let answered = async {
-        let client = Client::dial(transport, config.tuning.sizes).await?;
+        let client = Client::dial(route, config.tuning.sizes).await?;
         client.list_dir(READY_PROBE).await?;
         Ok::<_, afr_executor::Error>(client)
     };

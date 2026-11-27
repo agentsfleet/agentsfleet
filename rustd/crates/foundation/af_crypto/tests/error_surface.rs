@@ -51,6 +51,11 @@ fn one_of_each() -> Vec<(&'static str, af_crypto::error::Error)> {
                 .expect_err("different messages"),
         ),
         (
+            "signature mismatch",
+            af_crypto::signature::verify_ecdsa_p256_sha256(b"not a key", b"m", b"not a signature")
+                .expect_err("no key, no signature"),
+        ),
+        (
             "entropy",
             sealer.seal(&kek(), &aad, b"x").expect_err("dead entropy"),
         ),
@@ -66,6 +71,7 @@ fn test_every_error_answers_exactly_one_accessor() {
             error.is_malformed_envelope(),
             error.is_open_failed(),
             error.is_mac_mismatch(),
+            error.is_signature_mismatch(),
             error.is_entropy(),
         ];
         assert_eq!(

@@ -5,7 +5,7 @@
 //! A guest that is still booting has no listener yet, so a dial retries until
 //! the guest answers or the boot's time is up. Each boot is a fresh guest,
 //! and the executor client dials again after every one (`afr_executor`'s
-//! [`Transport`]).
+//! [`ExecutorRoute`]).
 //!
 //! The socket sits in the jail, which its monitor's user owns, and the root
 //! runner dials it. So every dial opens the name beneath the jail with no
@@ -18,7 +18,7 @@ use std::os::fd::{AsRawFd as _, OwnedFd};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use afr_executor::transport::{Stream, Transport};
+use afr_executor::route::{ExecutorRoute, ExecutorStream};
 use backon::{ConstantBuilder, Retryable as _};
 use rustix::fs::{FileType, Mode, OFlags, ResolveFlags};
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
@@ -45,7 +45,7 @@ const BENEATH: ResolveFlags = ResolveFlags::BENEATH
 
 /// One guest's executor, through its monitor's vsock socket.
 #[derive(Debug, Clone)]
-pub struct VsockTransport {
+pub struct VsockRoute {
     jail: PathBuf,
     socket: &'static str,
     owner: u32,
@@ -53,7 +53,7 @@ pub struct VsockTransport {
     within: Duration,
 }
 
-impl VsockTransport {
+impl VsockRoute {
     /// The executor on guest `port`, through the monitor socket named
     /// `socket` in the jail at `jail`, whose monitor runs as user `owner`;
     /// each dial retried until the guest answers or `within` has passed.
@@ -104,8 +104,8 @@ impl VsockTransport {
 }
 
 #[async_trait::async_trait]
-impl Transport for VsockTransport {
-    async fn dial(&self) -> io::Result<Box<dyn Stream>> {
+impl ExecutorRoute for VsockRoute {
+    async fn dial(&self) -> io::Result<Box<dyn ExecutorStream>> {
         let attempts = self
             .within
             .as_millis()
@@ -172,11 +172,11 @@ mod tests {
     use std::os::unix::fs::{MetadataExt as _, symlink};
     use std::time::Duration;
 
-    use afr_executor::Transport as _;
+    use afr_executor::ExecutorRoute as _;
     use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _, BufReader};
     use tokio::net::UnixListener;
 
-    use super::VsockTransport;
+    use super::VsockRoute;
 
     const SOCKET: &str = "v.sock";
 
@@ -201,7 +201,7 @@ mod tests {
         monitor(jail.path(), SOCKET);
         let owner = jail.path().metadata().unwrap().uid();
         let within = Duration::from_millis(100);
-        let on = |port| VsockTransport::new(jail.path().to_owned(), SOCKET, owner, port, within);
+        let on = |port| VsockRoute::new(jail.path().to_owned(), SOCKET, owner, port, within);
 
         let mut served = on(1024).dial().await.unwrap();
         let unheard = on(1025).dial().await.err().unwrap();
@@ -225,7 +225,7 @@ mod tests {
         let owner = jail.path().metadata().unwrap().uid();
         let within = Duration::from_millis(100);
         let from = |jail: &std::path::Path, socket, owner| {
-            VsockTransport::new(jail.to_owned(), socket, owner, 1024, within)
+            VsockRoute::new(jail.to_owned(), socket, owner, 1024, within)
         };
 
         let linked = from(jail.path(), SOCKET, owner).dial().await.err().unwrap();

@@ -119,7 +119,7 @@ impl Unsent {
                 last_response: Cow::Borrowed(""),
             },
             tool_calls: None,
-            held_until: None,
+            parked_until: None,
             folded_through_sequence: None,
             memory: Vec::new(),
         }

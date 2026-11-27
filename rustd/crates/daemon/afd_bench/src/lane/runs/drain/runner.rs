@@ -331,7 +331,7 @@ fn processed<'a>(run: &'a RunPayload<'a>, folded_through: Option<i64>) -> Report
             last_response: Cow::Borrowed(RESPONSE),
         },
         tool_calls: None,
-        held_until: None,
+        parked_until: None,
         memory: Vec::new(),
     }
 }

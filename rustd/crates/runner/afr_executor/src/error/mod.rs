@@ -60,10 +60,10 @@ pub(crate) enum ErrorKind {
     #[error("the executor connection closed")]
     ConnectionLost,
 
-    /// The link was found closed and its transport would not dial again.
+    /// The link was found closed and its route would not dial again.
     #[error("the executor connection closed and could not be dialled again")]
     Redial {
-        /// The transport's reason.
+        /// The route's reason.
         #[source]
         source: io::Error,
     },

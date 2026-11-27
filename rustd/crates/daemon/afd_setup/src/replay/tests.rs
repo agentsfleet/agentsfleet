@@ -1,7 +1,7 @@
 //! What a read receipt answers, without a database.
 #![expect(clippy::expect_used, reason = "a wrong answer fails the proof loudly")]
 
-use super::{Receipt, bound, decide};
+use super::{Receipt, bound, decide, digest};
 use af_core::error_code::{self, ErrorCode};
 use af_core::id::Uuid7;
 
@@ -64,4 +64,22 @@ fn a_receipt_answers_by_actor_body_and_resource() {
             ),
         }
     }
+}
+
+/// A receipt row stores this digest, so it is pinned to the byte: the sorted
+/// JSON, the plain SHA-256 over it, lowercase hex and the versioned prefix.
+#[test]
+fn the_stored_digest_is_pinned_to_the_byte() {
+    let actor = Uuid7::parse(ACTOR).expect("actor");
+    let body = serde_json::json!({ "name": "morning-rooster", "a": [1, { "z": true, "b": null }] });
+    // pin test: literal is the contract
+    assert_eq!(
+        digest(&body).expect("a digest"),
+        "setup:v1:sha256:66908c9795201959791de0b5865e835f631ce875a545ead249f52d54c612bb51"
+    );
+    // pin test: literal is the contract
+    assert_eq!(
+        bound(&actor, DIGEST).expect("a bound digest"),
+        "setup:v1:sha256:145df32c2e41089eda20784a7da4016e81f6927c533fc70de33f0de160c3155d"
+    );
 }

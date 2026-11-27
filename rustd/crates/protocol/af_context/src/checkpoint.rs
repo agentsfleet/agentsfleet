@@ -1,8 +1,8 @@
 //! A checkpoint binds model-authored notes to the exact source it replaced.
 
+use af_crypto::digest::Sha256;
 use garde::Validate as _;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest as _, Sha256};
 
 use crate::{Group, Result, Summary, error::ErrorKind};
 
@@ -111,13 +111,13 @@ pub fn digest_groups(previous: &str, groups: &[Group]) -> String {
     groups.iter().fold(previous.to_owned(), |digest, group| {
         let mut hash = Sha256::new();
         hash.update(digest.as_bytes());
-        hash.update(group.sequence.to_be_bytes());
+        hash.update(&group.sequence.to_be_bytes());
         hash.update(
-            u64::try_from(group.text.len())
+            &u64::try_from(group.text.len())
                 .unwrap_or(u64::MAX)
                 .to_be_bytes(),
         );
         hash.update(group.text.as_bytes());
-        hex::encode(hash.finalize())
+        hex::encode(hash.finish())
     })
 }

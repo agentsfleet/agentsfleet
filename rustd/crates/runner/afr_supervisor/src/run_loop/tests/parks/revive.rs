@@ -1,4 +1,4 @@
-//! A held sandbox revived for its fleet's next run: marked on the run's
+//! A parked sandbox revived for its fleet's next run: marked on the run's
 //! span and logged when its executor answers, given up for a fresh sandbox
 //! when it does not.
 
@@ -14,13 +14,13 @@ use std::time::Duration;
 use af_core::test_util::trace::Capture;
 use af_observability::semconv::{ATTR_SANDBOX_REUSED, SPAN_RUNNER_RUN};
 use af_wire::run::RunPayload;
-use afr_telemetry::labels::SandboxHold;
+use afr_telemetry::labels::SandboxPark;
 use afr_telemetry::testing::{Recorded, Tally, scoped};
 
-use super::tests::{NEXT_RUN_ID, healthy, holding, released, releases, resumed, settled};
+use super::tests::{NEXT_RUN_ID, healthy, parking_rig, released, releases, resumed, settled};
 use super::{DETAIL_SILENT, EVENT_RESUME_FAILED, EVENT_REUSED};
 use crate::client::{Call, Verb};
-use crate::holds::{Holds, Release};
+use crate::parks::{Parks, Release};
 use crate::test_support::{
     Answer, Behaviour, EXECUTOR_GONE, FAILURE_REASON, FLEET_ID, FakeAgent, FakeEngine, NO_PARK,
     OUTCOME, PROCESSED, Parking, RENEWAL_TERMINATE, RUN_ID, Rig, clock, daemon, payload, reported,
@@ -31,16 +31,16 @@ use crate::test_support::{
 const RUN_BOUND: Duration = Duration::from_secs(60);
 /// The field a run's own log lines name it by.
 const RUN_FIELD: &str = "run_id";
-/// What the engine counts when a resumed hold is given up, as (prepared,
-/// parked, resumed, destroyed): resumed once, then built fresh and held in turn.
+/// What the engine counts when a resumed park is given up, as (prepared,
+/// parked, resumed, destroyed): resumed once, then built fresh and parked in turn.
 const RESUMED_THEN_FRESH: (usize, usize, usize, usize) = (2, 2, 1, 2);
 
-/// The held sandbox will not resume, and its engine destroys it: the hold is
+/// The parked sandbox will not resume, and its engine destroys it: the park is
 /// released as `thaw_failed`, the log carries the engine's reason, and the
 /// run runs in a fresh sandbox.
 #[tokio::test(start_paused = true)]
 async fn test_resume_failure_falls_back_fresh() {
-    let counted = gives_up_the_resumed_hold(Parking::RefusesResume, NO_PARK).await;
+    let counted = gives_up_the_resumed_park(Parking::RefusesResume, NO_PARK).await;
 
     assert_eq!(
         counted,
@@ -49,39 +49,39 @@ async fn test_resume_failure_falls_back_fresh() {
     );
 }
 
-/// The executor a held sandbox resumes into died while it was parked: it
-/// never answers, so the hold is given up and the run runs in a fresh sandbox.
+/// The executor a parked sandbox resumes into died while it was parked: it
+/// never answers, so the park is given up and the run runs in a fresh sandbox.
 #[tokio::test(start_paused = true)]
 async fn test_an_executor_silent_after_resume_falls_back_fresh() {
-    let counted = gives_up_the_resumed_hold(Parking::ResumesSilent, DETAIL_SILENT).await;
+    let counted = gives_up_the_resumed_park(Parking::ResumesSilent, DETAIL_SILENT).await;
 
     assert_eq!(counted, RESUMED_THEN_FRESH);
 }
 
-/// The executor a held sandbox resumes into fails once it is back: the hold
+/// The executor a parked sandbox resumes into fails once it is back: the park
 /// is given up and the run runs in a fresh sandbox.
 #[tokio::test(start_paused = true)]
 async fn test_an_executor_failing_after_resume_falls_back_fresh() {
-    let counted = gives_up_the_resumed_hold(Parking::ResumesBroken, EXECUTOR_GONE).await;
+    let counted = gives_up_the_resumed_park(Parking::ResumesBroken, EXECUTOR_GONE).await;
 
     assert_eq!(counted, RESUMED_THEN_FRESH);
 }
 
 /// Runs a run that parks, then the fleet's next run over a sandbox that
-/// resumes as `parking` says: the hold is released as `thaw_failed`, the log
+/// resumes as `parking` says: the park is released as `thaw_failed`, the log
 /// names the failure's code once and a reason carrying `cause`, and the run
 /// runs fresh to `processed`. Answers what the engine counted.
 #[expect(
     clippy::future_not_send,
     reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
 )]
-async fn gives_up_the_resumed_hold(parking: Parking, cause: &str) -> (usize, usize, usize, usize) {
+async fn gives_up_the_resumed_park(parking: Parking, cause: &str) -> (usize, usize, usize, usize) {
     let capture = Capture::install();
     let engine = FakeEngine {
         parking,
         ..FakeEngine::default()
     };
-    let (mut rig, counted) = holding(healthy, engine, Behaviour::Answer);
+    let (mut rig, counted) = parking_rig(healthy, engine, Behaviour::Answer);
 
     rig.run(&payload(RUN_ID, FLEET_ID)).await.unwrap();
     let next = resumed(NEXT_RUN_ID, FLEET_ID);
@@ -115,48 +115,48 @@ async fn gives_up_the_resumed_hold(parking: Parking, cause: &str) -> (usize, usi
 /// executor answered.
 #[tokio::test(start_paused = true)]
 async fn test_a_park_and_its_reuse_are_counted() {
-    let counted = holds_counted(Parking::Works, resumed(NEXT_RUN_ID, FLEET_ID)).await;
+    let counted = parks_counted(Parking::Works, resumed(NEXT_RUN_ID, FLEET_ID)).await;
 
     assert_eq!(
         counted,
         [
-            SandboxHold::Parked,
-            SandboxHold::Reused,
-            SandboxHold::Parked,
-            SandboxHold::Shutdown
+            SandboxPark::Parked,
+            SandboxPark::Reused,
+            SandboxPark::Parked,
+            SandboxPark::Shutdown
         ]
     );
 }
 
-/// A hold that will not resume was never reused: it counts as given up alone.
+/// A park that will not resume was never reused: it counts as given up alone.
 #[tokio::test(start_paused = true)]
 async fn test_a_failed_resume_counts_no_reuse() {
-    let counted = holds_counted(Parking::RefusesResume, resumed(NEXT_RUN_ID, FLEET_ID)).await;
+    let counted = parks_counted(Parking::RefusesResume, resumed(NEXT_RUN_ID, FLEET_ID)).await;
 
     assert_eq!(
         counted,
         [
-            SandboxHold::Parked,
-            SandboxHold::ThawFailed,
-            SandboxHold::Parked,
-            SandboxHold::Shutdown
+            SandboxPark::Parked,
+            SandboxPark::ThawFailed,
+            SandboxPark::Parked,
+            SandboxPark::Shutdown
         ]
     );
 }
 
 /// Runs a run that parks, then `next`, over sandboxes that resume as `parking`
-/// says, and reads back every hold the runner counted through to shutdown:
+/// says, and reads back every park the runner counted through to shutdown:
 /// the runs' own counts and the task's.
-pub(super) async fn holds_counted(parking: Parking, next: RunPayload<'static>) -> Vec<SandboxHold> {
+pub(super) async fn parks_counted(parking: Parking, next: RunPayload<'static>) -> Vec<SandboxPark> {
     let (tally, recorded) = Tally::new();
     let engine = FakeEngine {
         parking,
         ..FakeEngine::default()
     };
-    let holds = Holds::recording(clock(), Arc::<Tally>::clone(&tally));
-    holds.resize(2);
+    let parks = Parks::recording(clock(), Arc::<Tally>::clone(&tally));
+    parks.resize(2);
     let agent = FakeAgent::new(Behaviour::Answer);
-    let rig = Rig::with_holds(daemon(healthy), engine, agent, holds);
+    let rig = Rig::with_parks(daemon(healthy), engine, agent, parks);
 
     scoped(tally, async {
         rig.run(&payload(RUN_ID, FLEET_ID)).await.unwrap();
@@ -168,19 +168,19 @@ pub(super) async fn holds_counted(parking: Parking, next: RunPayload<'static>) -
     recorded
         .try_iter()
         .filter_map(|counted| match counted {
-            Recorded::SandboxHold(hold) => Some(hold),
+            Recorded::SandboxPark(park) => Some(park),
             _other => None,
         })
         .collect()
 }
 
-/// The run that takes a hold says so: its span carries the reuse mark,
+/// The run that takes a park says so: its span carries the reuse mark,
 /// true where the first run's says false, and `sandbox_reused` names the
-/// run, its fleet and how long the sandbox was held.
+/// run, its fleet and how long the sandbox was parked.
 #[tokio::test(start_paused = true)]
 async fn test_a_reused_sandbox_is_marked_on_the_run_span_and_logged() {
     let capture = Capture::install();
-    let (rig, _counted) = holding(healthy, FakeEngine::default(), Behaviour::Answer);
+    let (rig, _counted) = parking_rig(healthy, FakeEngine::default(), Behaviour::Answer);
 
     rig.run(&payload(RUN_ID, FLEET_ID)).await.unwrap();
     rig.run(&resumed(NEXT_RUN_ID, FLEET_ID)).await.unwrap();
@@ -196,7 +196,7 @@ async fn test_a_reused_sandbox_is_marked_on_the_run_span_and_logged() {
     assert_eq!(reused.field(RUN_FIELD), Some(NEXT_RUN_ID));
     assert_eq!(reused.field("fleet_id"), Some(FLEET_ID));
     assert_eq!(
-        reused.field("held_ms"),
+        reused.field("parked_ms"),
         Some("0"),
         "the rig's clock stands still"
     );
@@ -233,12 +233,12 @@ fn next_run_cut_while_its_memory_loads(call: &Call) -> Option<Answer> {
 }
 
 /// The fleet's next run is cut while its memory loads, so its build never
-/// starts: the hold it was told to resume is released as superseded at once,
+/// starts: the park it was told to resume is released as superseded at once,
 /// not left in its slot until it lapses.
 #[tokio::test(start_paused = true)]
-async fn test_a_cut_before_the_build_releases_the_hold() {
+async fn test_a_cut_before_the_build_releases_the_park() {
     let capture = Capture::install();
-    let (rig, counted) = holding(
+    let (rig, counted) = parking_rig(
         next_run_cut_while_its_memory_loads,
         FakeEngine::default(),
         Behaviour::Answer,
@@ -254,19 +254,19 @@ async fn test_a_cut_before_the_build_releases_the_hold() {
         [released(FLEET_ID, Release::Superseded)],
         "released by the cut run, not by the shutdown"
     );
-    assert_eq!(counted.read(), (1, 1, 0, 1), "held once, never resumed");
+    assert_eq!(counted.read(), (1, 1, 0, 1), "parked once, never resumed");
 }
 
-/// A renewal refused while the fleet's next run resumes its hold: the resume
+/// A renewal refused while the fleet's next run resumes its park: the resume
 /// finishes before the build reads its stop, and the resumed sandbox is then
-/// destroyed once and held by nobody.
+/// destroyed once and parked by nobody.
 #[tokio::test(start_paused = true)]
-async fn test_cut_during_resume_settles_the_hold() {
+async fn test_cut_during_resume_settles_the_park() {
     let engine = FakeEngine {
         resume_takes: crate::test_support::ROUND.saturating_mul(2),
         ..FakeEngine::default()
     };
-    let (mut rig, counted) = holding(next_run_cut, engine, Behaviour::Answer);
+    let (mut rig, counted) = parking_rig(next_run_cut, engine, Behaviour::Answer);
 
     rig.run(&payload(RUN_ID, FLEET_ID)).await.unwrap();
     rig.run(&resumed(NEXT_RUN_ID, FLEET_ID)).await.unwrap();
@@ -274,9 +274,9 @@ async fn test_cut_during_resume_settles_the_hold() {
     assert_eq!(
         counted.read(),
         (1, 1, 1, 1),
-        "built and held once, resumed to the end, then destroyed once"
+        "built and parked once, resumed to the end, then destroyed once"
     );
     let report = reported(&rig.calls());
     assert_eq!(report[FAILURE_REASON], RENEWAL_TERMINATE, "{report}");
-    assert!(report.get("held_until").is_none(), "{report}");
+    assert!(report.get("parked_until").is_none(), "{report}");
 }

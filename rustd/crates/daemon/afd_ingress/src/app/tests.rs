@@ -124,3 +124,14 @@ fn one_subscriber_fans_out() {
         "a single match is a delivery to make, carrying exactly that fleet"
     );
 }
+
+/// A delivery's replay identity is stored and compared with the next delivery's,
+/// so it is pinned: the plain SHA-256 of the signed body, lowercase hex.
+#[test]
+fn the_replay_identity_is_pinned_to_the_byte() {
+    // pin test: literal is the contract
+    assert_eq!(
+        replay_id(br#"{"action":"opened"}"#),
+        "d592421cfe150deec6c49b8989cc99478e39c7f8cdd4c36f5b1c4cfeff394e24"
+    );
+}

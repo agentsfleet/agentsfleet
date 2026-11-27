@@ -32,7 +32,7 @@ use self::files::Workspace;
 pub use self::launch::{Entry, InnerEnvironment, Tenant};
 use self::launch::{Inherit, Placement};
 use self::session::Session;
-use crate::client::transport::Stream;
+use crate::client::route::ExecutorStream;
 use crate::error::Result;
 use crate::sizes::Sizes;
 
@@ -56,7 +56,7 @@ enum Link {
     Bound(std::os::unix::net::UnixListener),
     /// Any other byte stream the supervisor is already on the far end of: a
     /// virtual machine's vsock connection.
-    Streamed(Box<dyn Stream>),
+    Streamed(Box<dyn ExecutorStream>),
 }
 
 impl std::fmt::Debug for Link {
@@ -70,7 +70,7 @@ impl std::fmt::Debug for Link {
 
 impl Link {
     /// The supervisor's connection, waited for where the socket is bound.
-    async fn connection(self) -> Result<Box<dyn Stream>> {
+    async fn connection(self) -> Result<Box<dyn ExecutorStream>> {
         Ok(match self {
             Self::Bound(socket) => Box::new(UnixListener::from_std(socket)?.accept().await?.0),
             Self::Streamed(stream) => stream,
@@ -110,7 +110,7 @@ pub fn bind(socket: &Path) -> Result<Server> {
 /// a virtual machine's executor serves the host's vsock connection this way,
 /// the same lines over it.
 #[must_use]
-pub fn streamed(stream: impl Stream + 'static) -> Server {
+pub fn streamed(stream: impl ExecutorStream + 'static) -> Server {
     Server::over(Link::Streamed(Box::new(stream)))
 }
 

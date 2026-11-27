@@ -118,7 +118,7 @@ fn a_waiting_run_reports_waiting() {
     assert_eq!(report.failure_reason, None);
     assert_eq!(report.failure_detail, "");
     assert_eq!(report.response_text, "Ship it?");
-    assert!(!ending.processed(), "a waiting run holds no sandbox");
+    assert!(!ending.processed(), "a waiting run parks no sandbox");
 }
 
 #[test]

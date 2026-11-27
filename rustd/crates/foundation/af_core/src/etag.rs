@@ -17,7 +17,7 @@
 //! digest would be two spellings of one wire encoding, and the failure mode is
 //! silent — a client's cached tag simply stops matching.
 
-use sha2::{Digest as _, Sha256};
+use aws_lc_rs::digest::{Context, SHA256, digest};
 
 /// Strong tag binding one native resource identity to its monotonic version.
 #[must_use]
@@ -38,20 +38,20 @@ const FIELD_PRESENT: [u8; 1] = [1];
 /// the same bytes in a different order must not share a tag.
 #[must_use]
 pub fn compute(fields: &[Option<&[u8]>]) -> String {
-    let mut hasher = Sha256::new();
+    let mut hasher = Context::new(&SHA256);
     for field in fields {
         match field {
-            None => hasher.update(FIELD_NULL),
+            None => hasher.update(&FIELD_NULL),
             Some(bytes) => {
-                hasher.update(FIELD_PRESENT);
-                hasher.update(u64::try_from(bytes.len()).unwrap_or(u64::MAX).to_be_bytes());
+                hasher.update(&FIELD_PRESENT);
+                hasher.update(&u64::try_from(bytes.len()).unwrap_or(u64::MAX).to_be_bytes());
                 hasher.update(bytes);
             }
         }
     }
     let mut tag = String::with_capacity(2 + QUOTED_TAG_LEN);
     tag.push('"');
-    tag.push_str(&hex::encode(hasher.finalize()));
+    tag.push_str(&hex::encode(hasher.finish()));
     tag.push('"');
     tag
 }
@@ -72,7 +72,7 @@ const QUOTED_TAG_LEN: usize = 64;
 /// which would silently stop a client's cached validator from matching again.
 #[must_use]
 pub fn sha256_hex(bytes: &[u8]) -> String {
-    hex::encode(Sha256::digest(bytes))
+    hex::encode(digest(&SHA256, bytes))
 }
 
 #[cfg(test)]
@@ -135,5 +135,18 @@ mod tests {
         );
         assert_ne!(compute(&[None]), compute(&[Some(b"")]));
         assert_ne!(compute(&[Some(b"a"), None]), compute(&[None, Some(b"a")]));
+    }
+
+    /// A versioned tag is the same strong tag over the identity's text and the
+    /// version's eight big-endian bytes, so a cached one keeps matching.
+    #[test]
+    fn the_versioned_tag_is_pinned_to_the_byte() {
+        let id = crate::id::Uuid7::parse("0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b")
+            .unwrap_or_else(|_| unreachable!("a canonical identifier"));
+        // pin test: literal is the contract
+        assert_eq!(
+            super::versioned(&id, 7),
+            "\"4c8ff9ced8c4d97dcb900140fed25e51004d076b0638e7526a703e916b313cc1\""
+        );
     }
 }

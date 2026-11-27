@@ -9,7 +9,6 @@
 
 use af_core::lower_hex;
 use af_validate::rules::charset;
-use aws_lc_rs::signature::{ECDSA_P256_SHA256_ASN1, UnparsedPublicKey};
 use base64::Engine as _;
 use garde::Validate as _;
 use rustls_pki_types::SubjectPublicKeyInfoDer;
@@ -117,8 +116,7 @@ impl Release {
                 ToolboxRefusal::Signature,
                 "the signature's base64",
             ))?;
-        UnparsedPublicKey::new(&ECDSA_P256_SHA256_ASN1, &self.key)
-            .verify(manifest, &der)
+        af_crypto::signature::verify_ecdsa_p256_sha256(&self.key, manifest, &der)
             .map_err(|_unverified| refuse("the signature is not the release key's"))
     }
 

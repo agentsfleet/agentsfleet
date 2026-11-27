@@ -46,7 +46,7 @@ pub(crate) fn processed(held: &Held, held_until: Option<Timestamp>) -> ReportReq
             last_response: Cow::Borrowed(RESUME_RESPONSE),
         },
         tool_calls: None,
-        held_until,
+        parked_until: held_until,
         memory: Vec::new(),
     }
 }

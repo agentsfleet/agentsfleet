@@ -4,7 +4,7 @@ use super::{Assignment, Heartbeat, tests::probe};
 use crate::{
     error,
     halt::Halt,
-    holds::Holds,
+    parks::Parks,
     test_support::{self, Answer, drain, plane},
 };
 use af_core::test_util::trace::Capture;
@@ -25,7 +25,7 @@ async fn closed_or_invalid_assignment_stream_never_advertises_a_worker() -> crat
             updates.send_replace(Some(Arc::new(assignment_frame(fault).await?)));
         }
         let probe = probe();
-        let holds = Holds::start(test_support::clock());
+        let parks = Parks::start(test_support::clock());
         let (published, watching) = watch::channel(Assignment::initial());
         let halt = Halt::new(CancellationToken::new());
         if fault == "closed" {
@@ -37,7 +37,7 @@ async fn closed_or_invalid_assignment_stream_never_advertises_a_worker() -> crat
                 &plane,
                 &probe,
                 test_support::CAPABILITIES,
-                &holds,
+                &parks,
                 std::path::Path::new("."),
             )
             .keep_beating(&published, &halt),
@@ -54,7 +54,7 @@ async fn closed_or_invalid_assignment_stream_never_advertises_a_worker() -> crat
                     .is_some()
             );
         }
-        holds.shutdown().await;
+        parks.shutdown().await;
     }
     Ok(())
 }
@@ -63,7 +63,7 @@ async fn closed_or_invalid_assignment_stream_never_advertises_a_worker() -> crat
 async fn a_permanent_heartbeat_failure_stops_the_runner_without_retrying() {
     let (plane, mut calls) = plane(|_| Answer::Fail(error::config("unusable native heartbeat")));
     let probe = probe();
-    let holds = Holds::start(test_support::clock());
+    let parks = Parks::start(test_support::clock());
     let (published, watching) = watch::channel(Assignment::initial());
     let halt = Halt::new(CancellationToken::new());
     test_support::bounded(
@@ -72,7 +72,7 @@ async fn a_permanent_heartbeat_failure_stops_the_runner_without_retrying() {
             &plane,
             &probe,
             test_support::CAPABILITIES,
-            &holds,
+            &parks,
             std::path::Path::new("."),
         )
         .keep_beating(&published, &halt),
@@ -82,7 +82,7 @@ async fn a_permanent_heartbeat_failure_stops_the_runner_without_retrying() {
     assert!(!halt.token_refused());
     assert!(!watching.borrow().takes_work(0));
     assert_eq!(drain(&mut calls).len(), 1);
-    holds.shutdown().await;
+    parks.shutdown().await;
 }
 
 async fn assignment_frame(fault: &str) -> crate::Result<af_stream::OwnedFrame> {

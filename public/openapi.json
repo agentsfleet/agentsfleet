@@ -26701,7 +26701,7 @@
           "event",
           "policy",
           "history",
-          "resume_hold",
+          "resume_park",
           "inputs_waiting",
           "owner"
         ],
@@ -26781,9 +26781,9 @@
             "$ref": "#/components/schemas/ExecutionPolicy",
             "description": "What the run is permitted to do."
           },
-          "resume_hold": {
+          "resume_park": {
             "type": "boolean",
-            "description": "True when the runner can reuse its latest held sandbox for a new turn. Reassigned\nturns and expired or outdated sandboxes require a fresh sandbox."
+            "description": "True when the runner can reuse its latest parked sandbox for a new turn. Reassigned\nturns and expired or outdated sandboxes require a fresh sandbox."
           },
           "run_expires_at": {
             "type": "string",

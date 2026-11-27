@@ -1,5 +1,5 @@
 //! A fleet run's required fields: the fleet's name, the history it carries,
-//! whether the held sandbox resumes, whether input waits, and whose work it is.
+//! whether the parked sandbox resumes, whether input waits, and whose work it is.
 #![expect(
     clippy::unwrap_used,
     clippy::indexing_slicing,
@@ -17,19 +17,19 @@ const RUN: &str = r#"{"run_id":"l","fencing_token":1,"run_expires_at":"1970-01-0
         "inference_host":"h","base_url":null,"repository_binding":null,
         "http_origin_policies":[],"context":{"tool_window":1,"memory_checkpoint_every":1,
         "stage_chunk_threshold":0.5,"model":"m","context_cap_tokens":0}},
-        "name":"support-triage","history":[],"resume_hold":false,"inputs_waiting":true,
+        "name":"support-triage","history":[],"resume_park":false,"inputs_waiting":true,
         "owner":{"kind":"fleet","fleet_id":"f"}}"#;
 
-/// The daemon always names the fleet, its history, whether the held sandbox
+/// The daemon always names the fleet, its history, whether the parked sandbox
 /// resumes, whether input waits and whose work the run is; a run missing any
 /// of them is refused rather than read as a default.
 #[test]
-fn a_run_must_name_its_fleet_history_resume_hold_waiting_inputs_and_owner() {
+fn a_run_must_name_its_fleet_history_resume_park_waiting_inputs_and_owner() {
     let text = RUN;
     for key in [
         r#""name":"support-triage","#,
         r#","history":[]"#,
-        r#","resume_hold":false"#,
+        r#","resume_park":false"#,
         r#","inputs_waiting":true"#,
         r#",
         "owner":{"kind":"fleet","fleet_id":"f"}"#,
@@ -58,17 +58,17 @@ fn test_run_history_round_trips() {
     assert_eq!(serde_json::to_value(&payload).unwrap()["history"], turns);
 }
 
-/// A run that resumes the held sandbox says so, and round-trips.
+/// A run that resumes the parked sandbox says so, and round-trips.
 #[test]
-fn test_run_resume_hold_round_trips() {
+fn test_run_resume_park_round_trips() {
     let text = RUN;
     let fresh: RunPayload<'_> = serde_json::from_str(text).unwrap();
-    let resumed = text.replace(r#""resume_hold":false"#, r#""resume_hold":true"#);
+    let resumed = text.replace(r#""resume_park":false"#, r#""resume_park":true"#);
     let present: RunPayload<'_> = serde_json::from_str(&resumed).unwrap();
 
-    assert!(!fresh.resume_hold);
-    assert!(present.resume_hold);
-    assert_eq!(serde_json::to_value(&present).unwrap()["resume_hold"], true);
+    assert!(!fresh.resume_park);
+    assert!(present.resume_park);
+    assert_eq!(serde_json::to_value(&present).unwrap()["resume_park"], true);
 }
 
 /// A turn that does not name its sequence is refused: a saved summary's

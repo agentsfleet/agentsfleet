@@ -25,12 +25,12 @@
 //! promoting the second. A verifier that knew one would refuse every delivery
 //! between the vendor's rotation and the update of this daemon's `qstash` bag.
 
+use af_crypto::constant_time;
+use af_crypto::digest::sha256;
 use af_crypto::secret::SecretString;
 use garde::Unvalidated;
 use jsonwebtoken::{Algorithm, DecodingKey, Validation};
 use serde::Deserialize;
-use sha2::{Digest as _, Sha256};
-use subtle::ConstantTimeEq as _;
 
 use crate::error::{self, Rejected, Result};
 
@@ -214,19 +214,21 @@ pub fn verify_at(
 /// rather than decoded first: both sides are a fixed-length digest of the same
 /// alphabet, so a decode would add a failure mode without adding a check.
 ///
-/// Compared through [`subtle`], the same primitive `af_crypto::mac` compares a
-/// tag with (RULE CTM). `ct_eq` short-circuits on LENGTH and not on content,
+/// Compared through [`constant_time::eq`], the primitive `af_crypto::mac`
+/// compares a tag with (RULE CTM). It short-circuits on LENGTH and not on content,
 /// which is the property that matters: the length of a base64 digest is public,
 /// and what must not leak is how many characters of it matched.
 fn body_matches(claimed: &str, body: &[u8]) -> bool {
-    let expected = base64_url_no_pad(&Sha256::digest(body));
+    let expected = base64_url_no_pad(&sha256(body));
     // The scheduler pads the digest it signs, and its own SDKs strip the padding
     // before they compare. Accept exactly the digest, or the digest with the one
     // `=` a 32-byte hash pads to; any other tail is not the scheduler's.
     let padded = format!("{expected}=");
-    let same =
-        expected.as_bytes().ct_eq(claimed.as_bytes()) | padded.as_bytes().ct_eq(claimed.as_bytes());
-    same.unwrap_u8() == 1
+    // Both comparisons run before either answer is read, so which form
+    // matched does not leak.
+    let exact = constant_time::eq(expected.as_bytes(), claimed.as_bytes());
+    let with_pad = constant_time::eq(padded.as_bytes(), claimed.as_bytes());
+    exact || with_pad
 }
 
 /// The base64url, unpadded rendering the scheduler uses.
@@ -250,5 +252,22 @@ fn rejected(kind: &jsonwebtoken::errors::ErrorKind) -> Rejected {
         | ErrorKind::Json(_)
         | ErrorKind::Utf8(_) => Rejected::Undecodable,
         _other => Rejected::Signature,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::body_matches;
+
+    /// The scheduler's body claim, pinned to the byte: SHA-256 of the delivery,
+    /// base64url, accepted unpadded or with the one `=` it pads to.
+    #[test]
+    fn the_body_claim_is_pinned_to_the_byte() {
+        // pin test: literal is the contract
+        let claim = "LPJNul-wow4m6DsqxbninhsWHlwfp0JecwQzYpOLmCQ";
+        assert!(body_matches(claim, b"hello"));
+        assert!(body_matches(&format!("{claim}="), b"hello"));
+        assert!(!body_matches(&format!("{claim}=="), b"hello"));
+        assert!(!body_matches(claim, b"hello!"));
     }
 }

@@ -23,8 +23,8 @@ afd_api_wire.workspace = true
 afd_bus.workspace = true
 # Identifiers, the instant a row is stamped with, and the registry codes.
 af_core = { workspace = true, features = ["sqlx"] }
-# The row identifier's entropy. Held by the ledger rather than drawn per call
-# — see `Turns`.
+# The row identifier's entropy, held by the ledger rather than drawn per call
+# (see `Turns`), and the SHA-256 of a producer's payload digest.
 af_crypto.workspace = true
 # The Postgres pool the ledger lives on.
 afd_db.workspace = true
@@ -40,7 +40,6 @@ af_wire.workspace = true
 # rendering. `hex::encode` rather than a `{:02x}` loop, for the reason
 # `afd_auth::directory` gives.
 hex.workspace = true
-sha2.workspace = true
 # Database timestamp bridge.
 jiff.workspace = true
 jiff-sqlx.workspace = true

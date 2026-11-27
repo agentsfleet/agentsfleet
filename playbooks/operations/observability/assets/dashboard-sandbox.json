@@ -282,7 +282,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (outcome) (rate(agentsfleet_runner_sandbox_holds_total[$__rate_interval]))",
+          "expr": "sum by (outcome) (rate(agentsfleet_runner_sandbox_parks_total[$__rate_interval]))",
           "legendFormat": "{{outcome}}",
           "range": true,
           "datasource": {

@@ -40,10 +40,10 @@ mod turn_checkpoint;
 // seeded mutation corpus the parser must survive without panicking.
 #[path = "validation.rs"]
 mod validation;
-#[path = "validation_holds.rs"]
-mod validation_holds;
 #[path = "validation_mutation.rs"]
 mod validation_mutation;
+#[path = "validation_parked.rs"]
+mod validation_parked;
 #[path = "validation_run.rs"]
 mod validation_run;
 // The setup report admits every Definition the Definition parser admits.

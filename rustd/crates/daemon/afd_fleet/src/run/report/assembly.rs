@@ -59,7 +59,7 @@ pub(super) fn terminal<'a>(
         },
         last_turn_id: run.last_event,
         last_response: request.checkpoint.last_response.as_ref(),
-        held_until: request.held_until,
+        held_until: request.parked_until,
         durable_task_settlement: None,
         folded_through_sequence: request.folded_through_sequence,
         now,

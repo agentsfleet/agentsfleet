@@ -10,7 +10,7 @@
 
 use af_core::error_code;
 use af_core::id::Uuid7;
-use af_wire::runner::HeldFleets;
+use af_wire::runner::ParkedFleets;
 use garde::{Unvalidated, Valid};
 use sqlx::PgConnection;
 
@@ -23,14 +23,14 @@ const EVENT_HOLDS_RECONCILE: &str = "runner_holds_reconcile_failed";
 /// A runner's holds list proved inside the bounds its wire type declares, or
 /// `None`: a list past them is not proved, and holds nothing.
 #[must_use]
-pub fn prove(holds: HeldFleets<'_>) -> Option<Valid<HeldFleets<'_>>> {
+pub fn prove(holds: ParkedFleets<'_>) -> Option<Valid<ParkedFleets<'_>>> {
     Unvalidated::new(holds).validate().ok()
 }
 
 /// The fleets a proved list names. An entry inside the bounds that still is
 /// not an identifier is dropped alone.
 #[must_use]
-pub fn fleets(holds: &Valid<HeldFleets<'_>>) -> Vec<Uuid7> {
+pub fn fleets(holds: &Valid<ParkedFleets<'_>>) -> Vec<Uuid7> {
     holds
         .0
         .iter()
@@ -46,7 +46,7 @@ pub fn fleets(holds: &Valid<HeldFleets<'_>>) -> Vec<Uuid7> {
 pub(super) async fn reconcile(
     connection: &mut PgConnection,
     runner: &Uuid7,
-    holds: Option<&Valid<HeldFleets<'_>>>,
+    holds: Option<&Valid<ParkedFleets<'_>>>,
     closing: bool,
     heartbeat_interval: std::time::Duration,
 ) -> Vec<String> {
@@ -88,7 +88,7 @@ mod tests {
 
     use af_core::id::TEXT_LEN;
     use af_core::limits::MAX_WORKERS;
-    use af_wire::runner::{FLEET_ID_TEXT_BYTES, HOLDS_MAX, HeldFleets};
+    use af_wire::runner::{FLEET_ID_TEXT_BYTES, PARKED_MAX, ParkedFleets};
 
     use super::{fleets, prove};
 
@@ -98,7 +98,7 @@ mod tests {
 
     /// What a list of `entries` reads as once proved, or `None` when it is not.
     fn read(entries: &[&str]) -> Option<Vec<String>> {
-        let holds = HeldFleets(entries.iter().map(|entry| Cow::Borrowed(*entry)).collect());
+        let holds = ParkedFleets(entries.iter().map(|entry| Cow::Borrowed(*entry)).collect());
         prove(holds).map(|proved| {
             fleets(&proved)
                 .iter()
@@ -110,10 +110,10 @@ mod tests {
     #[test]
     fn test_a_list_past_its_bounds_is_not_proved() {
         assert_eq!(
-            read(&vec![FLEET; HOLDS_MAX]).map(|read| read.len()),
-            Some(HOLDS_MAX)
+            read(&vec![FLEET; PARKED_MAX]).map(|read| read.len()),
+            Some(PARKED_MAX)
         );
-        assert_eq!(read(&vec![FLEET; HOLDS_MAX + 1]), None, "past the count");
+        assert_eq!(read(&vec![FLEET; PARKED_MAX + 1]), None, "past the count");
         assert_eq!(read(&[FLEET, "not-a-fleet"]), None, "an entry too short");
         assert_eq!(read(&[]), Some(Vec::new()), "an empty list holds nothing");
     }
@@ -132,7 +132,7 @@ mod tests {
     #[test]
     fn test_the_wires_hold_bounds_are_the_cores() {
         assert_eq!(
-            HOLDS_MAX,
+            PARKED_MAX,
             usize::try_from(MAX_WORKERS).unwrap_or(usize::MAX)
         );
         assert_eq!(FLEET_ID_TEXT_BYTES, TEXT_LEN);

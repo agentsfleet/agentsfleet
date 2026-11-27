@@ -114,3 +114,32 @@ fn a_reply_binds_at_most_one_pair() {
         (None, None, Some(resumed.clone()))
     );
 }
+
+/// Each destination's digest is pinned as bytes, for the reason
+/// [`DIGEST_BEFORE_DESTINATIONS`] is: a row stored with one must hash the same
+/// when its retry arrives.
+#[test]
+fn every_destination_digest_is_pinned_to_the_byte() {
+    let resumed = resumed();
+    let to = IncomingTurn {
+        reply: Reply::To {
+            connector: CONNECTOR,
+            address: THREAD_A,
+        },
+        ..sample()
+    };
+    let inherit = IncomingTurn {
+        reply: Reply::Inherit { turn_id: &resumed },
+        ..sample()
+    };
+    // pin test: literal is the contract
+    assert_eq!(
+        to.payload_digest(),
+        "23ce0e5d0332db97b7eee3cb7a2d6750f5954553be77ff75c50a53ff612c0b27"
+    );
+    // pin test: literal is the contract
+    assert_eq!(
+        inherit.payload_digest(),
+        "13aefca13d13bd03cd3b8455a7e8f5cde849540182a1f0368747a0ca2fb1275a"
+    );
+}

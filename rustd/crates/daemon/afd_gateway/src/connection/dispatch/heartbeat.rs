@@ -14,7 +14,7 @@ impl ConnectionServices {
         request_id: NonZeroU64,
         mut request: HeartbeatRequest<'_>,
     ) -> Result<()> {
-        let held = garde::Unvalidated::new(std::mem::take(&mut request.holds)).validate()?;
+        let held = garde::Unvalidated::new(std::mem::take(&mut request.parked)).validate()?;
         let listed = holds::fleets(&held);
         self.handle.liveness.received();
         let result = self

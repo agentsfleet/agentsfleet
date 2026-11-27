@@ -21,8 +21,8 @@ schemars.workspace = true
 garde.workspace = true
 zeroize.workspace = true
 af_context.workspace = true
+# The SHA-256 a checkpoint's model and pinned digests are, among the rest.
 af_crypto.workspace = true
-sha2.workspace = true
 hex.workspace = true
 # The runner's own families: a turn's and a tool call's duration.
 afr_telemetry.workspace = true

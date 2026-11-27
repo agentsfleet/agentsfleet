@@ -7,7 +7,7 @@
 //! fails and every open process ends `Interrupted` — once, because the link
 //! drops each sender as it ends it.
 //!
-//! The stream is whatever the client's [`Transport`] dials. A call that finds
+//! The stream is whatever the client's [`ExecutorRoute`] dials. A call that finds
 //! the link closed dials once more and goes over the new link; a call already
 //! sent is never sent again, since the executor may have run it. Processes
 //! the old link carried stay `Interrupted`: the executor that ran them ended
@@ -48,12 +48,12 @@ use crate::sizes::Sizes;
 mod call;
 mod connect;
 mod link;
-pub mod transport;
+pub mod route;
 mod tree;
 
 use self::call::{Call, CallIds, Reply};
 use self::link::{Linked, start};
-use self::transport::{Stream, Transport};
+use self::route::{ExecutorRoute, ExecutorStream};
 
 /// A call too long for the executor to read, refused before it is sent: the
 /// executor would answer it by closing the connection.
@@ -66,7 +66,7 @@ const DETAIL_TOO_LONG: &str = "the call is longer than the executor reads";
 pub struct Client {
     /// What dials a link again when a call finds it closed; none for a link
     /// handed over connected, whose one stream was that one.
-    transport: Option<Box<dyn Transport>>,
+    route: Option<Box<dyn ExecutorRoute>>,
     /// The link calls go over now; replaced when a call finds it closed.
     link: Mutex<Linked>,
     ids: Arc<CallIds>,
@@ -85,17 +85,17 @@ impl Client {
     }
 
     /// A client whose first link runs over `stream`, and whose later ones
-    /// over what `transport` dials.
+    /// over what `route` dials.
     fn linked(
-        stream: Box<dyn Stream>,
-        transport: Option<Box<dyn Transport>>,
+        stream: Box<dyn ExecutorStream>,
+        route: Option<Box<dyn ExecutorRoute>>,
         deadline: Duration,
         sizes: Sizes,
     ) -> Self {
         let ids = Arc::new(CallIds::default());
         let link = Mutex::new(start(stream, &ids, sizes));
         Self {
-            transport,
+            route,
             link,
             ids,
             deadline,
@@ -109,8 +109,8 @@ impl Client {
     async fn live(&self) -> Result<Linked> {
         let mut current = self.link.lock().await;
         if !current.is_open() {
-            let transport = self.transport.as_ref().ok_or_else(error::connection_lost)?;
-            let stream = transport.dial().await.map_err(error::redial_failed)?;
+            let route = self.route.as_ref().ok_or_else(error::connection_lost)?;
+            let stream = route.dial().await.map_err(error::redial_failed)?;
             *current = start(stream, &self.ids, self.sizes);
         }
         Ok(current.clone())

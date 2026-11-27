@@ -1,5 +1,5 @@
-//! A held sandbox whose allowlisted name resolved to a new address since its
-//! run parked it: the hold is kept, and the sandbox takes the new address
+//! A parked sandbox whose allowlisted name resolved to a new address since its
+//! run parked it: the park is kept, and the sandbox takes the new address
 //! once it resumes, before the run's first command, or is given up for a
 //! fresh one when it will not.
 
@@ -16,7 +16,7 @@ use tokio::sync::mpsc;
 
 use super::EVENT_REFILL_FAILED;
 use super::tests::{Counted, NEXT_RUN_ID, released, releases, resumed, settled};
-use crate::holds::Release;
+use crate::parks::Release;
 use crate::test_support::{
     Behaviour, FLEET_ID, FakeAgent, FakeEngine, FakeResolver, NO_REFILL, Parking, RUN_ID, Rig,
     assigned, daemon, payload,
@@ -27,7 +27,7 @@ const MIRROR: &str = "mirror.example";
 const FIRST: Ipv4Addr = Ipv4Addr::new(192, 0, 2, 1);
 const MOVED: Ipv4Addr = Ipv4Addr::new(192, 0, 2, 7);
 
-/// A rig with room for holds over `engine`, whose resolver answers the
+/// A rig with room for parks over `engine`, whose resolver answers the
 /// mirror at its first address, then at the one it moved to.
 fn moving(engine: FakeEngine) -> (Rig, Counted) {
     let counted = Counted::of(&engine);
@@ -39,7 +39,7 @@ fn moving(engine: FakeEngine) -> (Rig, Counted) {
         FakeAgent::new(Behaviour::Answer),
         resolver,
     );
-    rig.lessee.holds.resize(2);
+    rig.lessee.parks.resize(2);
     (rig, counted)
 }
 
@@ -55,10 +55,10 @@ async fn park_then_resume(rig: &Rig) {
         .unwrap();
 }
 
-/// The name moved, so the hold is kept: the held sandbox resumes, is told the
+/// The name moved, so the park is kept: the parked sandbox resumes, is told the
 /// mirror's new address, and serves the run. No sandbox is built fresh.
 #[tokio::test(start_paused = true)]
-async fn a_name_that_moved_keeps_the_hold_and_takes_its_new_address() {
+async fn a_name_that_moved_keeps_the_park_and_takes_its_new_address() {
     let (told, mut reallowed) = mpsc::unbounded_channel();
     let engine = FakeEngine {
         reallowed: Some(told),
@@ -71,7 +71,7 @@ async fn a_name_that_moved_keeps_the_hold_and_takes_its_new_address() {
     assert_eq!(
         counted.read(),
         (1, 2, 1, 0),
-        "one sandbox, refilled and held"
+        "one sandbox, refilled and parked"
     );
     let (allowlist, resumed) = reallowed.recv().await.unwrap();
     assert_eq!(allowlist.addresses(), [MOVED]);
@@ -79,11 +79,11 @@ async fn a_name_that_moved_keeps_the_hold_and_takes_its_new_address() {
     assert!(reallowed.try_recv().is_err(), "the first run built fresh");
 }
 
-/// A held sandbox that will not take the new address is given up: the log
-/// names the refill and its reason, the hold ends as a failed resume, and the
+/// A parked sandbox that will not take the new address is given up: the log
+/// names the refill and its reason, the park ends as a failed resume, and the
 /// run runs in a fresh sandbox built to the new address.
 #[tokio::test(start_paused = true)]
-async fn a_hold_that_refuses_its_new_address_falls_back_fresh() {
+async fn a_park_that_refuses_its_new_address_falls_back_fresh() {
     let capture = Capture::install();
     let engine = FakeEngine {
         parking: Parking::RefusesReallow,

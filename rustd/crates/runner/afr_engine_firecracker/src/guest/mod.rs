@@ -95,7 +95,7 @@ impl GuestEntry {
 /// A listener the guest's executor accepts connections on, each with the
 /// context identifier of its peer.
 #[async_trait::async_trait]
-pub trait Accept: Send {
+pub trait PeerConnections: Send {
     /// What one accepted connection is.
     type Stream: Send;
 
@@ -111,7 +111,7 @@ pub trait Accept: Send {
 ///
 /// # Errors
 /// The listener failed.
-pub async fn host_connection<A: Accept>(listener: &mut A) -> io::Result<A::Stream> {
+pub async fn host_connection<A: PeerConnections>(listener: &mut A) -> io::Result<A::Stream> {
     loop {
         let (stream, peer) = listener.accept().await?;
         if peer == HOST_CID {
@@ -135,14 +135,14 @@ mod tests {
 
     use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _, DuplexStream};
 
-    use super::{Accept, HOST_CID, host_connection};
+    use super::{HOST_CID, PeerConnections, host_connection};
 
     /// A listener answering the connections it was given, in order, each
     /// with the peer identifier it was given.
     struct Fake(VecDeque<(DuplexStream, u32)>);
 
     #[async_trait::async_trait]
-    impl Accept for Fake {
+    impl PeerConnections for Fake {
         type Stream = DuplexStream;
 
         async fn accept(&mut self) -> io::Result<(DuplexStream, u32)> {

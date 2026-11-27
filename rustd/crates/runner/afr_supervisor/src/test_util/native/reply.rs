@@ -25,7 +25,7 @@ pub(super) fn answer(healthy: &Healthy, message: &Up<'_>) -> Option<Value> {
             request,
         } => json!({"type":"report_ack", "request_id":request_id,
         "run_id":request.run_id, "answer":{"status":"ok", "response":af_wire::report::ReportResponse {
-            ok: true, hold: request.held_until.map(|expires_at| af_wire::report::AcceptedHold {
+            ok: true, park: request.parked_until.map(|expires_at| af_wire::report::AcceptedPark {
                 run_id: request.run_id.to_string(), fencing_token: request.fencing_token, expires_at,
             }),
         }}}),

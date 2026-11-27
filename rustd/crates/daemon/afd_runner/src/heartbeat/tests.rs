@@ -28,7 +28,7 @@ fn beat_body(sandboxes_max: u64) -> String {
             "sandboxes_max": sandboxes_max,
         },
         "selftest": null,
-        "holds": [],
+        "parked": [],
         "closing": false,
         "host": {},
     })

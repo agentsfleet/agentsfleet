@@ -16,7 +16,7 @@ mod facts;
 mod snapshots;
 pub(crate) mod volume;
 pub use self::bound::{AdmissionBound, Overcommitted, Resource};
-pub use self::egress::{EgressPlan, Enforcer, Generation, enforce, until_in_force};
+pub use self::egress::{EgressEnforcer, EgressPlan, Generation, enforce, until_in_force};
 pub use self::facts::{Cap, Capabilities, Environment, Granted, ParkMode, ResourceFacts, Root};
 pub use self::snapshots::{SnapshotRef, Snapshots};
 

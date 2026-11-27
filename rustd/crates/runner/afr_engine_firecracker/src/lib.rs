@@ -53,4 +53,4 @@ pub use self::error::{Error, MECHANISM_KVM, Result};
 pub use self::kvm::{KVM_PATH, admit, probe};
 pub use self::lock::ImageLock;
 #[cfg(target_os = "linux")]
-pub use self::vsock::VsockTransport;
+pub use self::vsock::VsockRoute;

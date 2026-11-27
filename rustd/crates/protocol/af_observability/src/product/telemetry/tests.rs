@@ -256,3 +256,17 @@ fn should_never_give_two_runs_the_same_deduplication_key() {
     assert_ne!(key_of(FLEET, ENTRY), key_of("other-fleet", ENTRY));
     assert_ne!(key_of("ab", "c"), key_of("a", "bc"));
 }
+
+/// The deduplication key is pinned to the byte: ingestion has already stored
+/// the keys earlier builds sent, and a retry after an upgrade must still be
+/// dropped as the duplicate it is.
+#[test]
+fn should_pin_the_deduplication_key_to_the_byte() {
+    // pin test: literal is the contract
+    assert_eq!(
+        properties(&completed())
+            .get("$insert_id")
+            .and_then(Value::as_str),
+        Some("22f1af7c2ce18c00231f966cece222233213d37610b17478ce861154f3885d87")
+    );
+}

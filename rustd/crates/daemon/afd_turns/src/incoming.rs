@@ -2,8 +2,8 @@
 //! on, where its answer goes, and the digest a retry is checked against.
 
 use af_core::id::Uuid7;
+use af_crypto::digest::Sha256;
 use af_wire::turn::TurnKind;
-use sha2::{Digest as _, Sha256};
 
 /// Who is asking a fleet to run something.
 ///
@@ -165,7 +165,7 @@ impl IncomingTurn<'_> {
         let mut hasher = Sha256::new();
         let mut absorb = |part: &str| {
             hasher.update(part.as_bytes());
-            hasher.update([0u8]);
+            hasher.update(&[0u8]);
         };
         for part in [
             self.actor,
@@ -188,6 +188,6 @@ impl IncomingTurn<'_> {
                     .for_each(absorb);
             }
         }
-        hex::encode(hasher.finalize())
+        hex::encode(hasher.finish())
     }
 }

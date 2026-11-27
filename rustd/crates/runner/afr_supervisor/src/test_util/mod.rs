@@ -148,7 +148,7 @@ impl Healthy {
                 | Verb::TriggerRemove
                 | Verb::Access,
             )
-            | None => value(&ReportResponse { ok: true, hold: None }),
+            | None => value(&ReportResponse { ok: true, park: None }),
         }
     }
 
@@ -168,7 +168,7 @@ impl Healthy {
             degraded: false,
             degraded_reason: None,
             selftest_requested: false,
-            release_holds: Vec::new(),
+            release_parked: Vec::new(),
         })
     }
 

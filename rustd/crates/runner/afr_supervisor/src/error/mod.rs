@@ -295,7 +295,7 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 /// A supervisor failure crosses the engine seam whole when a volume the
 /// supervisor implements raises it.
-impl afr_engine::Failure for Error {
+impl afr_engine::EngineFailure for Error {
     fn seam(&self) -> Option<&afr_engine::Error> {
         match self.kind() {
             ErrorKind::Egress { source } => Some(source),

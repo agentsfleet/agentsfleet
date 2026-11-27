@@ -1,14 +1,14 @@
-//! Sandboxes held between a fleet's runs, so its next run continues where
+//! Sandboxes parked between a fleet's runs, so its next run continues where
 //! the last one stopped instead of in an empty workspace.
 //!
 //! A run that ends processed parks its sandbox here, frozen, for the fleet's
 //! next run: the files it wrote, the processes it left running and whatever
-//! it cached all stay. One task owns every hold and a run reaches it through
+//! it cached all stay. One task owns every park and a run reaches it through
 //! a channel, the shape `afr_engine::WarmSlots` uses, so no lock guards the
-//! holds and a sandbox moves by value from the run that used it to the one
+//! parks and a sandbox moves by value from the run that used it to the one
 //! that takes it.
 //!
-//! A hold ends when its idle window runs out, when the runner's last free
+//! A park ends when its idle window runs out, when the runner's last free
 //! worker would be consumed, when fewer workers leave room for it, when the daemon names its fleet, when it no longer
 //! carries the fleet's latest run ([`Release::Superseded`]), and once the
 //! runner takes no new run. Expiry is checked on every message, and the
@@ -21,7 +21,7 @@ use std::time::Duration;
 use af_core::clock::Clock;
 use af_core::id::Uuid7;
 use afr_engine::{Limits, Parked};
-use afr_telemetry::labels::SandboxHold;
+use afr_telemetry::labels::SandboxPark;
 use jiff::Timestamp;
 use tokio::sync::{Notify, mpsc, oneshot};
 
@@ -35,10 +35,10 @@ pub(crate) use occupancy::Occupant;
 pub(crate) use self::built_under::BuiltUnder;
 use self::keeper::Keeper;
 
-/// What a held sandbox must match to serve a run. A run that differs in
-/// any of these gets a fresh sandbox, and the hold is destroyed.
+/// What a parked sandbox must match to serve a run. A run that differs in
+/// any of these gets a fresh sandbox, and the park is destroyed.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct HoldKey {
+pub(crate) struct ParkKey {
     /// The fleet it served.
     pub(crate) fleet: Uuid7,
     /// The workspace that fleet belongs to.
@@ -50,18 +50,18 @@ pub(crate) struct HoldKey {
     pub(crate) policy: BuiltUnder,
 }
 
-/// Why a hold ended without its fleet's next run taking it.
+/// Why a park ended without its fleet's next run taking it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Release {
     /// Its idle window ran out.
     Expired,
     /// The runner's last free worker took a run for another fleet.
     Saturated,
-    /// The runner held as many as it has workers, and this was the oldest.
+    /// The runner parked as many as it has workers, and this was the oldest.
     Capped,
     /// The next run wanted another size or policy.
     Mismatch,
-    /// The daemon named its fleet: halted, deleted, or held by another
+    /// The daemon named its fleet: halted, deleted, or parked on another
     /// runner since.
     Inactive,
     /// The runner takes no new run, so no run could take it: running
@@ -79,40 +79,40 @@ pub(crate) enum Release {
 }
 
 impl Release {
-    /// The label the runner's holds family counts it under.
-    pub(crate) const fn outcome(self) -> SandboxHold {
+    /// The label the runner's parks family counts it under.
+    pub(crate) const fn outcome(self) -> SandboxPark {
         match self {
-            Self::Expired => SandboxHold::Expired,
-            Self::Saturated => SandboxHold::Saturated,
-            Self::Capped => SandboxHold::Capped,
-            Self::Mismatch => SandboxHold::Mismatch,
-            Self::Inactive => SandboxHold::Inactive,
-            Self::Shutdown => SandboxHold::Shutdown,
-            Self::ThawFailed => SandboxHold::ThawFailed,
-            Self::Superseded => SandboxHold::Superseded,
+            Self::Expired => SandboxPark::Expired,
+            Self::Saturated => SandboxPark::Saturated,
+            Self::Capped => SandboxPark::Capped,
+            Self::Mismatch => SandboxPark::Mismatch,
+            Self::Inactive => SandboxPark::Inactive,
+            Self::Shutdown => SandboxPark::Shutdown,
+            Self::ThawFailed => SandboxPark::ThawFailed,
+            Self::Superseded => SandboxPark::Superseded,
         }
     }
 }
 
 /// A sandbox its fleet's next run took, still frozen, and how long it was
-/// held.
+/// parked.
 #[derive(Debug)]
 pub(crate) struct Taken {
     /// The sandbox, for the taker to thaw.
     pub(crate) sandbox: Box<dyn Parked>,
     /// How long it waited.
-    pub(crate) held: Duration,
+    pub(crate) parked: Duration,
 }
 
-/// What a run asks the task that owns the holds.
+/// What a run asks the task that owns the parks.
 #[derive(Debug)]
 enum Request {
     Take {
-        key: HoldKey,
+        key: ParkKey,
         reply: oneshot::Sender<Option<Taken>>,
     },
     Park {
-        key: HoldKey,
+        key: ParkKey,
         run: Uuid7,
         sandbox: Box<dyn Parked>,
         reply: oneshot::Sender<Stowed>,
@@ -146,29 +146,29 @@ enum Request {
     },
 }
 
-/// The runner's held sandboxes, shared by every worker.
+/// The runner's parked sandboxes, shared by every worker.
 #[derive(Debug, Clone)]
-pub(crate) struct Holds {
+pub(crate) struct Parks {
     requests: mpsc::UnboundedSender<Request>,
     saturated: Arc<Notify>,
 }
 
-/// What a park answers: the hold's lapse, or the sandbox back.
+/// What a park answers: the park's lapse, or the sandbox back.
 #[derive(Debug)]
 #[must_use]
 pub(crate) enum Stowed {
-    /// Held for the fleet's next run until then.
-    Held(Timestamp),
-    /// Not held: the keeper is closed or has no room. The release is
+    /// Parked for the fleet's next run until then.
+    Parked(Timestamp),
+    /// Not parked: the keeper is closed or has no room. The release is
     /// already counted; the sandbox, still parked, is the run's to end.
     Refused(Box<dyn Parked>),
     /// The keeper stopped with the request, and the sandbox went with it.
     Gone,
 }
 
-impl Holds {
-    /// Starts the task that owns every hold, timing each by `clock`. It holds
-    /// nothing until [`Holds::resize`] says how many workers the runner has.
+impl Parks {
+    /// Starts the task that owns every park, timing each by `clock`. It parks
+    /// nothing until [`Parks::resize`] says how many workers the runner has.
     pub(crate) fn start(clock: Arc<dyn Clock>) -> Self {
         let (requests, received) = mpsc::unbounded_channel();
         let saturated = Arc::new(Notify::new());
@@ -179,7 +179,7 @@ impl Holds {
         }
     }
 
-    /// [`Holds::start`], counting into `recorder` what the task counts: it is
+    /// [`Parks::start`], counting into `recorder` what the task counts: it is
     /// spawned, so a test's own recording scope never reaches it.
     #[cfg(test)]
     pub(crate) fn recording(
@@ -196,7 +196,7 @@ impl Holds {
         }
     }
 
-    /// Ends every hold and holds nothing more, for a runner that takes no new
+    /// Ends every park and parks nothing more, for a runner that takes no new
     /// run: no run could take one. A later park hands its sandbox back to
     /// its run, which kills it and releases it, and the next list asked for
     /// is empty.
@@ -204,20 +204,20 @@ impl Holds {
         let _stopped = self.requests.send(Request::Close);
     }
 
-    /// The fleet's held sandbox when `key` matches it whole, still frozen. A
-    /// hold that differs is destroyed, and the run builds a fresh one.
-    pub(crate) async fn take(&self, key: &HoldKey) -> Option<Taken> {
+    /// The fleet's parked sandbox when `key` matches it whole, still frozen. A
+    /// park that differs is destroyed, and the run builds a fresh one.
+    pub(crate) async fn take(&self, key: &ParkKey) -> Option<Taken> {
         let (reply, answer) = oneshot::channel();
         let key = key.clone();
         self.requests.send(Request::Take { key, reply }).ok()?;
         answer.await.ok().flatten()
     }
 
-    /// Holds `sandbox`, already frozen, for `key`'s fleet, and answers when
-    /// the hold lapses. A sandbox the keeper will not hold comes back, its
+    /// Parks `sandbox`, already frozen, for `key`'s fleet, and answers when
+    /// the park lapses. A sandbox the keeper will not park comes back, its
     /// release logged and counted, for the run to kill now and release
     /// after its report.
-    pub(crate) async fn park(&self, key: HoldKey, run: Uuid7, sandbox: Box<dyn Parked>) -> Stowed {
+    pub(crate) async fn park(&self, key: ParkKey, run: Uuid7, sandbox: Box<dyn Parked>) -> Stowed {
         let (reply, answer) = oneshot::channel();
         let parked = Request::Park {
             key,
@@ -236,13 +236,13 @@ impl Holds {
         answer.await.unwrap_or(Stowed::Gone)
     }
 
-    /// Ends `fleet`'s hold, if the runner has one, for `reason`.
+    /// Ends `fleet`'s park, if the runner has one, for `reason`.
     pub(crate) fn release(&self, fleet: Uuid7, reason: Release) {
         let _stopped = self.requests.send(Request::Release { fleet, reason });
     }
 
-    /// Ends the hold `run` parked, if it is still held, because the daemon
-    /// settled `run` without its report. A later run's hold of the same
+    /// Ends the park `run` parked, if it is still parked, because the daemon
+    /// settled `run` without its report. A later run's park of the same
     /// fleet stays: that run took the sandbox and parked it again.
     pub(crate) fn supersede(&self, run: Uuid7) {
         let _stopped = self.requests.send(Request::Supersede { run });
@@ -253,19 +253,19 @@ impl Holds {
         let _stopped = self.requests.send(Request::Accepted { run, until });
     }
 
-    /// Counts `fleet`'s hold released for `reason` when its sandbox went some
+    /// Counts `fleet`'s park released for `reason` when its sandbox went some
     /// other way: it would not resume, and its engine destroyed it.
     pub(crate) fn count_release(fleet: &Uuid7, reason: Release) {
         keeper::released(fleet, reason);
     }
 
     /// Sets how many workers the runner has, preserving one free worker
-    /// after busy workers and held sandboxes; the oldest past that go.
+    /// after busy workers and parked sandboxes; the oldest past that go.
     pub(crate) fn resize(&self, workers: usize) {
         let _stopped = self.requests.send(Request::Resize { workers });
     }
 
-    /// Every fleet the runner holds a sandbox for, after expiring the lapsed.
+    /// Every fleet the runner parks a sandbox for, after expiring the lapsed.
     pub(crate) async fn fleets(&self) -> Vec<Uuid7> {
         let (reply, answer) = oneshot::channel();
         if self.requests.send(Request::Fleets { reply }).is_err() {
@@ -274,13 +274,13 @@ impl Holds {
         answer.await.unwrap_or_default()
     }
 
-    /// Rung when holds were released because the runner ran out of free
+    /// Rung when parks were released because the runner ran out of free
     /// workers, so the daemon hears at once rather than at the next tick.
     pub(crate) fn saturated(&self) -> &Notify {
         &self.saturated
     }
 
-    /// Destroys every hold and waits until each is gone.
+    /// Destroys every park and waits until each is gone.
     pub(crate) async fn shutdown(&self) {
         let (done, finished) = oneshot::channel();
         if self.requests.send(Request::Shutdown { done }).is_ok() {

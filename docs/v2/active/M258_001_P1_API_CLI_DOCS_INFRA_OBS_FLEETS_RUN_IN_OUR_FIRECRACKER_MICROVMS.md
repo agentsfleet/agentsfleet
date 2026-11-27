@@ -225,7 +225,7 @@ Checkout fetches into the host mirror with the token, checks the tree out into a
 
 **Today's file checkpoint path keeps working, unchanged, until M258_002 replaces it.** It scans the workspace, encrypts 8 MiB chunks, uploads them to R2 once each, and keeps manifests in Postgres (`docs/architecture/checkpoints.md:42-43,111,119-121,129`). Only its byte source moves, from the host path to `export` and `import`; §7's Dimension 7.6 proves it on Firecracker.
 
-**(4) Transport.** The executor client speaks the same JSON lines over any byte stream a `Transport` dials. It redials once when a call finds the link closed. Bubblewrap dials its socket pair once, Firecracker dials vsock after every boot, and a process the old link carried reads `Interrupted` (`afr_executor/src/client/mod.rs:1-8`).
+**(4) Transport.** The executor client speaks the same JSON lines over any byte stream an `ExecutorRoute` dials. It redials once when a call finds the link closed. Bubblewrap dials its socket pair once, Firecracker dials vsock after every boot, and a process the old link carried reads `Interrupted` (`afr_executor/src/client/mod.rs:1-8`).
 
 - **Dimension 3.1** — ✅ DONE — files cross with no host path → Test `test_import_then_export_returns_the_same_tree` (unit, unsandboxed engine). A fixture tree with modes, relative links and an empty directory is imported. The exported tree's SHA-256 digest equals the imported one.
 - **Dimension 3.2** — ✅ DONE — nothing lands outside the workspace → Test `test_an_import_entry_leaving_its_root_is_refused` (unit, `afr_executor`). `../x`, an absolute link and a link out of `/workspace` are each refused, and nothing is written.

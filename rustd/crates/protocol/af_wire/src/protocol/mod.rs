@@ -31,7 +31,7 @@ pub const MESSAGE_BYTES_MAX: usize = 32 * 1024 * 1024;
 /// person wrote, and its memory pool is sized for frames this large.
 pub const CONTROL_MESSAGE_BYTES_MAX: usize = 2 * 1024 * 1024;
 /// The host worker bound also limits running runs and renewal entries.
-pub const RUNS_MAX: usize = crate::runner::HOLDS_MAX;
+pub const RUNS_MAX: usize = crate::runner::PARKED_MAX;
 /// Pending request identifiers retained by one session.
 pub const PENDING_MAX: usize = 256;
 

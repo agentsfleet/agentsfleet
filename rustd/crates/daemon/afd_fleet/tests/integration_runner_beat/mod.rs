@@ -74,7 +74,7 @@ async fn test_the_first_beat_reports_and_comes_online() {
     let beat = HeartbeatRequest {
         capability_report: Some(capable()),
         selftest: None,
-        holds: af_wire::runner::HeldFleets::default(),
+        parked: af_wire::runner::ParkedFleets::default(),
         closing: false,
         host: af_wire::runner::HostFacts::default(),
     };
@@ -189,7 +189,7 @@ async fn test_an_out_of_bounds_report_does_not_fail_the_beat() {
     let beat = HeartbeatRequest {
         capability_report: Some(unreadable),
         selftest: None,
-        holds: af_wire::runner::HeldFleets::default(),
+        parked: af_wire::runner::ParkedFleets::default(),
         closing: false,
         host: af_wire::runner::HostFacts::default(),
     };
@@ -245,7 +245,7 @@ async fn test_optional_heartbeat_failures_still_land_liveness() {
             sandbox_tier: Cow::Borrowed("dev_none"),
             network_policy: Cow::Borrowed("allow_all"),
         }),
-        holds: af_wire::runner::HeldFleets::default(),
+        parked: af_wire::runner::ParkedFleets::default(),
         closing: false,
         host: af_wire::runner::HostFacts::default(),
     };

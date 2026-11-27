@@ -11,12 +11,9 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use aws_lc_rs::encoding::AsDer as _;
-use aws_lc_rs::rand::SystemRandom;
-use aws_lc_rs::signature::{ECDSA_P256_SHA256_ASN1_SIGNING, EcdsaKeyPair, KeyPair as _};
+use af_crypto::signature::testing::EcdsaP256Signer;
 use base64::Engine as _;
 use serde_json::{Value, json};
-use sha2::{Digest as _, Sha256};
 
 use super::{Manifest, Mounter, Release, Toolbox, Toolboxes};
 use crate::error::Result;
@@ -27,25 +24,23 @@ pub(crate) const RUNNER: &str = "9.9.9";
 pub(crate) const ARCH: &str = "arm64";
 
 /// A release key the suite signs with.
-pub(crate) struct Signer(EcdsaKeyPair);
+pub(crate) struct Signer(EcdsaP256Signer);
 
 impl Signer {
     /// A fresh P-256 key.
     pub(crate) fn new() -> Self {
-        Self(EcdsaKeyPair::generate(&ECDSA_P256_SHA256_ASN1_SIGNING).unwrap())
+        Self(EcdsaP256Signer::generate())
     }
 
     /// The check verification makes on [`ARCH`] for [`RUNNER`], against this key.
     pub(crate) fn release(&self) -> Release {
-        let key = self.0.public_key().as_der().unwrap();
-        Release::signed_by(key.as_ref(), RUNNER).on(ARCH)
+        Release::signed_by(&self.0.public_key_der(), RUNNER).on(ARCH)
     }
 
     /// `manifest`'s signature, as `cosign sign-blob` writes it: base64 DER.
     pub(crate) fn sign(&self, manifest: &[u8]) -> Vec<u8> {
-        let signature = self.0.sign(&SystemRandom::new(), manifest).unwrap();
         base64::engine::general_purpose::STANDARD
-            .encode(signature.as_ref())
+            .encode(self.0.sign(manifest))
             .into_bytes()
     }
 
@@ -58,7 +53,7 @@ impl Signer {
 
 /// The SHA-256 of `bytes`, lowercase hexadecimal.
 pub(crate) fn sha256(bytes: &[u8]) -> String {
-    hex::encode(Sha256::digest(bytes))
+    hex::encode(af_crypto::digest::sha256(bytes))
 }
 
 /// The fields a release records for `image`, built for [`ARCH`] and serving

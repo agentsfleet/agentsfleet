@@ -36,7 +36,7 @@ pub struct EgressPlan<'a> {
 
 /// What holds a sandbox to a plan, read back from its own mechanism.
 #[async_trait::async_trait]
-pub trait Enforcer: Send + Sync {
+pub trait EgressEnforcer: Send + Sync {
     /// Holds the sandbox to `plan` from now on.
     ///
     /// # Errors
@@ -58,7 +58,7 @@ pub trait Enforcer: Send + Sync {
 /// # Errors
 /// The plan is stale, the mechanism refused it, or it never read back.
 pub async fn enforce(
-    enforcer: &mut dyn Enforcer,
+    enforcer: &mut dyn EgressEnforcer,
     plan: EgressPlan<'_>,
     within: Duration,
 ) -> Result<()> {
@@ -80,7 +80,7 @@ pub async fn enforce(
 /// # Errors
 /// The mechanism could not be read, or never held `generation` in time.
 pub async fn until_in_force(
-    enforcer: &dyn Enforcer,
+    enforcer: &dyn EgressEnforcer,
     generation: Generation,
     within: Duration,
 ) -> Result<()> {

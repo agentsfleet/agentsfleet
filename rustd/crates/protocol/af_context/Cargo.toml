@@ -18,7 +18,9 @@ garde.workspace = true
 hex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-sha2.workspace = true
+# The checkpoint's source digest chain, SHA-256 through the workspace's one
+# cryptographic home.
+af_crypto.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 

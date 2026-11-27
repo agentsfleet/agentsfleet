@@ -37,7 +37,7 @@ impl guffbolt::Model for ObservingModel {
     }
 
     fn stream<'a>(&'a self, request: Request<'a>) -> BoxStream<'a, af_providers::Result<Chunk>> {
-        // The retired warm hold is the one park; the restore parks nothing,
+        // The retired warm park is the one park; the restore parks nothing,
         // and nothing resumes.
         assert_eq!(self.parked.load(Ordering::SeqCst), 1);
         assert_eq!(self.resumed.load(Ordering::SeqCst), 0);

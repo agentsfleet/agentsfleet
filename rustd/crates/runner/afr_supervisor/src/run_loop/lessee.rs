@@ -10,8 +10,8 @@ use afr_engine::{Engine, Limits};
 
 use crate::client::ControlPlane;
 use crate::halt::Halt;
-use crate::holds::Holds;
 use crate::identity::Whoami;
+use crate::parks::Parks;
 use crate::workspace_clone::Mirrors;
 
 /// Everything a run needs, shared by every worker.
@@ -33,8 +33,8 @@ pub(crate) struct Lessee {
     pub(crate) limits: Limits,
     /// The wall clock the daemon's run deadlines are written in.
     pub(crate) clock: Arc<dyn Clock>,
-    /// Sandboxes held for their fleets' next runs.
-    pub(crate) holds: Holds,
+    /// Sandboxes parked for their fleets' next runs.
+    pub(crate) parks: Parks,
     /// How the runner stops.
     pub(crate) halt: Halt,
     /// Which runner this is, for every run's span.

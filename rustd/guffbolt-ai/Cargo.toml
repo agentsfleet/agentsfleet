@@ -25,8 +25,8 @@ wire = [
     "dep:hex",
     "dep:http",
     "dep:httpdate",
+    "dep:aws-lc-rs",
     "dep:rig-core",
-    "dep:sha2",
     "dep:thiserror",
     "dep:tiktoken-rs",
     "dep:tokio",
@@ -98,8 +98,11 @@ httpdate = { workspace = true, optional = true }
 # assembles and the reasoning it carries back. Pinned exactly in the
 # workspace: rig's minors break their API.
 rig-core = { workspace = true, optional = true }
-# The digest that binds an input count to the request it measured.
-sha2 = { workspace = true, optional = true }
+# The SHA-256 that binds an input count to the request it measured, and the
+# route and model digests a calibration reports. AWS-LC, the one backend the
+# agentsfleet workspace links, called directly because this crate is published
+# alone and depends on no workspace crate.
+aws-lc-rs = { workspace = true, optional = true }
 # The wire failures' kinds.
 thiserror = { workspace = true, optional = true }
 # Input token counts that bound each call against its context window.

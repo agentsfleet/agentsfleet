@@ -16,6 +16,8 @@
 mod aad;
 #[path = "checkpoint.rs"]
 mod checkpoint;
+#[path = "digest.rs"]
+mod digest;
 #[path = "entropy_mock.rs"]
 mod entropy_mock;
 #[path = "entropy_uuid7.rs"]
@@ -32,6 +34,8 @@ mod known_answer;
 mod mac;
 #[path = "secret.rs"]
 mod secret;
+#[path = "signature.rs"]
+mod signature;
 #[path = "stored_format.rs"]
 mod stored_format;
 mod turn_checkpoint;

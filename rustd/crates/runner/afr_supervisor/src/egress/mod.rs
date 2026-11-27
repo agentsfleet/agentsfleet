@@ -126,7 +126,7 @@ impl Egress {
 }
 
 /// One run's egress, resolved: what its sandbox is built to reach, and what
-/// a held sandbox must have been built to reach to serve it.
+/// a parked sandbox must have been built to reach to serve it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Bound {
     /// The host's own network.
@@ -169,7 +169,7 @@ impl Bound {
     }
 }
 
-/// What a sandbox was built to reach, by name: what a held sandbox is filed
+/// What a sandbox was built to reach, by name: what a parked sandbox is filed
 /// under, so a run whose hosts resolved to new addresses still finds it and
 /// the sandbox takes the new addresses in place.
 #[derive(Debug, Clone, PartialEq, Eq)]

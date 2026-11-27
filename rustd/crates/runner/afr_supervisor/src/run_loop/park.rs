@@ -1,8 +1,8 @@
-//! A run's side of a held sandbox: the key it files and finds a hold under,
-//! taking the fleet's hold before a fresh sandbox is built, and parking the
+//! A run's side of a parked sandbox: the key it files and finds a park under,
+//! taking the fleet's park before a fresh sandbox is built, and parking the
 //! sandbox when the run ends processed instead of destroying it.
 //!
-//! A held sandbox keeps the repositories the last run left exactly as they
+//! A parked sandbox keeps the repositories the last run left exactly as they
 //! are, its uncommitted edits and local commits with them. The host never
 //! writes into, or reads, a working copy a tenant has had write access to:
 //! the first checkout is safe only because the host made the directory it
@@ -14,16 +14,16 @@ use af_core::clock::saturating_millis;
 use af_core::error_code::ErrorCode;
 use af_observability::semconv::ATTR_SANDBOX_REUSED;
 use afr_engine::{Limits, Parked, Sandbox, SandboxState};
-use afr_telemetry::labels::SandboxHold;
+use afr_telemetry::labels::SandboxPark;
 use afr_telemetry::record;
 use jiff::Timestamp;
 
 use super::Run;
 use crate::egress::Bound;
-use crate::holds::{BuiltUnder, HoldKey, Holds, Release, Stowed, Taken};
+use crate::parks::{BuiltUnder, ParkKey, Parks, Release, Stowed, Taken};
 use crate::report::Ending;
 
-/// How long a resumed sandbox's executor has to answer before the hold is
+/// How long a resumed sandbox's executor has to answer before the park is
 /// given up for a fresh sandbox.
 const RESUME_ANSWER_WAIT: Duration = Duration::from_secs(2);
 const EVENT_REUSED: &str = "sandbox_reused";
@@ -40,16 +40,16 @@ const WORKSPACE_TOP: &str = ".";
 /// Why a resumed sandbox is given up when its executor does not answer.
 const DETAIL_SILENT: &str = "the resumed sandbox's executor did not answer";
 
-/// The sandbox a run ran in, and the key it would be held under.
+/// The sandbox a run ran in, and the key it would be parked under.
 #[derive(Debug)]
 pub(super) struct Kept {
     pub(super) recovery: Option<super::recovery::State>,
     pub(super) sandbox: Box<dyn Sandbox>,
-    pub(super) key: HoldKey,
+    pub(super) key: ParkKey,
 }
 
 /// What a run's work hands back: how it ended, and the sandbox it ran in,
-/// for the run to hold or destroy once its cut and its report decide.
+/// for the run to park or destroy once its cut and its report decide.
 #[derive(Debug)]
 pub(super) struct Worked {
     pub(super) ending: Ending,
@@ -62,10 +62,10 @@ pub(super) struct Worked {
 #[derive(Debug)]
 #[must_use]
 pub(super) enum Fate {
-    /// No sandbox to hold or release.
+    /// No sandbox to park or release.
     Gone,
     /// Parked for the fleet's next run, until then.
-    Held(Timestamp),
+    Parked(Timestamp),
     /// Killed, its disk, cgroup and egress waiting for the release.
     Killed(Box<dyn Sandbox>),
     /// Parked, but the keeper had no room for it; destroyed at the release.
@@ -73,10 +73,10 @@ pub(super) enum Fate {
 }
 
 impl Fate {
-    /// When the hold lapses, for the report to carry.
-    pub(super) const fn held_until(&self) -> Option<Timestamp> {
+    /// When the park lapses, for the report to carry.
+    pub(super) const fn parked_until(&self) -> Option<Timestamp> {
         match self {
-            Self::Held(until) => Some(*until),
+            Self::Parked(until) => Some(*until),
             Self::Gone | Self::Killed(_) | Self::Unfiled(_) => None,
         }
     }
@@ -91,8 +91,8 @@ impl From<Ending> for Worked {
 impl Run<'_> {
     /// The key this run's sandbox, enforcing `limits` and reaching what
     /// `bound` admits, is filed and found under.
-    pub(super) fn hold_key(&self, limits: Limits, bound: &Bound) -> HoldKey {
-        HoldKey {
+    pub(super) fn park_key(&self, limits: Limits, bound: &Bound) -> ParkKey {
+        ParkKey {
             fleet: self.ids.fleet.clone(),
             workspace: self.payload.event.workspace_id.to_string(),
             limits,
@@ -101,20 +101,20 @@ impl Run<'_> {
     }
 
     /// The fleet's parked sandbox, resumed, confined to what `bound` admits
-    /// and answering, or none. A hold the run was not told to resume is
+    /// and answering, or none. A park the run was not told to resume is
     /// ended, and so is one that will not resume, will not take `bound`'s
     /// addresses, or whose executor stays silent; the run builds a fresh one.
-    pub(super) async fn revive(&self, key: &HoldKey, bound: &Bound) -> Option<Box<dyn Sandbox>> {
-        let holds = &self.lessee.holds;
-        if !self.payload.resume_hold {
-            // The daemon does not record this runner's hold as the fleet's
+    pub(super) async fn revive(&self, key: &ParkKey, bound: &Bound) -> Option<Box<dyn Sandbox>> {
+        let parks = &self.lessee.parks;
+        if !self.payload.resume_park {
+            // The daemon does not record this runner's park as the fleet's
             // latest run: another runner ran the fleet since, or this event
-            // is a redelivery whose first attempt the hold may carry.
-            holds.release(key.fleet.clone(), Release::Superseded);
+            // is a redelivery whose first attempt the park may carry.
+            parks.release(key.fleet.clone(), Release::Superseded);
             return None;
         }
-        let Taken { sandbox, held } = holds.take(key).await?;
-        let held_ms = saturating_millis(held);
+        let Taken { sandbox, parked } = parks.take(key).await?;
+        let parked_ms = saturating_millis(parked);
         let run_id = self.ids.run.as_str();
         let (
             GivenUp {
@@ -129,8 +129,8 @@ impl Run<'_> {
                 tracing::debug!(run_id, event);
                 let fleet_id = key.fleet.as_str();
                 let event = EVENT_REUSED;
-                tracing::info!(run_id, fleet_id, held_ms, event);
-                record::sandbox_hold(SandboxHold::Reused);
+                tracing::info!(run_id, fleet_id, parked_ms, event);
+                record::sandbox_park(SandboxPark::Reused);
                 return Some(sandbox);
             }
             Err(given_up) => given_up,
@@ -142,7 +142,7 @@ impl Run<'_> {
             ),);
             tracing::warn!(message, error_code, run_id, reason, event);
         };
-        Holds::count_release(&key.fleet, Release::ThawFailed);
+        Parks::count_release(&key.fleet, Release::ThawFailed);
         if let Some(sandbox) = resumed {
             let _logged = self.destroy(sandbox).await;
         }
@@ -165,7 +165,7 @@ impl Run<'_> {
             return Fate::Gone;
         };
         // RunPlane is a child of serving, so a runner shutting down or stopped
-        // counts too: it takes no run that could take the hold.
+        // counts too: it takes no run that could take the park.
         let taking_runs = !self.lessee.halt.taking_runs().is_cancelled();
         let durable = recovery.is_some();
         let recoverable = matches!(ending, Ending::Ran { output, .. } if output.recovery.is_some());
@@ -212,15 +212,15 @@ impl Run<'_> {
         let event = EVENT_PARK_COMPLETED;
         tracing::debug!(run_id, event);
         let run = self.ids.run.clone();
-        match self.lessee.holds.park(key, run, parked).await {
-            Stowed::Held(until) => Fate::Held(until),
+        match self.lessee.parks.park(key, run, parked).await {
+            Stowed::Parked(until) => Fate::Parked(until),
             Stowed::Refused(parked) => Fate::Unfiled(parked),
             Stowed::Gone => Fate::Gone,
         }
     }
 }
 
-/// Why a held sandbox could not serve its fleet's next run: the event its
+/// Why a parked sandbox could not serve its fleet's next run: the event its
 /// failed step is logged under, the failure's code, and why.
 struct GivenUp {
     event: &'static str,
@@ -281,25 +281,25 @@ fn silent() -> afr_executor::Error {
     std::io::Error::new(std::io::ErrorKind::TimedOut, DETAIL_SILENT).into()
 }
 
-/// Records on the run's span whether its sandbox was a held one.
+/// Records on the run's span whether its sandbox was a parked one.
 pub(super) fn mark_reused(reused: bool) {
     tracing::Span::current().record(ATTR_SANDBOX_REUSED, reused);
 }
 #[cfg(test)]
-#[path = "tests/holds/acknowledgement.rs"]
+#[path = "tests/parks/acknowledgement.rs"]
 mod acknowledgement_tests;
 #[cfg(test)]
-#[path = "tests/holds/reassignment.rs"]
+#[path = "tests/parks/reassignment.rs"]
 mod reassign_tests;
 #[cfg(test)]
-#[path = "tests/holds/refill.rs"]
+#[path = "tests/parks/refill.rs"]
 mod refill_tests;
 #[cfg(test)]
-#[path = "tests/holds/revive.rs"]
+#[path = "tests/parks/revive.rs"]
 mod revive_tests;
 #[cfg(test)]
-#[path = "tests/holds/reuse.rs"]
+#[path = "tests/parks/reuse.rs"]
 mod tests;
 #[cfg(test)]
-#[path = "tests/holds/release.rs"]
-mod unheld_tests;
+#[path = "tests/parks/release.rs"]
+mod unparked_tests;

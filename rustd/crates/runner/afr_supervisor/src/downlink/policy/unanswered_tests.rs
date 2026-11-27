@@ -16,7 +16,7 @@ use super::tests::{KEEP_GOING, probe, releasing};
 use super::{Assignment, EVENT_LAST_FAILED, Heartbeat};
 use crate::client::ControlPlane;
 use crate::halt::Halt;
-use crate::holds::Holds;
+use crate::parks::Parks;
 use crate::test_support::{Answer, clock, drain, plane};
 
 /// How long the runner serves before it is told to stop.
@@ -30,7 +30,7 @@ const BOUND: Duration = STOP_AFTER.saturating_add(af_core::timing::STREAM_ANSWER
 /// answers whether the heartbeat ended inside [`BOUND`].
 async fn stops_in_bound(plane: &ControlPlane, shutdown: CancellationToken) -> bool {
     let probe = probe();
-    let holds = Holds::start(clock());
+    let parks = Parks::start(clock());
     let (published, _watching) = watch::channel(Assignment::initial());
     let halt = Halt::new(shutdown.clone());
 
@@ -38,7 +38,7 @@ async fn stops_in_bound(plane: &ControlPlane, shutdown: CancellationToken) -> bo
         plane,
         &probe,
         crate::test_support::CAPABILITIES,
-        &holds,
+        &parks,
         std::path::Path::new("."),
     )
     .keep_beating(&published, &halt);
@@ -47,7 +47,7 @@ async fn stops_in_bound(plane: &ControlPlane, shutdown: CancellationToken) -> bo
         shutdown.cancel();
     };
     let ended = timeout(BOUND, async { tokio::join!(beating, stopping) }).await;
-    holds.shutdown().await;
+    parks.shutdown().await;
     ended.is_ok()
 }
 

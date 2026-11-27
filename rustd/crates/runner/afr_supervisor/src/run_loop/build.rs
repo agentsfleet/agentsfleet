@@ -1,13 +1,13 @@
 //! The run's sandbox build, run beside its turn in the same task.
 //!
 //! ```text
-//!   acquire: thaw the fleet's hold, or prepare ─► check out ─► fill the slot
+//!   acquire: thaw the fleet's park, or prepare ─► check out ─► fill the slot
 //!   └── a stop is read between steps, never mid-step: a thaw always finishes ──┘
 //! ```
 //!
 //! The build owns its sandbox until it is ready. A failure or a stop fills the
 //! slot with why first, so every waiting call answers, then destroys what it
-//! made, so nothing half-built is ever held. A ready sandbox moves into
+//! made, so nothing half-built is ever parked. A ready sandbox moves into
 //! the run's cell, which outlives the turn, and the slot lends the turn its
 //! executor from there. Restore, when workspace snapshots land, is one more
 //! way a repository arrives in place of its checkout.
@@ -25,10 +25,10 @@ use tokio_util::sync::CancellationToken;
 
 use super::Run;
 use super::checkout::Plan;
-use super::hold::mark_reused;
+use super::park::mark_reused;
 use super::segments::Segment;
 use crate::egress::Bound;
-use crate::holds::{HoldKey, Release};
+use crate::parks::{ParkKey, Release};
 
 pub(super) const EVENT_BUILD_FAILED: &str = "sandbox_build_failed";
 /// The event a sweep after a build of unknown outcome is logged under.
@@ -40,8 +40,8 @@ const EVENT_SWEEP_FAILED: &str = "sandbox_sweep_failed";
 pub(super) struct Build<'b> {
     pub(super) prepared_durable_task: Option<&'b afr_agent::PreparedDurableTask>,
     pub(super) recovery: &'b OnceLock<super::recovery::State>,
-    /// The key a held sandbox is found under, and the new one filed under.
-    pub(super) key: &'b HoldKey,
+    /// The key a parked sandbox is found under, and the new one filed under.
+    pub(super) key: &'b ParkKey,
     /// The size the sandbox enforces.
     pub(super) limits: Limits,
     /// What the sandbox may reach.
@@ -143,19 +143,19 @@ impl Run<'_> {
     /// the sandbox the build made and cannot hand over.
     async fn built(&self, build: &Build<'_>) -> Result<Box<dyn Sandbox>, Unbuilt> {
         if build.stop.is_cancelled() {
-            // Stopped before it took the fleet's hold: the run settles with
-            // no hold, so the daemon tells the fleet's next run not to
+            // Stopped before it took the fleet's park: the run settles with
+            // no park, so the daemon tells the fleet's next run not to
             // resume it. Released now, it does not wait out its idle window.
             self.lessee
-                .holds
+                .parks
                 .release(self.ids.fleet.clone(), Release::Superseded);
             return Err(Ended::Stopped.into());
         }
-        let (sandbox, held) = self.acquire(build).await?;
+        let (sandbox, parked) = self.acquire(build).await?;
         let landed = match build.plan {
-            // A held sandbox keeps the repositories its last run left.
+            // A parked sandbox keeps the repositories its last run left.
             Some(plan)
-                if !held
+                if !parked
                     && self.payload.turn_resume.is_none()
                     && build
                         .prepared_durable_task
@@ -189,23 +189,24 @@ impl Run<'_> {
         }
     }
 
-    /// The fleet's held sandbox filed under the build's key, or a fresh one,
-    /// and whether it was held. Timed as the prepare part either way: the
+    /// The fleet's parked sandbox filed under the build's key, or a fresh one,
+    /// and whether it was parked. Timed as the prepare part either way: the
     /// watch records when it drops, so a refused build is timed too.
     async fn acquire(&self, build: &Build<'_>) -> Result<(Box<dyn Sandbox>, bool), Ended> {
         let _preparing = self.timeline.start(Segment::Prepare);
-        let held = if build.prepared_durable_task.is_some() || self.payload.turn_resume.is_some() {
+        let parked = if build.prepared_durable_task.is_some() || self.payload.turn_resume.is_some()
+        {
             // Durable state has one restore owner; an unrelated warm workspace
             // cannot silently replace the native checkpoint generation.
             self.lessee
-                .holds
+                .parks
                 .release(self.ids.fleet.clone(), Release::Superseded);
             None
         } else {
             self.revive(build.key, build.bound).await
         };
-        mark_reused(held.is_some());
-        match held {
+        mark_reused(parked.is_some());
+        match parked {
             Some(sandbox) => Ok((sandbox, true)),
             None => self
                 .prepare(build.limits, build.bound)

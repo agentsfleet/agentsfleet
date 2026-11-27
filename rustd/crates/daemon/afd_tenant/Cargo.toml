@@ -34,19 +34,16 @@ afd_auth.workspace = true
 # The catalogue's identity and price columns, decoded the one way the admin
 # service writes them (`afd_admin::catalogue`).
 afd_admin.workspace = true
-# Entropy for the identifiers these stores mint.
+# Entropy for the identifiers these stores mint, and the device-flow
+# fingerprint: a session is bound to the caller that opened it by a SHA-256 of
+# address, agent and id, compared in constant time on replay.
 af_crypto.workspace = true
-# The replay check compares a stored digest in constant time.
-subtle.workspace = true
 # The Postgres pool the api-key, workspace and credential rows are read through.
 afd_db.workspace = true
 # Instants: `TIMESTAMPTZ(3)` columns decode to and bind from `jiff::Timestamp`
 # through jiff-sqlx.
 jiff.workspace = true
 jiff-sqlx.workspace = true
-# The device-flow fingerprint: a session is bound to the caller that opened it
-# by a digest of address, agent and id.
-sha2.workspace = true
 # `derive` for `FromRow`: a row with nothing to parse decodes by column name.
 sqlx = { workspace = true, features = ["derive", "json"] }
 thiserror.workspace = true

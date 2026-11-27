@@ -1,7 +1,7 @@
 //! A tenant runner never takes a task run of a fleet on the platform model.
 
 use af_core::id::Uuid7;
-use af_wire::runner::{HeartbeatRequest, HeldFleets, NetworkPolicy, SandboxTier};
+use af_wire::runner::{HeartbeatRequest, NetworkPolicy, ParkedFleets, SandboxTier};
 use afd_fleet::durable_task::DurableTaskLifecycle as _;
 use afd_fleet::run::{Billed, Refused};
 use afd_runner::RunnerEdit;
@@ -36,11 +36,11 @@ async fn tenant_runner(case: &Case) -> Uuid7 {
     let beat = HeartbeatRequest {
         capability_report: Some(capability),
         selftest: None,
-        holds: HeldFleets::default(),
+        parked: ParkedFleets::default(),
         closing: false,
         host: af_wire::runner::HostFacts::default(),
     };
-    let held = afd_runner::heartbeat::holds::prove(beat.holds.clone());
+    let held = afd_runner::heartbeat::holds::prove(beat.parked.clone());
     fixtures
         .runners()
         .heartbeat(&runner, &beat, held.as_ref(), jiff::Timestamp::now())

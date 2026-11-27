@@ -25,7 +25,7 @@ const PREPARE_TAKES: Duration = Duration::from_millis(500);
 /// How long the token mint takes: past the first renewal, so a renewal the
 /// daemon refuses lands while the checkout waits on it.
 const MINT_TAKES: Duration = ROUND.saturating_mul(2);
-pub(super) const HELD_UNTIL: &str = "held_until";
+pub(super) const PARKED_UNTIL: &str = "parked_until";
 const REPOSITORY: &str = "acme/widget";
 const WORKSPACE_ID: &str = "01890a5d-ac96-774b-bcce-b302099a805a";
 
@@ -123,7 +123,7 @@ async fn test_first_model_call_starts_before_the_sandbox_is_ready() {
 }
 
 /// A build that fails while the turn runs leaves it going: the model answers,
-/// its sandbox call reads `prepare`, nothing is held, and the failure is
+/// its sandbox call reads `prepare`, nothing is parked, and the failure is
 /// logged once with its code. The build asked for a sandbox named by the run,
 /// and a refusal whose outcome is known sweeps nothing.
 #[tokio::test(start_paused = true)]
@@ -144,8 +144,8 @@ async fn test_build_failure_leaves_the_run_going() {
     let report = reported(&rig.calls());
     assert_eq!(report[OUTCOME], PROCESSED, "{report}");
     assert!(
-        report.get(HELD_UNTIL).is_none(),
-        "nothing is held: {report}"
+        report.get(PARKED_UNTIL).is_none(),
+        "nothing is parked: {report}"
     );
     assert_eq!(rig.runs.load(Ordering::SeqCst), 1, "the run went on");
     assert_eq!(rig.lent(), [Some(Unavailable::Prepare)]);
@@ -190,10 +190,10 @@ async fn test_an_ambiguous_prepare_is_swept_never_retried() {
 }
 
 /// A renewal refused while the checkout waits on its token stops the build at
-/// its next step: the partial sandbox is destroyed once, nothing is held,
+/// its next step: the partial sandbox is destroyed once, nothing is parked,
 /// nothing is checked out, and a stop logs no build failure.
 #[tokio::test(start_paused = true)]
-async fn test_partial_checkout_is_never_held() {
+async fn test_partial_checkout_is_never_parked() {
     let capture = Capture::install();
     let workspace = tempfile::tempdir().unwrap();
     let engine = checking_out(workspace.path());
@@ -205,9 +205,9 @@ async fn test_partial_checkout_is_never_held() {
 
     let report = reported(&rig.calls());
     assert_eq!(report[FAILURE_REASON], RENEWAL_TERMINATE, "{report}");
-    assert!(report.get(HELD_UNTIL).is_none(), "{report}");
+    assert!(report.get(PARKED_UNTIL).is_none(), "{report}");
     assert_eq!(rig.destroyed.load(Ordering::SeqCst), 1, "destroyed once");
-    assert_eq!(parked.load(Ordering::SeqCst), 0, "never parked for a hold");
+    assert_eq!(parked.load(Ordering::SeqCst), 0, "never parked");
     assert!(
         std::fs::read_dir(workspace.path())
             .unwrap()
@@ -219,14 +219,14 @@ async fn test_partial_checkout_is_never_held() {
 }
 
 /// An answer that arrives while the checkout is still running waits for it,
-/// so the sandbox held for the fleet's next run is a whole one.
+/// so the sandbox parked for the fleet's next run is a whole one.
 #[tokio::test(start_paused = true)]
-async fn test_an_answer_mid_checkout_holds_the_whole_sandbox() {
+async fn test_an_answer_mid_checkout_parks_the_whole_sandbox() {
     let workspace = tempfile::tempdir().unwrap();
     let engine = checking_out(workspace.path());
     let parked = Arc::clone(&engine.parked);
     let mut rig = rig(late_mint, engine, Behaviour::Talks);
-    rig.lessee.holds.resize(2);
+    rig.lessee.parks.resize(2);
     served(&rig);
 
     rig.run(&bound()).await.unwrap();
@@ -234,10 +234,10 @@ async fn test_an_answer_mid_checkout_holds_the_whole_sandbox() {
     let report = reported(&rig.calls());
     assert_eq!(report[OUTCOME], PROCESSED, "{report}");
     assert!(
-        report.get(HELD_UNTIL).is_some(),
-        "the sandbox is held: {report}"
+        report.get(PARKED_UNTIL).is_some(),
+        "the sandbox is parked: {report}"
     );
     assert_eq!(parked.load(Ordering::SeqCst), 1);
     let readme = workspace.path().join("widget").join("README.md");
-    assert!(readme.is_file(), "the checkout finished before the hold");
+    assert!(readme.is_file(), "the checkout finished before the park");
 }

@@ -21,10 +21,10 @@
 use std::sync::Arc;
 
 use af_core::clock::{Clock, FixedClock};
+use af_crypto::signature::testing::Rs256Signer;
 use afd_auth::credential::Presented;
 use afd_auth::verifier::{TokenVerifier, VerifiedClaims, VerifyError};
 use afd_identity::{JwksVerifier, StaticKeySet, VerifierConfig};
-use aws_lc_rs::signature::KeyPair as _;
 use base64::Engine as _;
 use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
 
@@ -48,22 +48,18 @@ pub(crate) const WORKSPACE: &str = "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a7d";
 /// Far in the future, so nothing here is about expiry.
 pub(crate) const NOT_EXPIRED: i64 = 4_102_444_800;
 
-pub(crate) fn key_pair() -> aws_lc_rs::signature::RsaKeyPair {
-    // `public_key` lives on the `KeyPair` trait in aws-lc-rs, where ring had it
-    // as an inherent method — the one place "ring-compatible" is near-compatible.
+pub(crate) fn key_pair() -> Rs256Signer {
     let der = STANDARD
         .decode(TEST_KEY_PKCS1_B64)
         .expect("the fixture key is base64");
-    aws_lc_rs::signature::RsaKeyPair::from_der(&der).expect("a PKCS#1 RSA private key")
+    Rs256Signer::from_pkcs1_der(&der)
 }
 
 /// A key set publishing the signing key's own public components.
 pub(crate) fn key_set() -> String {
-    let pair = key_pair();
-    let components: aws_lc_rs::signature::RsaPublicKeyComponents<Vec<u8>> =
-        pair.public_key().into();
-    let n = URL_SAFE_NO_PAD.encode(&components.n);
-    let e = URL_SAFE_NO_PAD.encode(&components.e);
+    let (modulus, exponent) = key_pair().public_components();
+    let n = URL_SAFE_NO_PAD.encode(&modulus);
+    let e = URL_SAFE_NO_PAD.encode(&exponent);
     format!("{{\"keys\":[{{\"kty\":\"RSA\",\"kid\":\"{KID}\",\"n\":\"{n}\",\"e\":\"{e}\"}}]}}")
 }
 
@@ -81,15 +77,7 @@ pub(crate) fn sign_with_header(header: &str, payload: &str) -> Presented {
     let body = URL_SAFE_NO_PAD.encode(payload);
     let signing_input = format!("{header}.{body}");
 
-    let pair = key_pair();
-    let mut signature = vec![0_u8; pair.public_key().modulus_len()];
-    pair.sign(
-        &aws_lc_rs::signature::RSA_PKCS1_SHA256,
-        &aws_lc_rs::rand::SystemRandom::new(),
-        signing_input.as_bytes(),
-        &mut signature,
-    )
-    .expect("signing the fixture key");
+    let signature = key_pair().sign(signing_input.as_bytes());
 
     Presented::new(&format!(
         "{signing_input}.{}",

@@ -2,7 +2,7 @@
 
 use af_core::error_code::{Coded, ErrorCode};
 
-use super::{EgressRefusal, Error, Failure, egress_refused, refused};
+use super::{EgressRefusal, EngineFailure, Error, egress_refused, refused};
 
 /// Each egress refusal says the sentence an operator has always read for it,
 /// byte for byte, whatever value a test or a log line tells it apart by.
@@ -92,7 +92,7 @@ impl Coded for Launcher {
     }
 }
 
-impl Failure for Launcher {
+impl EngineFailure for Launcher {
     fn seam(&self) -> Option<&Error> {
         self.carried.as_ref()
     }

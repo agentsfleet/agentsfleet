@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use af_core::id::Uuid7;
 use afr_engine::error::egress_refused;
 use afr_engine::{
-    Allowlist, EgressPlan, EgressRefusal, Enforcer, Environment, Generation, Granted, Killed,
+    Allowlist, EgressEnforcer, EgressPlan, EgressRefusal, Environment, Generation, Granted, Killed,
     Network, ParkMode, Parked, Quiescence, Result, Sandbox, SandboxState, Snapshots, enforce,
 };
 use afr_executor::{Client, Ending, Executor, Spawn};
@@ -206,7 +206,7 @@ async fn ended(pid: Option<Pid>) -> io::Result<()> {
 }
 
 #[async_trait::async_trait]
-impl Enforcer for Vm {
+impl EgressEnforcer for Vm {
     /// A new allowlist refills the tap's set in one transaction, then
     /// replaces the guest's hosts file with its names; a plan reaching what
     /// the guest was booted to reach, with no set, changes nothing. A plan for

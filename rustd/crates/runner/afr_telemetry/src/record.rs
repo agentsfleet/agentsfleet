@@ -26,7 +26,7 @@ use af_providers::observe::Observer;
 use af_providers::observe::labels::Provider;
 
 use crate::labels::{
-    FrameDrop, PushFailure, SandboxBuild, SandboxHold, SandboxRelease, SandboxStart, SandboxWait,
+    FrameDrop, PushFailure, SandboxBuild, SandboxPark, SandboxRelease, SandboxStart, SandboxWait,
     Tool, ToolOutcome, TurnOutcome,
 };
 
@@ -56,8 +56,8 @@ pub trait Recorder: Observer {
     fn tool_call(&self, tool: Tool, outcome: ToolOutcome, elapsed: Duration);
     /// The kernel killed a tenant process for memory.
     fn out_of_memory(&self);
-    /// A sandbox held between a fleet's runs was parked, reused or released.
-    fn sandbox_hold(&self, outcome: SandboxHold);
+    /// A sandbox kept between a fleet's runs was parked, reused or released.
+    fn sandbox_park(&self, outcome: SandboxPark);
     /// A run's sandbox build ended.
     fn sandbox_build(&self, outcome: SandboxBuild);
     /// The span budget shed `spans`.
@@ -135,9 +135,9 @@ pub fn out_of_memory() {
     with(|recorder| recorder.out_of_memory());
 }
 
-/// Records what became of a sandbox held between a fleet's runs.
-pub fn sandbox_hold(outcome: SandboxHold) {
-    with(|recorder| recorder.sandbox_hold(outcome));
+/// Records what became of a sandbox parked between a fleet's runs.
+pub fn sandbox_park(outcome: SandboxPark) {
+    with(|recorder| recorder.sandbox_park(outcome));
 }
 
 /// Records how a run's sandbox build ended.
@@ -178,7 +178,7 @@ mod tests {
     };
 
     use crate::labels::{
-        FrameDrop, PushFailure, SandboxHold, SandboxStart, Tool, ToolOutcome, TurnOutcome,
+        FrameDrop, PushFailure, SandboxPark, SandboxStart, Tool, ToolOutcome, TurnOutcome,
     };
     use crate::testing::{Recorded, Tally, scoped};
 
@@ -206,7 +206,7 @@ mod tests {
             super::push_failed(PushFailure::Refused);
             super::tool_call(tool, ToolOutcome::Interrupted, elapsed);
             super::out_of_memory();
-            super::sandbox_hold(SandboxHold::ThawFailed);
+            super::sandbox_park(SandboxPark::ThawFailed);
             super::spans_suppressed(2);
             super::export_discarded(Signal::Traces, DiscardReason::ExportRejected, 5);
         })
@@ -230,7 +230,7 @@ mod tests {
                 Recorded::PushFailed(PushFailure::Refused),
                 Recorded::ToolCall(tool, ToolOutcome::Interrupted, elapsed),
                 Recorded::OutOfMemory,
-                Recorded::SandboxHold(SandboxHold::ThawFailed),
+                Recorded::SandboxPark(SandboxPark::ThawFailed),
                 Recorded::SpansSuppressed(2),
                 Recorded::ExportDiscarded(Signal::Traces, DiscardReason::ExportRejected, 5),
             ],

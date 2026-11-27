@@ -1,4 +1,4 @@
-//! Heartbeat policy, hold release and liveness use the authenticated native session.
+//! Heartbeat policy, park release and liveness use the authenticated native session.
 #![expect(clippy::expect_used, reason = "integration preconditions fail loudly")]
 
 use af_wire::runner::HeartbeatRequest;
@@ -10,15 +10,15 @@ use crate::{e2e::scenario, wire::capable_beat};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn heartbeat_reply_names_the_holds_to_release() {
+async fn heartbeat_reply_names_the_parked_fleets_to_release() {
     let mut supervisor = Supervisor::new();
     let scene = scenario(&mut supervisor).await;
-    let never_held = afd_db::test_util::mint_id();
+    let never_parked = afd_db::test_util::mint_id();
     let mut request = capable_beat();
     request
         .as_object_mut()
         .expect("a heartbeat object")
-        .insert("holds".into(), json!([never_held]));
+        .insert("parked".into(), json!([never_parked]));
     let bytes = serde_json::to_vec(&request).expect("a heartbeat encodes");
     let request: HeartbeatRequest<'_> = serde_json::from_slice(&bytes).expect("a current beat");
     let reply = scene
@@ -27,7 +27,7 @@ async fn heartbeat_reply_names_the_holds_to_release() {
         .heartbeat(&request)
         .await
         .expect("native heartbeat");
-    assert_eq!(reply.get("release_holds"), Some(&json!([never_held])));
+    assert_eq!(reply.get("release_parked"), Some(&json!([never_parked])));
     finish(scene, supervisor).await;
 }
 

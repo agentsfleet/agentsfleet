@@ -9,7 +9,7 @@
 //! every engine raises alike: a host that cannot build a sandbox, a cap or a
 //! park an engine has no mechanism for, a build of unknown outcome, a second
 //! build for a live identifier, a refused egress plan. An engine's or a
-//! building block's own failure crosses the seam whole, as a [`Failure`]: its
+//! building block's own failure crosses the seam whole, as an [`EngineFailure`]: its
 //! code, its sentence and its causes, and the seam refusal it carries when
 //! that is what it was.
 //!
@@ -28,7 +28,7 @@ mod fault;
 mod raise;
 
 pub use self::egress::EgressRefusal;
-pub use self::fault::{Failure, Fault};
+pub use self::fault::{EngineFailure, Fault};
 #[cfg(feature = "test-util")]
 pub use self::raise::ambiguous;
 pub use self::raise::{egress_refused, refused, sandbox_exists, unconfined, unsupported};
@@ -222,7 +222,7 @@ impl Error {
     /// An engine's or a building block's own `failure`, carried across the
     /// seam with its code, its sentence and its causes.
     #[must_use]
-    pub fn engine(failure: impl Failure) -> Self {
+    pub fn engine(failure: impl EngineFailure) -> Self {
         ErrorKind::Engine {
             source: Fault::new(failure),
         }

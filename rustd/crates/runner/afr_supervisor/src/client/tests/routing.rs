@@ -62,7 +62,7 @@ async fn send_every_verb(plane: &super::super::ControlPlane) {
     let heartbeat = HeartbeatRequest {
         capability_report: None,
         selftest: None,
-        holds: af_wire::runner::HeldFleets::default(),
+        parked: af_wire::runner::ParkedFleets::default(),
         closing: false,
         host: af_wire::runner::HostFacts::default(),
     };

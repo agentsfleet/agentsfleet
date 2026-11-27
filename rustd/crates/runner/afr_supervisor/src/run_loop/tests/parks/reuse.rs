@@ -18,7 +18,7 @@ use jiff::Timestamp;
 
 use crate::client::{Call, Verb};
 use crate::error;
-use crate::holds::Release;
+use crate::parks::Release;
 use crate::test_support::ROUND;
 use crate::test_support::{
     Answer, Behaviour, DESTROY, FAILURE_REASON, FLEET_ID, FakeAgent, FakeEngine, KILL, OUTCOME,
@@ -26,16 +26,16 @@ use crate::test_support::{
     position, reported,
 };
 
-/// The fleet's second run, after the one that left its sandbox held.
+/// The fleet's second run, after the one that left its sandbox parked.
 pub(super) const NEXT_RUN_ID: &str = "01890a5d-ac96-774b-bcce-b302099a805a";
-/// A fleet other than the one whose sandbox is held.
+/// A fleet other than the one whose sandbox is parked.
 const OTHER_FLEET: &str = "01890a5d-ac96-774b-bcce-b302099a805b";
 /// A fleet busy on a worker no run in these tests runs on.
 const BUSY_FLEET: &str = "01890a5d-ac96-774b-bcce-b302099a805c";
 /// The event every release is logged under.
-const RELEASED: &str = "sandbox_hold_released";
-/// The report field that says when the hold lapses.
-const HELD_UNTIL: &str = "held_until";
+const RELEASED: &str = "sandbox_park_released";
+/// The report field that says when the park lapses.
+const PARKED_UNTIL: &str = "parked_until";
 
 /// What the fake engine counted.
 pub(super) struct Counted {
@@ -71,31 +71,31 @@ pub(super) fn healthy(_call: &Call) -> Option<Answer> {
     None
 }
 
-/// A rig with two workers' worth of room for holds, so a processed run
+/// A rig with two workers' worth of room for parks, so a processed run
 /// parks its sandbox.
-pub(super) fn holding(
+pub(super) fn parking_rig(
     special: impl Fn(&Call) -> Option<Answer> + Send + Sync + 'static,
     engine: FakeEngine,
     behaviour: Behaviour,
 ) -> (Rig, Counted) {
     let counted = Counted::of(&engine);
     let rig = Rig::new(daemon(special), engine, FakeAgent::new(behaviour));
-    rig.lessee.holds.resize(2);
+    rig.lessee.parks.resize(2);
     (rig, counted)
 }
 
 /// The fleet's next run, which the daemon says should resume the sandbox
-/// this runner holds for it.
+/// this runner parks for it.
 pub(super) fn resumed(run_id: &str, fleet: &str) -> RunPayload<'static> {
     let mut next = payload(run_id, fleet);
-    next.resume_hold = true;
+    next.resume_park = true;
     next
 }
 
 /// Waits until every release the registry was asked for is done, by asking
 /// it to stop: the answer comes after each teardown.
 pub(super) async fn settled(rig: &Rig) {
-    bounded("the holds' shutdown", rig.lessee.holds.shutdown()).await;
+    bounded("the parks' shutdown", rig.lessee.parks.shutdown()).await;
 }
 
 /// Every release logged, as (fleet, reason), in the order they happened.
@@ -117,7 +117,7 @@ pub(super) fn released(fleet: &str, reason: Release) -> (String, String) {
 }
 
 /// The run parks its sandbox, then outlives two renewal ticks pushing its
-/// memory, so renewal is proved running while the sandbox is held; time then
+/// memory, so renewal is proved running while the sandbox is parked; time then
 /// runs past more ticks, and no renewal follows the report.
 #[tokio::test(start_paused = true)]
 async fn test_processed_run_parks_its_sandbox() {
@@ -129,7 +129,7 @@ async fn test_processed_run_parks_its_sandbox() {
         }
         (attempts.fetch_add(1, Ordering::SeqCst) < 2).then_some(Answer::Stall)
     };
-    let (mut rig, counted) = holding(slow_report, FakeEngine::default(), Behaviour::Answer);
+    let (mut rig, counted) = parking_rig(slow_report, FakeEngine::default(), Behaviour::Answer);
 
     rig.run(&payload(RUN_ID, FLEET_ID)).await.unwrap();
     let calls = rig.calls();
@@ -137,19 +137,19 @@ async fn test_processed_run_parks_its_sandbox() {
     tokio::time::sleep(ROUND * 2).await;
     assert!(
         rig.calls().iter().all(|call| call.verb != Verb::Renew),
-        "a hold never renews after acknowledgement"
+        "a park never renews after acknowledgement"
     );
     let report = reported(&calls);
     assert_eq!(report[OUTCOME], PROCESSED);
-    // The rig's clock stands at zero, and the hold asks for the most a daemon may grant.
+    // The rig's clock stands at zero, and the park asks for the most a daemon may grant.
     assert_eq!(
-        report[HELD_UNTIL],
+        report[PARKED_UNTIL],
         after(Timestamp::UNIX_EPOCH, DAY).to_string()
     );
     assert_eq!(
         counted.read(),
         (1, 1, 0, 0),
-        "parked and held, not destroyed"
+        "parked and kept, not destroyed"
     );
     let renewals: Vec<usize> = calls
         .iter()
@@ -162,13 +162,13 @@ async fn test_processed_run_parks_its_sandbox() {
 }
 
 /// A run refused before its sandbox is chosen, here by an egress host the
-/// resolver cannot answer, settles with no hold, so the daemon would never let
-/// the fleet's held sandbox be resumed after it: the refusal releases it at
+/// resolver cannot answer, settles with no park, so the daemon would never let
+/// the fleet's parked sandbox be resumed after it: the refusal releases it at
 /// once.
 #[tokio::test(start_paused = true)]
-async fn test_a_run_refused_at_startup_releases_the_fleets_hold() {
+async fn test_a_run_refused_at_startup_releases_the_fleets_park() {
     let capture = Capture::install();
-    let (rig, counted) = holding(healthy, FakeEngine::default(), Behaviour::Answer);
+    let (rig, counted) = parking_rig(healthy, FakeEngine::default(), Behaviour::Answer);
     rig.run(&payload(RUN_ID, FLEET_ID)).await.unwrap();
 
     let refused = resumed(NEXT_RUN_ID, FLEET_ID);
@@ -178,12 +178,12 @@ async fn test_a_run_refused_at_startup_releases_the_fleets_hold() {
 
     assert_eq!(releases(&capture), [released(FLEET_ID, Release::Mismatch)]);
     let (_prepared, _parked, _resumed, destroyed) = counted.read();
-    assert_eq!(destroyed, 1, "the held sandbox is torn down");
+    assert_eq!(destroyed, 1, "the parked sandbox is torn down");
 }
 
 #[tokio::test(start_paused = true)]
-async fn test_next_run_reuses_the_held_sandbox() {
-    let (mut rig, counted) = holding(healthy, FakeEngine::default(), Behaviour::Answer);
+async fn test_next_run_reuses_the_parked_sandbox() {
+    let (mut rig, counted) = parking_rig(healthy, FakeEngine::default(), Behaviour::Answer);
 
     rig.run(&payload(RUN_ID, FLEET_ID)).await.unwrap();
     rig.run(&resumed(NEXT_RUN_ID, FLEET_ID)).await.unwrap();
@@ -192,19 +192,19 @@ async fn test_next_run_reuses_the_held_sandbox() {
     assert_eq!(
         counted.read(),
         (1, 2, 1, 0),
-        "one sandbox: built once, resumed for the second run and held again"
+        "one sandbox: built once, resumed for the second run and parked again"
     );
 }
 
 #[tokio::test(start_paused = true)]
 async fn test_failed_run_never_parks() {
-    let (mut rig, counted) = holding(healthy, FakeEngine::default(), Behaviour::Break);
+    let (mut rig, counted) = parking_rig(healthy, FakeEngine::default(), Behaviour::Break);
 
     rig.run(&payload(RUN_ID, FLEET_ID)).await.unwrap();
 
     let report = reported(&rig.calls());
     assert_ne!(report[OUTCOME], PROCESSED);
-    holds_nothing(&report);
+    parks_nothing(&report);
     assert_eq!(counted.read(), (1, 0, 0, 1));
 }
 
@@ -213,13 +213,13 @@ async fn test_an_interrupted_run_never_parks() {
     let renewal_lost = |call: &Call| {
         (call.verb == Verb::Renew).then(|| Answer::Fail(error::refused(Verb::Renew, 409, None)))
     };
-    let (mut rig, counted) = holding(renewal_lost, FakeEngine::default(), Behaviour::Hang);
+    let (mut rig, counted) = parking_rig(renewal_lost, FakeEngine::default(), Behaviour::Hang);
 
     rig.run(&payload(RUN_ID, FLEET_ID)).await.unwrap();
 
     let report = reported(&rig.calls());
     assert_eq!(report[FAILURE_REASON], RENEWAL_TERMINATE);
-    holds_nothing(&report);
+    parks_nothing(&report);
     assert_eq!(counted.read(), (1, 0, 0, 1));
 }
 
@@ -234,24 +234,24 @@ async fn test_a_superseded_report_destroys_what_it_parked() {
             ))
         })
     };
-    let (rig, counted) = holding(superseded, FakeEngine::default(), Behaviour::Answer);
+    let (rig, counted) = parking_rig(superseded, FakeEngine::default(), Behaviour::Answer);
 
     let failure = rig.run(&payload(RUN_ID, FLEET_ID)).await.unwrap_err();
     assert_eq!(
         failure.refusal_code(),
         Some(af_core::error_code::RUN_STALE_FENCING_TOKEN)
     );
-    let held = rig.lessee.holds.fleets().await;
+    let parked = rig.lessee.parks.fleets().await;
     settled(&rig).await;
 
     assert!(
-        held.is_empty(),
+        parked.is_empty(),
         "released once the daemon refused the report"
     );
     assert_eq!(counted.read(), (1, 1, 0, 1));
 }
 
-/// A sandbox that will not park is destroyed by its engine; the run holds
+/// A sandbox that will not park is destroyed by its engine; the run parks
 /// nothing and destroys nothing more.
 #[tokio::test(start_paused = true)]
 async fn test_a_sandbox_that_will_not_park_is_destroyed_by_its_engine() {
@@ -259,18 +259,18 @@ async fn test_a_sandbox_that_will_not_park_is_destroyed_by_its_engine() {
         parking: Parking::RefusesPark,
         ..FakeEngine::default()
     };
-    let (mut rig, counted) = holding(healthy, engine, Behaviour::Answer);
+    let (mut rig, counted) = parking_rig(healthy, engine, Behaviour::Answer);
 
     rig.run(&payload(RUN_ID, FLEET_ID)).await.unwrap();
 
     let report = reported(&rig.calls());
     assert_eq!(report[OUTCOME], PROCESSED);
-    holds_nothing(&report);
+    parks_nothing(&report);
     assert_eq!(counted.read(), (1, 0, 0, 1));
 }
 
 /// An engine that offers no park mode kills a processed run's sandbox and
-/// releases it after the report, holding nothing.
+/// releases it after the report, parking nothing.
 #[tokio::test(start_paused = true)]
 async fn test_an_engine_that_cannot_park_kills_the_sandbox() {
     let (steps, mut taken) = tokio::sync::mpsc::unbounded_channel();
@@ -279,62 +279,62 @@ async fn test_an_engine_that_cannot_park_kills_the_sandbox() {
         steps: Some(steps),
         ..FakeEngine::default()
     };
-    let (mut rig, counted) = holding(healthy, engine, Behaviour::Answer);
+    let (mut rig, counted) = parking_rig(healthy, engine, Behaviour::Answer);
 
     rig.run(&payload(RUN_ID, FLEET_ID)).await.unwrap();
 
     let report = reported(&rig.calls());
     assert_eq!(report[OUTCOME], PROCESSED);
-    holds_nothing(&report);
+    parks_nothing(&report);
     assert_eq!(counted.read(), (1, 0, 0, 1));
     assert_eq!(taken.try_recv().unwrap(), KILL);
     assert_eq!(taken.try_recv().unwrap(), DESTROY);
 }
 
 #[tokio::test(start_paused = true)]
-async fn test_another_fleets_run_leaves_the_hold_alone() {
-    let (rig, counted) = holding(healthy, FakeEngine::default(), Behaviour::Answer);
-    rig.lessee.holds.resize(3);
+async fn test_another_fleets_run_leaves_the_park_alone() {
+    let (rig, counted) = parking_rig(healthy, FakeEngine::default(), Behaviour::Answer);
+    rig.lessee.parks.resize(3);
 
     rig.run(&payload(RUN_ID, FLEET_ID)).await.unwrap();
     rig.run(&payload(NEXT_RUN_ID, OTHER_FLEET)).await.unwrap();
-    let held: Vec<String> = rig
+    let parked: Vec<String> = rig
         .lessee
-        .holds
+        .parks
         .fleets()
         .await
         .iter()
         .map(|fleet| fleet.as_str().to_owned())
         .collect();
 
-    assert_eq!(held, [FLEET_ID, OTHER_FLEET]);
+    assert_eq!(parked, [FLEET_ID, OTHER_FLEET]);
     assert_eq!(counted.read(), (2, 2, 0, 0));
 }
 
 /// The run that takes the runner's last free worker releases every other
-/// fleet's hold as saturated, and rings the heartbeat so the daemon hears at
+/// fleet's park as saturated, and rings the heartbeat so the daemon hears at
 /// once; the fleet it serves parks in their place.
 #[tokio::test(start_paused = true)]
-async fn test_a_run_on_the_last_free_worker_releases_other_holds() {
+async fn test_a_run_on_the_last_free_worker_releases_other_parks() {
     let capture = Capture::install();
-    let (rig, _counted) = holding(healthy, FakeEngine::default(), Behaviour::Answer);
-    rig.lessee.holds.resize(3);
+    let (rig, _counted) = parking_rig(healthy, FakeEngine::default(), Behaviour::Answer);
+    rig.lessee.parks.resize(3);
     rig.run(&payload(RUN_ID, FLEET_ID)).await.unwrap();
-    let _other_worker = rig.lessee.holds.occupy(crate::holds::Occupant {
+    let _other_worker = rig.lessee.parks.occupy(crate::parks::Occupant {
         run: Uuid7::parse(BUSY_FLEET).unwrap(),
         fleet: Uuid7::parse(BUSY_FLEET).unwrap(),
     });
 
     rig.run(&payload(NEXT_RUN_ID, OTHER_FLEET)).await.unwrap();
-    let held = rig.lessee.holds.fleets().await;
+    let parked = rig.lessee.parks.fleets().await;
 
-    assert_eq!(held, [Uuid7::parse(OTHER_FLEET).unwrap()]);
+    assert_eq!(parked, [Uuid7::parse(OTHER_FLEET).unwrap()]);
     assert_eq!(releases(&capture), [released(FLEET_ID, Release::Saturated)]);
-    let rung = rig.lessee.holds.saturated().notified().now_or_never();
+    let rung = rig.lessee.parks.saturated().notified().now_or_never();
     assert!(rung.is_some(), "the heartbeat is rung at once");
 }
 
-/// The report asks the daemon to hold nothing for its fleet.
-pub(super) fn holds_nothing(report: &serde_json::Value) {
-    assert!(report.get(HELD_UNTIL).is_none(), "{report}");
+/// The report asks the daemon to park nothing for its fleet.
+pub(super) fn parks_nothing(report: &serde_json::Value) {
+    assert!(report.get(PARKED_UNTIL).is_none(), "{report}");
 }

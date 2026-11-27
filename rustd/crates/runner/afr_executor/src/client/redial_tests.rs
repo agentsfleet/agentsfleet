@@ -8,8 +8,8 @@ use std::time::Duration;
 use tokio::io::{BufReader, DuplexStream};
 
 use super::Client;
+use super::route::{ExecutorRoute, ExecutorStream};
 use super::tests::{answer, answer_spawn, nothing_listed};
-use super::transport::{Stream, Transport};
 use crate::{Ending, Executor as _, ProcessEvent, Sizes, Spawn};
 
 /// How long a test waits for anything that should be prompt.
@@ -17,16 +17,16 @@ const PATIENCE: Duration = Duration::from_secs(10);
 /// Bytes each in-memory stream buffers: more than any line here.
 const DUPLEX_BYTES: usize = 64 * 1024;
 
-/// A transport handing out prepared streams in order, then refusing.
+/// A route handing out prepared streams in order, then refusing.
 #[derive(Debug)]
 struct Prepared(Mutex<Vec<DuplexStream>>);
 
 #[async_trait::async_trait]
-impl Transport for Prepared {
-    async fn dial(&self) -> io::Result<Box<dyn Stream>> {
+impl ExecutorRoute for Prepared {
+    async fn dial(&self) -> io::Result<Box<dyn ExecutorStream>> {
         let mut left = self.0.lock().expect("no dial panicked");
         let next = (!left.is_empty()).then(|| left.remove(0));
-        next.map(|stream| Box::new(stream) as Box<dyn Stream>)
+        next.map(|stream| Box::new(stream) as Box<dyn ExecutorStream>)
             .ok_or_else(|| io::Error::from(io::ErrorKind::ConnectionRefused))
     }
 }

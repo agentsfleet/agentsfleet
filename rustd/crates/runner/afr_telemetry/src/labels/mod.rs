@@ -111,10 +111,10 @@ af_observability::closed_set! {
 }
 
 af_observability::closed_set! {
-    /// What became of a sandbox held for its fleet between two runs: held,
+    /// What became of a sandbox parked for its fleet between two runs: parked,
     /// reused, or released for the reason given.
-    SandboxHold {
-        /// A processed run's sandbox was frozen and held.
+    SandboxPark {
+        /// A processed run's sandbox was frozen and parked.
         Parked => "parked",
         /// The fleet's next run took it, and it thawed and answered.
         Reused => "reused",
@@ -122,11 +122,11 @@ af_observability::closed_set! {
         Expired => "expired",
         /// The runner's last free worker took a run for another fleet.
         Saturated => "saturated",
-        /// The runner held as many as it has workers, and this was the oldest.
+        /// The runner parked as many as it has workers, and this was the oldest.
         Capped => "capped",
         /// The next run wanted another size or policy.
         Mismatch => "mismatch",
-        /// The daemon named its fleet: halted, deleted, or held by another
+        /// The daemon named its fleet: halted, deleted, or parked on another
         /// runner since.
         Inactive => "inactive",
         /// The runner takes no new run, so no run could take it: running

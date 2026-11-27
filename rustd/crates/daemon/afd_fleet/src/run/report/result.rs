@@ -25,7 +25,7 @@ use jiff::Timestamp;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Reconciled {
     /// The exact hold still accepted by the committed report.
-    pub hold: Option<af_wire::report::AcceptedHold>,
+    pub hold: Option<af_wire::report::AcceptedPark>,
     /// The fleet that ran.
     pub fleet_id: Uuid7,
     /// The workspace it belongs to.

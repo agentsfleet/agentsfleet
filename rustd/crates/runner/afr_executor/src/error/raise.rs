@@ -16,7 +16,7 @@ pub(crate) fn connection_lost() -> Error {
     ErrorKind::ConnectionLost.into()
 }
 
-/// The link was found closed and `source` is why its transport would not
+/// The link was found closed and `source` is why its route would not
 /// dial it again.
 pub(crate) fn redial_failed(source: std::io::Error) -> Error {
     ErrorKind::Redial { source }.into()

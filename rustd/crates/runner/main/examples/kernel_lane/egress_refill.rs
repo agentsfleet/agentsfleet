@@ -17,7 +17,7 @@ const RUN: &str = "egress-refill";
 const OVERLAP_RUN: &str = "egress-refill-overlap";
 
 /// Built to reach the far host's name at one address, then refilled to the
-/// other, as a warm or held microVM is when its next run's hosts resolved
+/// other, as a warm or parked microVM is when its next run's hosts resolved
 /// anew: the name follows the set, and the address it left is closed.
 pub(crate) fn reallow_swaps_the_set_in_place(lane: &Lane) -> Result<(), Failed> {
     let _far = Far::start()?;

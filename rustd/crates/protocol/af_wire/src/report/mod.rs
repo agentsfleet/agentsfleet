@@ -142,7 +142,7 @@ pub struct RunSegments {
     /// How long the turn's sandbox calls waited on the build.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sandbox_wait_ms: Option<u64>,
-    /// Hold-or-destroy up to the start of the report post.
+    /// Park-or-destroy up to the start of the report post.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub settle_ms: Option<u64>,
 }
@@ -206,14 +206,14 @@ pub struct ReportRequest<'a> {
     #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<ToolTrace<'static>>))]
     pub tool_calls: Option<RawToolTrace<'a>>,
-    /// Until when this runner holds the run's sandbox, frozen, for the
-    /// fleet's next event. Absent when it holds none.
+    /// Until when this runner keeps the run's sandbox parked, frozen, for the
+    /// fleet's next event. Absent when it parks none.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
         with = "crate::instant::option"
     )]
-    pub held_until: Option<jiff::Timestamp>,
+    pub parked_until: Option<jiff::Timestamp>,
     /// The last folded message a completed model call read, by sequence:
     /// every message the run was assigned up to it settles with this report's
     /// answer. Absent when the run folded nothing, and ignored unless the run
@@ -227,14 +227,14 @@ pub struct ReportRequest<'a> {
     pub memory: Vec<crate::memory::MemoryDelta<'a>>,
 }
 
-/// The exact local hold the daemon accepted with a terminal report.
+/// The exact local park the daemon accepted with a terminal report.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct AcceptedHold {
-    /// Run that parked the sandbox; a later run's hold is independent.
+pub struct AcceptedPark {
+    /// Run that parked the sandbox; a later run's park is independent.
     pub run_id: String,
-    /// Thread fence under which this hold was accepted.
+    /// Thread fence under which this park was accepted.
     pub fencing_token: u64,
     /// Deadline saved by the daemon, capped by its idle policy.
     #[serde(with = "crate::instant")]
@@ -249,7 +249,7 @@ pub struct ReportResponse {
     pub ok: bool,
     /// Accepted retained sandbox, or none when expired, consumed or refused.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub hold: Option<AcceptedHold>,
+    pub park: Option<AcceptedPark>,
 }
 
 #[cfg(test)]

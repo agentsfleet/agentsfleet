@@ -8,15 +8,15 @@
 //!
 //! Five segments tile the run: the memory load, the sandbox from sizing
 //! through repository checkout, the model's turns, the tools those
-//! turns called, and the settle from hold-or-destroy to the posted report.
+//! turns called, and the settle from park-or-destroy to the posted report.
 //! What they leave of the wall time is the admission, the turn assignment and
 //! the drain wait. The first token is inside the model's time and is logged
 //! beside them. A segment a run never reached is absent from the line, never zero:
-//! an operator reading `sandbox_ms=0` would take it for a held sandbox.
+//! an operator reading `sandbox_ms=0` would take it for a parked sandbox.
 //!
 //! Three parts split the sandbox segment and tile no more than it: the egress
-//! bind, the prepare that thaws a held sandbox or builds one, and the
-//! checkout. A held sandbox, or a run bound to no repository, checks nothing
+//! bind, the prepare that thaws a parked sandbox or builds one, and the
+//! checkout. A parked sandbox, or a run bound to no repository, checks nothing
 //! out, so that part is absent. The egress bind comes before the turn; the
 //! prepare and the checkout run beside the model's segment, so the segments
 //! tile the wall only when the build ends before the turn needs it. What the
@@ -52,7 +52,7 @@ pub(super) enum Segment {
     Sandbox,
     /// Inside `Sandbox`: the run's egress resolved into what it may reach.
     Egress,
-    /// Inside `Sandbox`: the fleet's held sandbox thawed, or a fresh one built.
+    /// Inside `Sandbox`: the fleet's parked sandbox thawed, or a fresh one built.
     Prepare,
     /// Inside `Sandbox`: the bound repositories checked out.
     Checkout,

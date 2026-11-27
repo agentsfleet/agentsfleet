@@ -49,6 +49,18 @@ async fn completed_stream_has_one_timing_pair_and_content_free_first_text() {
     assert!(calibration.measured_input_tokens > 0);
     assert_ne!(calibration.revision, "");
     assert_eq!(calibration.route_id.len(), 64);
+    // The observer publishes both digests, so they are pinned to the byte:
+    // the SHA-256 of the route's JSON identity and of the model's name.
+    // pin test: literal is the contract
+    assert_eq!(
+        calibration.route_id,
+        "00f78eec7771164be3d0ce495945f454798e6d5d29a096905e556996d1d17f4c"
+    );
+    // pin test: literal is the contract
+    assert_eq!(
+        calibration.model_id,
+        "4bbcf8b89b51d28551bd19b683dbe81726f2f4f1200b499ea8cbe05665f177f5"
+    );
     let fields = format!("{seen:?}");
     for private in ["private prompt", "private-credential", "Hi 🌿"] {
         assert!(

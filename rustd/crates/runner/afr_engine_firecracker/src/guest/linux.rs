@@ -43,7 +43,7 @@ use rustix::fs::{Gid, Uid};
 use rustix::mount::{MountFlags, MountPropagationFlags, mount, mount_bind, mount_change};
 use tokio_vsock::{VMADDR_CID_ANY, VsockAddr, VsockListener, VsockStream};
 
-use super::{Accept, EXECUTOR_PORT, GuestEntry, host_connection};
+use super::{EXECUTOR_PORT, GuestEntry, PeerConnections, host_connection};
 use crate::engine::GUEST_USER;
 
 /// The drives, as the guest kernel names them in the order they are attached.
@@ -292,7 +292,7 @@ fn executor(entry: GuestEntry) -> Result<()> {
 struct Listener(VsockListener);
 
 #[async_trait::async_trait]
-impl Accept for Listener {
+impl PeerConnections for Listener {
     type Stream = VsockStream;
 
     async fn accept(&mut self) -> io::Result<(VsockStream, u32)> {

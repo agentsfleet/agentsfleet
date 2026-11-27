@@ -6,7 +6,7 @@ use afr_executor::{ExecutorSlot, Unavailable};
 use afr_memory::Seed;
 
 use super::{
-    DETAIL_MEMORY, DETAIL_RENEWAL, DETAIL_TURN, EVENT_LOAD_FAILED, Run, hold::Worked,
+    DETAIL_MEMORY, DETAIL_RENEWAL, DETAIL_TURN, EVENT_LOAD_FAILED, Run, park::Worked,
     refusal::failed, segments::Segment,
 };
 use crate::activity::ActivitySink;
@@ -15,7 +15,7 @@ use crate::turns::FleetTurns;
 
 impl Run<'_> {
     /// Everything that holds the fleet's turn: setup and the run. The sandbox
-    /// the run used comes back with its ending, for the run to hold or
+    /// the run used comes back with its ending, for the run to park or
     /// destroy once the cut and the report decide.
     ///
     /// The interrupt ends the run early, and the caller's ending replaces

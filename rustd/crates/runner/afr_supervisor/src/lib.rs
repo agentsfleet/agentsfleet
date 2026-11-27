@@ -39,9 +39,9 @@ mod credentials;
 mod downlink;
 mod egress;
 mod halt;
-mod holds;
 mod identity;
 mod memory;
+mod parks;
 mod records;
 mod recovery;
 mod renew;
@@ -80,8 +80,8 @@ pub use self::storage_home::StorageHome;
 use self::client::HttpRunnerApi;
 use self::downlink::policy::{Assignment, Heartbeat};
 use self::halt::Halt;
-use self::holds::Holds;
 use self::identity::Whoami;
+use self::parks::Parks;
 use self::run_loop::Lessee;
 use self::workspace_clone::{GITHUB_ORIGIN, Mirrors};
 
@@ -217,7 +217,7 @@ async fn serve_from(runner: Runner, origin: &str, shutdown: CancellationToken) -
         mirrors: Mirrors::new(home.mirrors(), origin),
         staging: home.staging(),
         limits,
-        holds: Holds::start(Arc::clone(&clock)),
+        parks: Parks::start(Arc::clone(&clock)),
         clock,
         halt: Halt::new(shutdown),
         whoami: Whoami::default(),
@@ -243,7 +243,7 @@ async fn serve_composed(
         &lessee.plane,
         probe,
         lessee.engine.capabilities(),
-        &lessee.holds,
+        &lessee.parks,
         sandboxes,
     )
     .with_sandboxes_max(
@@ -273,7 +273,7 @@ async fn serve_composed(
             connection.await
         }
     };
-    lessee.holds.shutdown().await;
+    lessee.parks.shutdown().await;
     result?;
     if lessee.halt.token_refused() {
         return Err(error::token_refused());

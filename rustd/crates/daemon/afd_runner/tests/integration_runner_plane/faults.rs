@@ -8,7 +8,7 @@
 use af_core::clock;
 use af_core::error_code;
 use af_core::test_util::trace::Capture;
-use af_wire::runner::{CapabilityReport, HeartbeatRequest, HeldFleets};
+use af_wire::runner::{CapabilityReport, HeartbeatRequest, ParkedFleets};
 use afd_runner::sql::NEVER_SEEN;
 
 use super::Fixture;
@@ -47,7 +47,7 @@ async fn test_a_beat_whose_writes_are_refused_still_answers_and_logs_each() {
     let beat = HeartbeatRequest {
         capability_report: Some(bare_report()),
         selftest: None,
-        holds: HeldFleets(Vec::new()),
+        parked: ParkedFleets(Vec::new()),
         closing: false,
         host: af_wire::runner::HostFacts::default(),
     };

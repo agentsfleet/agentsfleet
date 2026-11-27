@@ -5,8 +5,8 @@ mod native;
 
 pub(crate) use native::{COUNT_REPLY_BYTES, COUNT_TIMEOUT};
 
+use aws_lc_rs::digest::{Context, SHA256, digest};
 use rig_core::completion::{CompletionRequest, Usage};
-use sha2::{Digest as _, Sha256};
 
 use super::observe::Calibration;
 use super::route::{Api, Route};
@@ -99,13 +99,11 @@ impl Route {
                 "o200k_proxy_estimate"
             },
             binding: self.count_binding(model, request)?,
-            route: hex::encode(Sha256::digest(serde_json::to_vec(&(
-                self.settings(),
-                model,
-                self.context_tokens(),
-                REVISION,
-            ))?)),
-            model: hex::encode(Sha256::digest(model.as_bytes())),
+            route: hex::encode(digest(
+                &SHA256,
+                &serde_json::to_vec(&(self.settings(), model, self.context_tokens(), REVISION))?,
+            )),
+            model: hex::encode(digest(&SHA256, model.as_bytes())),
             api: match self.api() {
                 Api::Chat => "chat",
                 Api::Responses => "responses",
@@ -199,14 +197,17 @@ impl Route {
     fn count_binding(&self, model: &str, request: &CompletionRequest) -> Result<[u8; 32]> {
         let encoded = self.encode_stream(model, request.clone())?;
         let body = super::json::json_request(encoded.request)?.into_body();
-        let mut digest = Sha256::new();
-        digest.update(serde_json::to_vec(&(
+        let mut hash = Context::new(&SHA256);
+        hash.update(&serde_json::to_vec(&(
             self.settings(),
             model,
             self.context_tokens(),
             REVISION,
         ))?);
-        digest.update(body);
-        Ok(digest.finalize().into())
+        hash.update(&body);
+        let mut binding = [0_u8; 32];
+        // SHA-256 always yields 32 bytes, so the copy is exact.
+        binding.copy_from_slice(hash.finish().as_ref());
+        Ok(binding)
     }
 }

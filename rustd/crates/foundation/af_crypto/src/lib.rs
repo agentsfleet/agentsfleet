@@ -24,6 +24,15 @@
 //! private arrays, so there is no way to move the bytes out and leave an
 //! un-zeroed copy behind. `test_secret_types_redact` holds the line.
 
+//!
+//! # The workspace's one cryptographic home
+//!
+//! Every first-party crate that may depend on this one computes its SHA-256
+//! ([`digest`]), compares a secret ([`constant_time`]) and verifies a signature
+//! ([`signature`]) here, so the workspace links one backend, AWS-LC, and names
+//! it in one manifest. `af_core`, below this crate, and the independently
+//! published `guffbolt-ai` call AWS-LC directly.
+
 // A dependency listed but unused is a supply-chain and compile-time cost with
 // no offsetting benefit. Crate attribute rather than a workspace lint for the
 // reason the workspace manifest gives: cargo lints apply to every target, and a
@@ -34,11 +43,14 @@
 pub mod aad;
 pub mod checkpoint;
 pub mod checkpoint_digest;
+pub mod constant_time;
+pub mod digest;
 pub mod entropy;
 pub mod envelope;
 pub mod error;
 pub mod mac;
 pub mod secret;
+pub mod signature;
 
 /// Bytes in an AES-256 key.
 pub const KEY_LEN: usize = 32;

@@ -1,5 +1,5 @@
 //! How a [`Client`] reaches its executor: a socket it waits on, a stream
-//! already connected, or a transport it dials and dials again.
+//! already connected, or a route it dials and dials again.
 
 use std::io;
 use std::path::Path;
@@ -9,7 +9,7 @@ use backon::{ConstantBuilder, Retryable as _};
 use tokio::net::UnixStream;
 
 use super::Client;
-use super::transport::Transport;
+use super::route::ExecutorRoute;
 use crate::error::Result;
 use crate::sizes::Sizes;
 use crate::timing::CALL_DEADLINE;
@@ -58,17 +58,17 @@ impl Client {
         ))
     }
 
-    /// A client over whatever `transport` dials, dialled once now and again
+    /// A client over whatever `route` dials, dialled once now and again
     /// whenever a call finds the link closed, holding the link to the `sizes`
     /// the executor was started with.
     ///
     /// # Errors
     /// The first dial fails.
-    pub async fn dial(transport: impl Transport + 'static, sizes: Sizes) -> Result<Self> {
-        let stream = transport.dial().await?;
+    pub async fn dial(route: impl ExecutorRoute + 'static, sizes: Sizes) -> Result<Self> {
+        let stream = route.dial().await?;
         Ok(Self::linked(
             stream,
-            Some(Box::new(transport)),
+            Some(Box::new(route)),
             CALL_DEADLINE,
             sizes,
         ))

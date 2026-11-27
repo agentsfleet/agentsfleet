@@ -77,7 +77,7 @@ pub enum Up<'a> {
         /// Session-local correlation identifier.
         #[garde(skip)]
         request_id: NonZeroU64,
-        /// Existing capability, self-test and held-sandbox report.
+        /// Existing capability, self-test and parked-sandbox report.
         #[serde(borrow)]
         #[garde(skip)]
         request: HeartbeatRequest<'a>,

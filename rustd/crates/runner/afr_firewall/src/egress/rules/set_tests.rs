@@ -16,7 +16,7 @@ use crate::egress::rules::SET;
 use crate::egress::slot::Slot;
 use crate::egress::testing::{DELSETELEM, Fake, NEWSETELEM, Protocol, round_trip};
 
-/// The addresses a held sandbox's names resolved to the second time.
+/// The addresses a parked sandbox's names resolved to the second time.
 const MOVED: [Ipv4Addr; 2] = [Ipv4Addr::new(10, 0, 0, 9), Ipv4Addr::new(10, 0, 0, 7)];
 
 /// The `nf_tables` messages of `slot`'s refill to `addresses`, as the kernel
@@ -76,7 +76,7 @@ fn test_a_refill_empties_the_set_then_fills_it_in_one_batch() {
 }
 
 /// Both messages of a refill name the slot's own table and the set its build
-/// made, so a held sandbox's refill never touches another slot's addresses.
+/// made, so a parked sandbox's refill never touches another slot's addresses.
 #[test]
 fn test_a_refill_names_its_own_slots_table_and_set() {
     let slot = Slot::new(7).unwrap();

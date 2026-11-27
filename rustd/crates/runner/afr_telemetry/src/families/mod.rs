@@ -24,7 +24,7 @@ use af_providers::observe::labels::{
 };
 
 use crate::labels::{
-    FrameDrop, LABEL_TOOL, PushFailure, SandboxBuild, SandboxHold, SandboxRelease, SandboxStart,
+    FrameDrop, LABEL_TOOL, PushFailure, SandboxBuild, SandboxPark, SandboxRelease, SandboxStart,
     SandboxWait, Tool, ToolOutcome, TurnOutcome,
 };
 use crate::record::Recorder;
@@ -83,9 +83,9 @@ pub const TOOL_OUT_OF_MEMORY: Declared<CounterKind> =
 pub const SANDBOX_BUILDS: Declared<CounterKind> =
     Declared::new("agentsfleet_runner_sandbox_builds_total");
 
-/// Sandboxes held between a fleet's runs, by what became of them.
-pub const SANDBOX_HOLDS: Declared<CounterKind> =
-    Declared::new("agentsfleet_runner_sandbox_holds_total");
+/// Sandboxes parked between a fleet's runs, by what became of them.
+pub const SANDBOX_PARKS: Declared<CounterKind> =
+    Declared::new("agentsfleet_runner_sandbox_parks_total");
 
 /// Spans the span budget shed.
 pub const SPANS_SUPPRESSED: Declared<CounterKind> =
@@ -125,7 +125,7 @@ pub struct Families {
     push_failures: Counter<u64>,
     tool_calls: Histogram<f64>,
     out_of_memory: Counter<u64>,
-    sandbox_holds: Counter<u64>,
+    sandbox_parks: Counter<u64>,
     spans_suppressed: Counter<u64>,
     entries_discarded: Counter<u64>,
 }
@@ -156,7 +156,7 @@ impl Families {
             push_failures: instruments.counter_u64(&MEMORY_PUSH_FAILURES)?,
             tool_calls: instruments.histogram_f64(&TOOL_CALL_DURATION)?,
             out_of_memory: instruments.counter_u64(&TOOL_OUT_OF_MEMORY)?,
-            sandbox_holds: instruments.counter_u64(&SANDBOX_HOLDS)?,
+            sandbox_parks: instruments.counter_u64(&SANDBOX_PARKS)?,
             spans_suppressed: instruments.counter_u64(&SPANS_SUPPRESSED)?,
             entries_discarded: instruments.counter_u64(&OTLP_ENTRIES_DISCARDED)?,
         })
@@ -308,8 +308,8 @@ impl Recorder for Families {
         self.out_of_memory.add(1, &[]);
     }
 
-    fn sandbox_hold(&self, outcome: SandboxHold) {
-        self.sandbox_holds
+    fn sandbox_park(&self, outcome: SandboxPark) {
+        self.sandbox_parks
             .add(1, &[KeyValue::new(LABEL_OUTCOME, outcome.as_str())]);
     }
 

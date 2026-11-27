@@ -82,7 +82,7 @@ pub enum Down<'a> {
     },
     /// A committed operator change pushes policy without inventing a request id.
     Policy {
-        /// Current complete heartbeat policy, capability verdict and hold releases.
+        /// Current complete heartbeat policy, capability verdict and park releases.
         #[serde(borrow)]
         response: HeartbeatResponse<'a>,
     },
@@ -92,7 +92,7 @@ pub enum Down<'a> {
         #[serde(borrow)]
         run: TaggedRun<'a>,
     },
-    /// Current policy, capability verdict and held-sandbox releases.
+    /// Current policy, capability verdict and parked-sandbox releases.
     Heartbeat {
         /// Identifier of the heartbeat request.
         request_id: NonZeroU64,

@@ -6,7 +6,7 @@ pub(super) struct Fixture {
     pub(super) rig: Rig,
     pub(super) run: RunPayload<'static>,
     pub(super) prepared: PreparedDurableTask,
-    key: HoldKey,
+    key: ParkKey,
     egress: Egress,
     bound: Bound,
     stop: CancellationToken,
@@ -52,7 +52,7 @@ impl Fixture {
                 FakeEngine::default(),
                 FakeAgent::new(Behaviour::Answer),
             ),
-            key: HoldKey {
+            key: ParkKey {
                 fleet: Uuid7::parse(&run.event.fleet_id)?,
                 workspace: ID.to_owned(),
                 limits: Limits::default(),

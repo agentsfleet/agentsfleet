@@ -4,8 +4,8 @@
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use af_wire::runner::{
-    AssignedPolicy, CapabilityReport, HeartbeatRequest, HeldFleets, NetworkPolicy, RegisterRequest,
-    SandboxTier,
+    AssignedPolicy, CapabilityReport, HeartbeatRequest, NetworkPolicy, ParkedFleets,
+    RegisterRequest, SandboxTier,
 };
 use af_wire::turn::TurnKind;
 use afd_bus::Handle;
@@ -291,11 +291,11 @@ pub(in crate::lane::runs) async fn runner_identity(
     let beat = HeartbeatRequest {
         capability_report: Some(capable()),
         selftest: None,
-        holds: HeldFleets(Vec::new()),
+        parked: ParkedFleets(Vec::new()),
         closing: false,
         host: af_wire::runner::HostFacts::default(),
     };
-    let held = prove(beat.holds.clone());
+    let held = prove(beat.parked.clone());
     runners
         .heartbeat(&runner, &beat, held.as_ref(), now)
         .await?;

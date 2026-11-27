@@ -77,7 +77,7 @@ pub(super) fn payload<'a>(
         policy,
         history: context.history,
         finished_calls: context.finished_calls,
-        resume_hold: acquired.resume_hold,
+        resume_park: acquired.resume_hold,
         decision: context.decision,
         durable_task: context.task,
         unfinished_tasks: context.unfinished_tasks,

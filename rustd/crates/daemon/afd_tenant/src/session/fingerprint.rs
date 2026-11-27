@@ -19,7 +19,7 @@
 //! grammar, so it
 //! cannot be smuggled in from either field.
 
-use sha2::{Digest as _, Sha256};
+use af_crypto::digest::Sha256;
 
 /// The byte that separates two fields, for the reason the module note gives.
 const FIELD_SEPARATOR: u8 = 0x00;
@@ -38,10 +38,10 @@ impl Fingerprint {
         let mut hasher = Sha256::new();
         for field in [client_address, user_agent] {
             hasher.update(field.as_bytes());
-            hasher.update([FIELD_SEPARATOR]);
+            hasher.update(&[FIELD_SEPARATOR]);
         }
         hasher.update(session_id.as_bytes());
-        Self(hasher.finalize().into())
+        Self(hasher.finish())
     }
 
     /// The digest the session row stores.
@@ -58,9 +58,8 @@ impl Fingerprint {
     /// decides whether a sealed credential is handed out again.
     #[must_use]
     pub fn matches(&self, stored: &[u8]) -> bool {
-        use subtle::ConstantTimeEq as _;
         <&[u8; 32]>::try_from(stored)
-            .is_ok_and(|stored| stored.as_slice().ct_eq(self.0.as_slice()).into())
+            .is_ok_and(|stored| af_crypto::constant_time::eq(stored, &self.0))
     }
 }
 
@@ -112,6 +111,21 @@ mod tests {
         assert_ne!(
             Fingerprint::of("12", "3", "sid"),
             Fingerprint::of("1", "23", "sid")
+        );
+    }
+
+    /// A session row stores these bytes, so the digest is pinned to them: the
+    /// field order, the separators and the plain SHA-256 over them.
+    #[test]
+    fn the_digest_is_pinned_to_the_byte() {
+        // pin test: literal is the contract
+        assert_eq!(
+            Fingerprint::of("203.0.113.7", "afc/1", "sid").as_bytes(),
+            &[
+                0xc0, 0x99, 0x8e, 0xcd, 0x8a, 0xdb, 0x2c, 0x64, 0xec, 0x17, 0x07, 0xeb, 0x84, 0x16,
+                0x8c, 0x44, 0xee, 0x12, 0x35, 0xeb, 0x46, 0xd3, 0x85, 0x41, 0x39, 0x26, 0x8e, 0xb1,
+                0xdb, 0x54, 0x46, 0x90
+            ]
         );
     }
 }

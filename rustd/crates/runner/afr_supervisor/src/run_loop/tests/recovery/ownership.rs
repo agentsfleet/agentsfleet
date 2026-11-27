@@ -16,7 +16,7 @@ use super::*;
 use crate::{
     client::{Call, Verb},
     egress::{Bound, Egress},
-    holds::{BuiltUnder, HoldKey},
+    parks::{BuiltUnder, ParkKey},
     run_loop::{Ids, segments::Timeline},
     test_support::{self, Answer, Behaviour, FakeAgent, FakeEngine, Parking, Rig},
 };
@@ -184,8 +184,8 @@ mod prepare_tests;
 #[path = "ownership/checkout.rs"]
 mod checkout_tests;
 
-#[path = "ownership/hold.rs"]
-mod hold_tests;
+#[path = "ownership/park.rs"]
+mod park_tests;
 
 async fn sandbox(
     root: &std::path::Path,

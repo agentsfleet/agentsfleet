@@ -47,7 +47,6 @@ use jiff::Timestamp;
 use moka::future::Cache;
 use serde::Serialize;
 use serde_json::Value;
-use sha2::{Digest as _, Sha256};
 
 use self::cache::{Cached, PerToken, Refused};
 pub use self::vendors::{Exchanger, Lifetimes, Vendors};
@@ -277,7 +276,7 @@ impl Key {
         Some(Self {
             workspace_id: ask.workspace_id.clone(),
             connector: connector.into(),
-            scope: Sha256::digest(&canonical).into(),
+            scope: af_crypto::digest::sha256(&canonical),
         })
     }
 }

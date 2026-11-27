@@ -1,4 +1,4 @@
-//! A hold's policy key: the same run policy files the same key, and a
+//! A park's policy key: the same run policy files the same key, and a
 //! change to any field it carries files another.
 #![expect(
     clippy::unwrap_used,
@@ -111,7 +111,7 @@ fn a_change_to_the_runners_egress_files_another_key() {
 }
 
 /// An allowlisted egress files its key by the names it reaches: the same
-/// names at new addresses file the same key, so the hold is kept and its
+/// names at new addresses file the same key, so the park is kept and its
 /// sandbox takes the new addresses; another name files another key.
 #[test]
 fn an_allowlist_files_its_key_by_name_not_address() {

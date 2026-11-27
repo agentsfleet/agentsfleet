@@ -31,12 +31,12 @@ enum Outcome {
 }
 
 #[tokio::test]
-async fn ordinary_files_retire_the_warm_hold_and_restore_before_the_model() -> Checked {
+async fn ordinary_files_retire_the_warm_park_and_restore_before_the_model() -> Checked {
     run(Outcome::Restored).await
 }
 
 #[tokio::test]
-async fn corrupt_ordinary_files_refuse_the_model_and_do_not_reuse_the_warm_hold() -> Checked {
+async fn corrupt_ordinary_files_refuse_the_model_and_do_not_reuse_the_warm_park() -> Checked {
     run(Outcome::Corrupt).await
 }
 
@@ -65,7 +65,7 @@ async fn run(outcome: Outcome) -> Checked {
     let expiry = clock::after(clock::now(), Duration::from_mins(10));
     let saved = fixture::checkpoint(&run, scope, expiry, &page)?;
     run.turn_resume = Some(saved.descriptor.clone());
-    run.resume_hold = true;
+    run.resume_park = true;
     let mut rig = Rig::new(
         test_support::daemon(move |call| fixture::answer(call, &saved, &page, &object)),
         engine,
@@ -81,7 +81,7 @@ async fn run(outcome: Outcome) -> Checked {
     install(&mut rig, &model, &server, outcome, root.path())?;
     rig.run(&run).await?;
     assert_outcome(&mut rig, &model, outcome, root.path());
-    rig.lessee.holds.shutdown().await;
+    rig.lessee.parks.shutdown().await;
     assert_eq!(rig.prepared.load(Ordering::SeqCst), 2);
     assert_eq!(rig.destroyed.load(Ordering::SeqCst), 2);
     if matches!(outcome, Outcome::BusyTenant) {
@@ -131,18 +131,18 @@ fn install(
 }
 
 async fn warm(rig: &mut Rig, assigned: &af_wire::run::RunPayload<'_>) -> Checked {
-    rig.lessee.holds.resize(2);
+    rig.lessee.parks.resize(2);
     let mut warm = assigned.clone();
     warm.run_id = "019f0000-0000-7000-8000-000000000099".into();
     warm.turn_resume = None;
-    warm.resume_hold = false;
+    warm.resume_park = false;
     rig.run(&warm).await?;
     let report = test_support::reported(&rig.calls());
     assert_eq!(
         report.get("outcome").and_then(Value::as_str),
         Some("processed")
     );
-    assert!(report.get("held_until").is_some_and(Value::is_string));
+    assert!(report.get("parked_until").is_some_and(Value::is_string));
     assert_eq!(rig.prepared.load(Ordering::SeqCst), 1);
     assert_eq!(rig.destroyed.load(Ordering::SeqCst), 0);
     Ok(())

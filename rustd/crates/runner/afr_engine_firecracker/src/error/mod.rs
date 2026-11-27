@@ -127,7 +127,7 @@ impl Error {
     }
 }
 
-impl afr_engine::Failure for Error {
+impl afr_engine::EngineFailure for Error {
     /// The missing mechanism a refused KVM device is; none otherwise.
     fn seam(&self) -> Option<&afr_engine::Error> {
         if let ErrorKind::Kvm { seam, .. } = self.kind() {

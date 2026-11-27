@@ -1,4 +1,4 @@
-//! Host liveness, pushed assignments and held-sandbox releases share one policy owner.
+//! Host liveness, pushed assignments and parked-sandbox releases share one policy owner.
 
 use std::{borrow::Cow, path::Path, sync::Arc, time::Duration};
 
@@ -7,7 +7,7 @@ use af_stream::OwnedFrame;
 use af_wire::{
     protocol::Down,
     runner::{
-        HeartbeatRequest, HeartbeatResponse, HeartbeatStatus, HeldFleets, NetworkPolicy,
+        HeartbeatRequest, HeartbeatResponse, HeartbeatStatus, NetworkPolicy, ParkedFleets,
         SandboxTier,
     },
 };
@@ -20,7 +20,7 @@ use crate::{
     egress::Egress,
     error::{ErrorKind, Result},
     halt::Halt,
-    holds::{Holds, Release},
+    parks::{Parks, Release},
 };
 
 const EVENT_LAST_FAILED: &str = "heartbeat_last_failed";
@@ -54,7 +54,7 @@ pub(crate) struct Heartbeat<'a> {
     engine: Capabilities,
     /// The engine's admission bound, which the report states.
     sandboxes_max: Option<u32>,
-    holds: &'a Holds,
+    parks: &'a Parks,
     /// Where run sandboxes live, whose file system's free bytes each beat reports.
     sandboxes: &'a Path,
     host: HostReader,
@@ -69,7 +69,7 @@ impl<'a> Heartbeat<'a> {
         plane: &'a ControlPlane,
         probe: &'a HostProbe,
         engine: Capabilities,
-        holds: &'a Holds,
+        parks: &'a Parks,
         sandboxes: &'a Path,
     ) -> Self {
         Self {
@@ -77,7 +77,7 @@ impl<'a> Heartbeat<'a> {
             probe,
             engine,
             sandboxes_max: None,
-            holds,
+            parks,
             sandboxes,
             host: HostReader::default(),
             label: None,
@@ -99,7 +99,7 @@ impl<'a> Heartbeat<'a> {
             .label
             .filter(|_| self.selftest_due)
             .map(|(tier, network)| selftest(self.probe, &self.engine, tier, network));
-        let held = self.holds.fleets().await;
+        let parked = self.parks.fleets().await;
         let host = self.host.facts(self.sandboxes).await;
         let request = HeartbeatRequest {
             capability_report: Some(capability_report(
@@ -108,8 +108,9 @@ impl<'a> Heartbeat<'a> {
                 self.sandboxes_max,
             )),
             selftest,
-            holds: HeldFleets(
-                held.iter()
+            parked: ParkedFleets(
+                parked
+                    .iter()
                     .map(|fleet| Cow::Borrowed(fleet.as_str()))
                     .collect(),
             ),
@@ -121,8 +122,8 @@ impl<'a> Heartbeat<'a> {
     }
 
     fn apply(&mut self, reply: &HeartbeatResponse<'_>) -> Result<Assignment> {
-        for inactive in &reply.release_holds {
-            self.holds
+        for inactive in &reply.release_parked {
+            self.parks
                 .release(Uuid7::parse(inactive)?, Release::Inactive);
         }
         let policy = &reply.assigned_policy;
@@ -167,7 +168,7 @@ impl<'a> Heartbeat<'a> {
                     }
                     continue;
                 }
-                () = self.holds.saturated().notified() => {}
+                () = self.parks.saturated().notified() => {}
                 () = rounds.beats().notified() => {}
                 () = tokio::time::sleep(backoff.unwrap_or_default()), if backoff.is_some() => {}
             }
@@ -209,7 +210,7 @@ impl<'a> Heartbeat<'a> {
 
     fn close(&mut self) {
         self.closed = true;
-        self.holds.close();
+        self.parks.close();
     }
 
     async fn last_beat(&mut self, halt: &Halt) {

@@ -22,6 +22,7 @@ af_core = { workspace = true, features = ["sqlx"] }
 af_context.workspace = true
 # The runtime rate a model choice is priced at.
 afd_billing.workspace = true
+# Entropy, and the SHA-256 a create's replay receipt stores.
 af_crypto.workspace = true
 afd_db.workspace = true
 # A fleet's model resolves through the owner's registry.
@@ -44,7 +45,6 @@ jiff.workspace = true
 jiff-sqlx.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-sha2.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
 tracing.workspace = true

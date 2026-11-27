@@ -38,7 +38,9 @@ afd_connector.workspace = true
 afd_outbound.workspace = true
 # Identifiers, the instant a delivery is stamped with, and the registry codes.
 af_core = { workspace = true, features = ["sqlx"] }
-# The plaintext wrapper a signing secret comes back in. This crate computes no
+# The plaintext wrapper a signing secret comes back in, and the SHA-256 the
+# App ingress keys its at-most-once claim on, the body's digest rather than the
+# provider's unsigned delivery header (`app::replay_id`). This crate computes no
 # tag of its own — the wall does, in `af_webhook`.
 af_crypto.workspace = true
 # The Postgres pool the fleet row is read on.
@@ -66,9 +68,6 @@ af_wire.workspace = true
 serde.workspace = true
 # A trigger row, written as the one-entry list the trigger parser reads.
 serde_json.workspace = true
-# The App ingress keys its at-most-once claim on the body's digest rather than
-# on the provider's unsigned delivery header — see `app::replay_id`.
-sha2.workspace = true
 # The instant a channel binding's or a notice's id is minted at.
 jiff.workspace = true
 # That digest is rendered lowercase hex, one spelling, so every redelivery of

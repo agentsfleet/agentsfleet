@@ -162,7 +162,7 @@ Each engine sweeps what a crashed runner left when the engine is built.
 
 #### Parking between runs
 
-A processed run's sandbox parks in the first mode its engine offers, and a sandbox whose engine offers none is killed ([hold](../../rustd/crates/runner/afr_supervisor/src/run_loop/hold.rs)). A parked sandbox is its own type, `Parked`, which runs nothing until it resumes.
+A processed run's sandbox parks in the first mode its engine offers, and a sandbox whose engine offers none is killed ([park](../../rustd/crates/runner/afr_supervisor/src/run_loop/park.rs)). A parked sandbox is its own type, `Parked`, which runs nothing until it resumes.
 
 - `Stop` is Firecracker's. The guest syncs, its monitor stops, and only the disk stays. Resume boots a fresh microVM on that disk.
 - `Pause` keeps memory and disk while every process stops, and no engine offers it.
@@ -364,7 +364,7 @@ A revoked grant leaves a live run the token it already has. The next run and the
 
 ### Workspace between runs
 
-A run that ends processed leaves its sandbox held ([holds](../../rustd/crates/runner/afr_supervisor/src/holds/mod.rs)). The supervisor parks it in its engine's mode: Firecracker stops the microVM and keeps its disk.
+A run that ends processed leaves its sandbox parked ([parks](../../rustd/crates/runner/afr_supervisor/src/parks/mod.rs)). The supervisor parks it in its engine's mode: Firecracker stops the microVM and keeps its disk.
 
 The hold is keyed by fleet, workspace, limits, network policy and repository binding. The fleet's next run within the hold window resumes it and continues with the files the last run left.
 

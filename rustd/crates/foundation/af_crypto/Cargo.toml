@@ -2,7 +2,7 @@
 name = "af_crypto"
 # One aggregated test binary; see tests/crypto_suite.rs for why.
 autotests = false
-description = "Envelope encryption and message authentication for the agentsfleetd vault's stored credentials."
+description = "The workspace's cryptography: envelope encryption for the agentsfleetd vault, message authentication, SHA-256, constant-time comparison and signature verification."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -17,7 +17,12 @@ categories.workspace = true
 # M-TEST-UTIL: one flag, named so it cannot be mistaken for a production knob.
 # It unlocks the deterministic entropy core, which is the only way to reach the
 # seal path with a pinned nonce. A release build carries no such constructor.
-test-util = []
+#
+# It also carries the suites' signers (`signature::testing`). `ring-io` is the
+# aws-lc-rs feature that reads an RSA public key's modulus and exponent out, which
+# the token verifier's suite publishes as its key set; nothing outside a suite
+# needs it.
+test-util = ["aws-lc-rs/ring-io"]
 
 [dependencies]
 # Hex for the key-material decode. Written straight into the caller's
@@ -28,7 +33,7 @@ af_core.workspace = true
 # `Entropy::uuid7` mints at a `jiff::Timestamp`, the instant type `af_core` uses.
 jiff.workspace = true
 # Every primitive here — AES-256-GCM, HMAC-SHA256, SHA-256, the constant-time
-# compare and the random bytes — is AWS-LC, the one cryptographic backend the
+# compare, ECDSA P-256 verification and the random bytes — is AWS-LC, the one cryptographic backend the
 # workspace links. Standard AES-256-GCM, so rows and checkpoint objects sealed
 # under the earlier RustCrypto build open unchanged (`tests/stored_format.rs`).
 aws-lc-rs.workspace = true
