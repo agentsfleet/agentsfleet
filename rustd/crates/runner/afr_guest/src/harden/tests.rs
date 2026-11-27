@@ -59,10 +59,11 @@ fn test_harden_refuses_where_there_is_no_landlock() {
 
 #[cfg(target_os = "linux")]
 #[test]
-fn test_the_seccomp_program_compiles_for_this_machine() {
-    let program = super::linux::program();
+fn test_the_seccomp_programs_compile_for_this_machine() {
+    let [refused, unsupported] = super::linux::programs().unwrap();
 
-    assert!(program.is_ok_and(|instructions| instructions.len() > 10));
+    assert!(refused.len() > 10, "{}", refused.len());
+    assert!(unsupported.len() > 4, "{}", unsupported.len());
 }
 
 #[cfg(target_os = "linux")]

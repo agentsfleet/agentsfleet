@@ -26,6 +26,8 @@ const NAME: &str = "widget";
 const REPOSITORY: &str = "acme/widget";
 const SCOPE: &str = "01890a5d-ac96-774b-bcce-b302099a805a";
 const TOKEN: &str = "ghs_fixtureTokenNeverWritten";
+/// The workspace disk a run is granted by default.
+const DISK: u64 = afr_engine::DEFAULT_DISK_BYTES;
 
 /// A request for the fixture repository at its base branch.
 const fn request() -> Request<'static> {
@@ -160,11 +162,11 @@ async fn test_checkout_fills_a_workspace_the_host_cannot_see() {
         .unwrap();
     drop(staged);
     let captured = staging.stage(first.id()).unwrap();
-    captured.export(first.executor()).await.unwrap();
+    captured.export(first.executor(), DISK).await.unwrap();
     let second = Served::start(&sandboxes).await;
     captured.restore(second.executor()).await.unwrap();
     let restored = staging.stage(second.id()).unwrap();
-    restored.export(second.executor()).await.unwrap();
+    restored.export(second.executor(), DISK).await.unwrap();
     let refused = captured.restore(second.executor()).await;
     first.stop().await;
     second.stop().await;
@@ -195,4 +197,56 @@ async fn test_checkout_fills_a_workspace_the_host_cannot_see() {
     let stage = captured.path().to_owned();
     drop(captured);
     assert!(!stage.exists(), "a stage goes when its step ends");
+}
+
+// Value: protects=a guest decides nothing about how much host disk, or host reading, its export takes;
+// fails_when=a stream longer than the run's granted disk is spooled or unpacked, or a file
+// claiming more than that disk is staged for a capture to read through;
+// seam=real executor and client over a Unix socket; no_claim=the capture that follows.
+#[tokio::test]
+async fn test_an_export_past_the_granted_disk_is_refused_and_leaves_nothing() {
+    const GRANTED: u64 = 64 * 1024;
+    let root = tempfile::Builder::new()
+        .prefix("afr")
+        .tempdir_in("/tmp")
+        .unwrap();
+    let staging = Staging::sweep(&root.path().join("staging")).unwrap();
+    let served = Served::start(&root.path().join("sandboxes")).await;
+    let sandbox = root.path().join("sandboxes").join(served.id().as_str());
+    let workspace = sandbox.join("workspace");
+    fs::write(workspace.join("small"), b"fits").unwrap();
+    let within = staging.stage(served.id()).unwrap();
+    within.export(served.executor(), GRANTED).await.unwrap();
+    // Each twice the disk it claims to live on: one in bytes the stream
+    // carries, one in a hole it does not.
+    let dense = |large: &Path| fs::write(large, vec![0xA5; 2 * 64 * 1024]).unwrap();
+    let holed = |large: &Path| {
+        let file = fs::File::create(large).unwrap();
+        file.set_len(2 * GRANTED).unwrap();
+    };
+
+    for (kind, plant) in [("dense", &dense as &dyn Fn(&_)), ("holed", &holed)] {
+        plant(&workspace.join("large"));
+        let staged = staging.stage(served.id()).unwrap();
+        let refused = staged.export(served.executor(), GRANTED).await;
+
+        assert_eq!(
+            test_support::detail(&refused),
+            Some("the workspace's export outgrew the disk the run was granted"),
+            "{kind}"
+        );
+        assert_eq!(
+            refused.unwrap_err().code(),
+            af_core::error_code::RUN_CHECKPOINT_LIMIT,
+            "{kind}"
+        );
+    }
+    served.stop().await;
+    assert_eq!(fs::read(within.path().join("small")).unwrap(), b"fits");
+    drop(within);
+    assert_eq!(
+        fs::read_dir(root.path().join("staging")).unwrap().count(),
+        0,
+        "no spool and no stage outlives its step"
+    );
 }

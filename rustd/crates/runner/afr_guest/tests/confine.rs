@@ -5,7 +5,9 @@
 //! nor inside one that has already started a second thread. This target has
 //! no harness: its `main` re-runs itself as a child, the child binds a socket,
 //! confines itself and serves, the parent connects and hangs up, and then
-//! reads what the child said.
+//! reads what the child said. Confined, the child then asks the kernel for a
+//! namespace each way a tenant could, and starts a thread: the parent reads
+//! back what each call answered.
 //!
 //! The child's coverage is kept. A confined process may write only beneath
 //! `/tmp` and the sandbox's own directories, so the child writes its profile
@@ -38,6 +40,9 @@ const SOCKET: &str = "executor.sock";
 const ROOT: &str = "root";
 /// What the child says once it served a connection to its end.
 const SERVED: &str = "served";
+/// What the child's line of answers starts with.
+#[cfg(target_os = "linux")]
+const ANSWERS: &str = "namespaces:";
 /// How often, and how many times, the parent tries the child's socket.
 const CONNECT_DELAY: Duration = Duration::from_millis(10);
 const CONNECT_TRIES: usize = 500;
@@ -57,6 +62,8 @@ fn main() -> ExitCode {
         let said = afr_guest::serve_confined(&scratch.join(SOCKET), &scratch.join(ROOT))
             .map_or_else(|refused| refused.to_string(), |()| SERVED.to_owned());
         println!("{said}");
+        #[cfg(target_os = "linux")]
+        println!("{ANSWERS} {}", asked::answers());
         return ExitCode::SUCCESS;
     }
     match parent() {
@@ -151,7 +158,7 @@ fn parent() -> Result<(), String> {
     }
     let said = String::from_utf8_lossy(&output.stdout);
     let wanted = expected();
-    if output.status.success() && said.contains(wanted) {
+    if output.status.success() && said.contains(wanted) && said.contains(&answers(wanted)) {
         Ok(())
     } else {
         Err(format!(
@@ -159,6 +166,69 @@ fn parent() -> Result<(), String> {
             output.status,
             String::from_utf8_lossy(&output.stderr)
         ))
+    }
+}
+
+/// What the child's calls must have answered, given what it said: once the
+/// seccomp programs are installed, which both a served child and one refused
+/// for a surviving capability got to, a `clone` into a new user namespace and
+/// a `setns` are refused, `clone3` is unknown, and a thread still starts.
+/// A child refused before then has no program to answer for.
+#[cfg(target_os = "linux")]
+fn answers(said: &str) -> String {
+    if said == "Landlock refused" {
+        return ANSWERS.to_owned();
+    }
+    let (refused, unknown) = (libc::EPERM, libc::ENOSYS);
+    format!("{ANSWERS} clone {refused} setns {refused} clone3 {unknown} thread started")
+}
+
+/// Nothing is confined where there is no Landlock, so nothing answers.
+#[cfg(not(target_os = "linux"))]
+const fn answers(_said: &str) -> String {
+    String::new()
+}
+
+/// The calls a confined child makes, and what each answered.
+#[cfg(target_os = "linux")]
+mod asked {
+    /// The error `call` set, or 0 when it succeeded.
+    fn errno(answered: libc::c_long) -> i32 {
+        if answered == -1 {
+            std::io::Error::last_os_error()
+                .raw_os_error()
+                .unwrap_or_default()
+        } else {
+            0
+        }
+    }
+
+    /// A `clone` into a new user namespace, a `setns`, a `clone3` and a
+    /// thread, as one line.
+    pub(super) fn answers() -> String {
+        let flags = libc::CLONE_NEWUSER | libc::SIGCHLD;
+        // SAFETY: a `clone` without a stack is a fork; the child it makes
+        // when nothing refuses it ends at once below, touching nothing.
+        let forked = unsafe { libc::syscall(libc::SYS_clone, flags, 0, 0, 0, 0) };
+        if forked == 0 {
+            // SAFETY: `_exit` ends the forked child at once.
+            unsafe { libc::_exit(0) };
+        }
+        let clone = errno(forked);
+        // SAFETY: descriptor -1 is none, so the call changes nothing.
+        let setns = errno(unsafe { libc::syscall(libc::SYS_setns, -1, 0) });
+        // SAFETY: no arguments and a zero size, which the kernel refuses
+        // before it reads anything.
+        let newer = errno(unsafe { libc::syscall(libc::SYS_clone3, 0, 0) });
+        let thread = std::thread::Builder::new()
+            .spawn(|| ())
+            .map(std::thread::JoinHandle::join);
+        let thread = if matches!(thread, Ok(Ok(()))) {
+            "started"
+        } else {
+            "refused"
+        };
+        format!("clone {clone} setns {setns} clone3 {newer} thread {thread}")
     }
 }
 

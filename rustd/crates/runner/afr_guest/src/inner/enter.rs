@@ -32,7 +32,7 @@ pub(super) struct Entering {
     user: (Uid, Gid),
     /// Enforced once; built for this process alone.
     rules: Option<RulesetCreated>,
-    seccomp: Arc<BpfProgram>,
+    seccomp: Arc<[BpfProgram; 2]>,
 }
 
 impl Entering {
@@ -46,7 +46,7 @@ impl Entering {
         cwd: &Path,
         user: (Uid, Gid),
         rules: RulesetCreated,
-        seccomp: &Arc<BpfProgram>,
+        seccomp: &Arc<[BpfProgram; 2]>,
     ) -> io::Result<Self> {
         Ok(Self {
             init,
@@ -83,7 +83,9 @@ impl Entering {
         rustix::thread::set_no_new_privs(true)?;
         let rules = self.rules.take().ok_or_else(refused)?;
         rules.restrict_self().map_err(|_refused| refused())?;
-        seccompiler::apply_filter(&self.seccomp).map_err(|_refused| refused())?;
+        for program in self.seccomp.iter() {
+            seccompiler::apply_filter(program).map_err(|_refused| refused())?;
+        }
         seccompiler::apply_filter(&HIGH_NUMBERS).map_err(|_refused| refused())?;
         let held = rustix::thread::capabilities(None)?;
         if held.effective.is_empty() && held.permitted.is_empty() {

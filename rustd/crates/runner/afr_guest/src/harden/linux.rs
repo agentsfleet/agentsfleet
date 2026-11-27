@@ -6,7 +6,10 @@ use landlock::{
     ABI, Access as _, AccessFs, CompatLevel, Compatible as _, Ruleset, RulesetAttr as _,
     RulesetCreated, RulesetCreatedAttr as _, path_beneath_rules,
 };
-use seccompiler::{BpfProgram, SeccompAction, SeccompFilter, SeccompRule, TargetArch, sock_filter};
+use seccompiler::{
+    BpfProgram, SeccompAction, SeccompCmpArgLen, SeccompCmpOp, SeccompCondition, SeccompFilter,
+    SeccompRule, TargetArch, sock_filter,
+};
 
 use super::{WRITABLE, WRITABLE_DEVICES};
 use crate::error::Result;
@@ -20,9 +23,11 @@ const ROOT: &str = "/";
 /// System calls a sandboxed process gets `EPERM` for.
 ///
 /// Each opens a door the namespaces leave: a second kernel interface
-/// (`io_uring`), another process's memory, a namespace of its own, kernel
-/// programs, the kernel keyring, or performance counters.
-pub const REFUSED: [libc::c_long; 12] = [
+/// (`io_uring`), another process's memory, a namespace of its own or
+/// another's, kernel programs, the kernel keyring, or performance counters.
+/// `clone` and `clone3` make a namespace too, and are held by
+/// [`NEW_NAMESPACES`] and [`UNSUPPORTED`]: neither can be refused whole.
+pub const REFUSED: [libc::c_long; 13] = [
     libc::SYS_io_uring_setup,
     libc::SYS_io_uring_enter,
     libc::SYS_io_uring_register,
@@ -30,12 +35,40 @@ pub const REFUSED: [libc::c_long; 12] = [
     libc::SYS_process_vm_readv,
     libc::SYS_process_vm_writev,
     libc::SYS_unshare,
+    libc::SYS_setns,
     libc::SYS_bpf,
     libc::SYS_keyctl,
     libc::SYS_add_key,
     libc::SYS_request_key,
     libc::SYS_perf_event_open,
 ];
+
+/// The flags `clone` makes a namespace with; a `clone` carrying any of them
+/// gets `EPERM`, as `unshare` does, and every other `clone`, a thread or a
+/// fork, runs. A time namespace has no `clone` flag: its bit is one of the
+/// exit signal's there.
+const NEW_NAMESPACES: [libc::c_int; 7] = [
+    libc::CLONE_NEWNS,
+    libc::CLONE_NEWCGROUP,
+    libc::CLONE_NEWUTS,
+    libc::CLONE_NEWIPC,
+    libc::CLONE_NEWUSER,
+    libc::CLONE_NEWPID,
+    libc::CLONE_NEWNET,
+];
+/// Which of `clone`'s arguments holds its flags, on every architecture
+/// `seccompiler` compiles for.
+const CLONE_FLAGS_ARGUMENT: u8 = 0;
+
+/// System calls a sandboxed process gets `ENOSYS` for, as from a kernel that
+/// never had them.
+///
+/// `clone3` takes its flags behind a pointer, which no seccomp program can
+/// read, so its namespace flags cannot be told from a thread's. glibc tries
+/// it first and falls back to `clone` on exactly this answer, musl calls
+/// `clone` alone, and `EPERM` here would fail every thread a glibc program
+/// starts.
+const UNSUPPORTED: [libc::c_long; 1] = [libc::SYS_clone3];
 
 /// The bit an x86-64 kernel reads as "this is an x32 call".
 ///
@@ -81,11 +114,13 @@ fn ruleset() -> Result<Ruleset> {
         .handle_access(AccessFs::from_all(LANDLOCK_ABI))?)
 }
 
-/// Installs the programs that answer [`REFUSED`], and every call numbered at
-/// or past [`X32_SYSCALL_BIT`], with `EPERM`. Two programs, stacked: the
-/// kernel runs both and the refusal wins.
+/// Installs [`programs`], then the program that answers every call numbered
+/// at or past [`X32_SYSCALL_BIT`] with `EPERM`. Stacked: the kernel runs
+/// them all and a refusal wins.
 pub(super) fn refuse_system_calls() -> Result<()> {
-    seccompiler::apply_filter(&program()?)?;
+    for program in &programs()? {
+        seccompiler::apply_filter(program)?;
+    }
     seccompiler::apply_filter(&HIGH_NUMBERS)?;
     Ok(())
 }
@@ -134,15 +169,41 @@ pub(super) const fn step(code: u32, jt: u8, jf: u8, k: u32) -> sock_filter {
     }
 }
 
-/// Compiles the seccomp program for this machine's architecture.
-pub(crate) fn program() -> Result<BpfProgram> {
-    let rules: BTreeMap<i64, Vec<SeccompRule>> =
-        REFUSED.into_iter().map(|call| (call, Vec::new())).collect();
-    let (allow, refuse) = (
-        SeccompAction::Allow,
-        SeccompAction::Errno(libc::EPERM.unsigned_abs()),
-    );
+/// Compiles the seccomp programs for this machine's architecture: one
+/// answering [`REFUSED`], and a `clone` that makes a namespace, with `EPERM`;
+/// one answering [`UNSUPPORTED`] with `ENOSYS`. Two, because a `seccompiler`
+/// filter gives every call it matches one answer.
+pub(crate) fn programs() -> Result<[BpfProgram; 2]> {
+    let namespaces = NEW_NAMESPACES
+        .into_iter()
+        .map(|flag| {
+            let flag = u64::from(flag.unsigned_abs());
+            // The low half alone, as the kernel reads `clone`'s flags.
+            let carried = SeccompCondition::new(
+                CLONE_FLAGS_ARGUMENT,
+                SeccompCmpArgLen::Dword,
+                SeccompCmpOp::MaskedEq(flag),
+                flag,
+            )?;
+            SeccompRule::new(vec![carried])
+        })
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    let refused: BTreeMap<i64, Vec<SeccompRule>> = REFUSED
+        .into_iter()
+        .map(|call| (call, Vec::new()))
+        .chain([(libc::SYS_clone, namespaces)])
+        .collect();
+    let unsupported: BTreeMap<i64, Vec<SeccompRule>> = UNSUPPORTED
+        .into_iter()
+        .map(|call| (call, Vec::new()))
+        .collect();
     let arch = TargetArch::try_from(std::env::consts::ARCH)?;
-    let filter = SeccompFilter::new(rules, allow, refuse, arch)?;
-    Ok(filter.try_into()?)
+    let answering = |rules, errno: libc::c_int| {
+        let answer = SeccompAction::Errno(errno.unsigned_abs());
+        SeccompFilter::new(rules, SeccompAction::Allow, answer, arch)
+    };
+    Ok([
+        answering(refused, libc::EPERM)?.try_into()?,
+        answering(unsupported, libc::ENOSYS)?.try_into()?,
+    ])
 }

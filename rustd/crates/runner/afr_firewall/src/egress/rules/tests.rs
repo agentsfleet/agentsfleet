@@ -76,7 +76,7 @@ fn data(list: &[ListAttribute<ExpressionAttribute>]) -> Vec<Expressions> {
 }
 
 /// The value a comparison is made against.
-fn compared(expression: &Expressions) -> Option<Vec<u8>> {
+pub(super) fn compared(expression: &Expressions) -> Option<Vec<u8>> {
     match expression {
         Expressions::Cmp(parts) => parts.iter().find_map(|part| match part {
             Cmp::Data(DataAttribute::Value(value)) => Some(value.clone()),
@@ -122,7 +122,7 @@ fn filled(messages: &[&NfTablesMessage]) -> Option<usize> {
 }
 
 /// The batch builds one table whole: its set, filled; three chains accepting
-/// by policy; six forward rules, one input rule and one translation rule, each
+/// by policy; seven forward rules, one input rule and one translation rule, each
 /// asking an acknowledgement and every one surviving the kernel's encoding.
 #[test]
 fn test_the_table_is_built_in_one_batch() {
@@ -162,6 +162,7 @@ fn test_the_table_is_built_in_one_batch() {
     assert_eq!(
         chains,
         [
+            "forward",
             "forward",
             "forward",
             "forward",
@@ -218,7 +219,7 @@ fn test_every_rule_is_scoped_to_its_link() {
             .any(|value| value == name);
         assert!(names_link, "{chain}: {expressions:?}");
     }
-    let dns: Vec<_> = rules[..2]
+    let dns: Vec<_> = rules[1..3]
         .iter()
         .map(|(_, expressions)| (compared(&expressions[3]), compared(&expressions[5])))
         .collect();

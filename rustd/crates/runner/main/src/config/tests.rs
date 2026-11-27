@@ -194,7 +194,12 @@ fn test_the_firecracker_section_overcommits_four_to_one_with_a_pool_of_four() ->
     let chosen = profile("[firecracker]\nmemory_overcommit = 2\nwarm_pool = 1\n")?;
     assert_eq!(chosen.firecracker.memory_overcommit, 2);
     assert_eq!(chosen.warm_pool, 1);
-    for zero in ["memory_overcommit = 0", "warm_pool = 0"] {
+    // A first jail user of 0 would run a monitor as root.
+    for zero in [
+        "memory_overcommit = 0",
+        "warm_pool = 0",
+        "first_jail_id = 0",
+    ] {
         assert!(
             profile(&format!("[firecracker]\n{zero}\n")).is_err(),
             "{zero}"

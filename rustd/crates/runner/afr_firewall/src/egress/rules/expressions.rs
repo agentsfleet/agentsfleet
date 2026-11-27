@@ -44,10 +44,11 @@ const ESTABLISHED_OR_RELATED: u32 = 0b110;
 /// The expression that rewrites a source to the outgoing link's address.
 const MASQUERADE: &str = "masq";
 
-/// The forward chain's rules, in order: under `policy`, each reserved range
-/// dropped first; then the resolver port closed and the set reached, or every
-/// other IPv4 destination reached; everything else from the sandbox dropped,
-/// and nothing reaching it that it did not start.
+/// The forward chain's rules after [`from_another`]'s, in order: under
+/// `policy`, each reserved range dropped first; then the resolver port closed
+/// and the set reached, or every other IPv4 destination reached; everything
+/// else from the sandbox dropped, and nothing reaching it that it did not
+/// start.
 pub(super) fn forward(link: &str, policy: Policy) -> Vec<Vec<Expression>> {
     let port = |transport| {
         vec![
@@ -103,6 +104,19 @@ pub(super) fn forward(link: &str, policy: Policy) -> Vec<Vec<Expression>> {
 /// `iifname link`, then `matches`, then `verdict`.
 pub(super) fn from(link: &str, matches: Vec<Expression>, verdict: u32) -> Vec<Expression> {
     rule_on(MetaKey::Iifname, link, matches, verdict)
+}
+
+/// `iifname link ip saddr != source drop`: a sender on the link is the one
+/// address it was given, so a source it forged, another sandbox's or the
+/// host's own, goes no further and is never translated or accepted.
+pub(super) fn from_another(link: &str, source: Ipv4Addr) -> Vec<Expression> {
+    let other = vec![
+        meta(MetaKey::Nfproto),
+        compare(Operator::Equal, vec![NFPROTO_IPV4]),
+        load(NETWORK_HEADER, SOURCE_OFFSET, WORD),
+        compare(Operator::NotEqual, source.octets().to_vec()),
+    ];
+    from(link, other, DROP)
 }
 
 /// `oifname link`, then `matches`, then `verdict`.

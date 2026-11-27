@@ -35,7 +35,8 @@ pub(super) struct FirecrackerSection {
     #[garde(skip)]
     pub initrd: PathBuf,
     /// The first jail user and group; one per running microVM follows it.
-    #[garde(range(max = FIRST_JAIL_ID_MAX))]
+    /// Never 0: that jail's monitor would run as root, and no jail holds root.
+    #[garde(range(min = 1, max = FIRST_JAIL_ID_MAX))]
     pub first_jail_id: u32,
     /// How many times its available memory the host admits in guest memory.
     #[garde(range(min = 1))]

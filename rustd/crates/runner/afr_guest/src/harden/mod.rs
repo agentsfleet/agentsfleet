@@ -121,7 +121,7 @@ pub fn capabilities_dropped(status: &str) -> Result<()> {
 mod linux;
 
 #[cfg(target_os = "linux")]
-pub(crate) use self::linux::{HIGH_NUMBERS, file_system_rules, program};
+pub(crate) use self::linux::{HIGH_NUMBERS, file_system_rules, programs};
 #[cfg(target_os = "linux")]
 pub use self::linux::{REFUSED as REFUSED_SYSCALLS, X32_SYSCALL_BIT};
 

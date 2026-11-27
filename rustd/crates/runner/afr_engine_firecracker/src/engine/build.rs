@@ -138,7 +138,7 @@ async fn start(shared: &Shared, kept: &Kept, parts: &mut Parts) -> Result<Client
         argv,
         &cgroup.procs(),
     )?);
-    ready(child, &kept.layout.socket(), config).await
+    ready(child, &kept.layout, owner, config).await
 }
 
 /// Gives the guest a tap and joins its namespace to the host when `reach`
@@ -217,16 +217,19 @@ fn spawn(jailer: &Path, argv: Vec<std::ffi::OsString>, procs: &Path) -> Result<C
     Ok(command.spawn()?)
 }
 
-/// The guest's executor, once it lists its workspace. A monitor that exits
-/// first is refused with how it ended, and a guest silent past the ready
-/// timeout as not ready.
+/// The guest's executor, once it lists its workspace, dialled through the
+/// socket its monitor, running as `owner`, made in `layout`'s jail. A monitor
+/// that exits first is refused with how it ended, and a guest silent past the
+/// ready timeout as not ready.
 async fn ready(
     child: &mut Child,
-    socket: &Path,
+    layout: &jail::Layout,
+    (uid, _gid): (u32, u32),
     config: &super::FirecrackerConfig,
 ) -> Result<Client> {
     let waited = config.tuning.ready_timeout;
-    let transport = VsockTransport::new(socket.to_owned(), EXECUTOR_PORT, waited);
+    let (jail, socket) = layout.socket();
+    let transport = VsockTransport::new(jail.to_owned(), socket, uid, EXECUTOR_PORT, waited);
     let answered = async {
         let client = Client::dial(transport, config.tuning.sizes).await?;
         client.list_dir(READY_PROBE).await?;

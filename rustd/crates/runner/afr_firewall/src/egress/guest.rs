@@ -6,10 +6,12 @@
 //!   guest            slot namespace                       host namespace
 //!   eth0 .2/30 ─tap─ tap0 172.16.0.1/30  afpN 10.69.N.2 ─veth─ afvN: table afegressN
 //!                    table afguest: masquerade, input drop     reserved ranges dropped
+//!                    forward: tap0 saddr != .2 drop            afvN saddr != 10.69.N.2 drop
 //! ```
 //!
-//! The namespace's own table only translates: every verdict on where the
-//! guest may go is the host table's, which no guest and no monitor can reach.
+//! The namespace's own table translates, and forwards from the tap only what
+//! the guest's one address sends; every verdict on where the guest may go is
+//! the host table's, which no guest and no monitor can reach.
 //! The tap has no IPv6, and nothing it sends reaches the namespace itself.
 
 use std::fs::{self, File};
@@ -129,8 +131,8 @@ impl GuestNamespace {
                 netfilter.acknowledged(rules::install_guest_side(
                     GUEST_TABLE,
                     TAP,
-                    network,
-                    GUEST_PREFIX_LEN,
+                    GUEST_ADDRESS,
+                    (network, GUEST_PREFIX_LEN),
                 ))
             })
         })

@@ -1,35 +1,18 @@
-//! A tree as a tar stream: packed from paths inside a directory handle, or
-//! checked whole and unpacked under one, every entry through the handle.
-//!
-//! The executor's `import` and `export` serve these over its workspace, and
-//! the supervisor runs the same two over its own staging directory on the
-//! host, so a stream is held to one set of checks on both ends of the link.
-//!
-//! An unpack reads its stream from a spool, a file it can read twice, so the
-//! stream is checked whole before its first entry is written: one entry
-//! leaving the directory refuses all of it. Ownership in the stream is
-//! ignored, so what lands is the unpacking user's; the mode's permission bits
-//! are kept and its set-id bits are not.
+//! A tar stream checked whole, then unpacked under a directory handle.
 
 use std::fs::File;
-use std::io::{self, Seek as _, SeekFrom};
+use std::io::{self, Read, Seek as _, SeekFrom, Write as _};
 use std::path::{Component, Path, PathBuf};
 
-use cap_std::fs::{Dir, OpenOptions, OpenOptionsExt as _, Permissions, PermissionsExt as _};
-use rustix::fs::OFlags;
-use rustix::io::Errno;
-use tar::{Archive, Builder, Entry, EntryType, Header};
+use cap_std::fs::{Dir, OpenOptions, Permissions, PermissionsExt as _};
+use tar::{Archive, Entry, EntryType};
 
+use super::{PERMISSION_BITS, Parents, confined, regular};
 use crate::api::Imported;
-use crate::error::{self, Error, Result};
+use crate::error::{self, Result};
 
-/// A directory named relative to itself.
-pub(crate) const CURRENT_DIRECTORY: &str = ".";
-/// The permission bits an entry keeps: never set-user-id, set-group-id or
-/// sticky, which a stream from elsewhere has no business granting.
-const PERMISSION_BITS: u32 = 0o777;
-/// Open without waiting: a pipe with no writer must not hold the call.
-const NONBLOCK: i32 = OFlags::NONBLOCK.bits().cast_signed();
+/// How much of an entry is read at a time while it is written.
+const COPY_BYTES: usize = 64 * 1024;
 
 /// One checked entry: where it lands, and what it is.
 enum Planned {
@@ -86,90 +69,40 @@ pub fn unpack(dir: &Dir, at: &Path, spool: &File) -> Result<Imported> {
     Ok(imported)
 }
 
-/// Packs `paths` inside `dir`, and everything below each, into `into`.
-///
-/// `.` packs what `dir` holds. A link is packed as its target's name, never
-/// followed, and children are packed in name order, so one tree always packs
-/// to the same stream.
-///
-/// # Errors
-/// A path that leaves `dir` or is not there, or a read or write that failed.
-pub fn pack(dir: &Dir, paths: &[&Path], into: impl io::Write) -> Result<()> {
-    let mut builder = Builder::new(into);
-    for path in paths {
-        if *path == Path::new(CURRENT_DIRECTORY) {
-            pack_children(dir, &mut builder, Path::new(""))?;
-        } else {
-            pack_entry(dir, &mut builder, path)?;
-        }
-    }
-    builder.finish()?;
-    Ok(())
-}
-
-/// Opens `inside` without blocking and refuses anything but a regular file.
-///
-/// With [`Parents::Make`], an open that fails because a directory is missing
-/// makes the directories and tries once more. The open is always tried
-/// first, so an escape is refused as one before anything is made.
-pub(crate) fn regular(
-    dir: &Dir,
-    inside: &Path,
-    options: &mut OpenOptions,
-    parents: Parents,
-) -> Result<cap_std::fs::File> {
-    options.custom_flags(NONBLOCK);
-    let file = match (dir.open_with(inside, options), parents) {
-        (Err(missing), Parents::Make) if missing.kind() == io::ErrorKind::NotFound => {
-            // `inside` is never empty (the directory itself reads as `.`),
-            // so it always has a parent to make.
-            inside
-                .parent()
-                .map_or(Ok(()), |parent| dir.create_dir_all(parent))
-                .map_err(confined)?;
-            dir.open_with(inside, options)
-        }
-        (opened, _either) => opened,
-    }
-    .map_err(confined)?;
-    if file.metadata()?.is_file() {
-        Ok(file)
-    } else {
-        Err(error::not_a_file())
-    }
-}
-
-/// Whether opening a file may make its missing parent directories.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Parents {
-    /// Only what exists is opened: a read.
-    Keep,
-    /// Missing directories are made: a write.
-    Make,
-}
-
-/// Sorts a failed open. `cap_std` reports an escape as a permission refusal
-/// that no system call produced, which is how it is told from a real `EACCES`;
-/// a pipe with no reader refuses a non-blocking open for writing with
-/// `ENXIO`, and that is a file that is not a regular one; a name that is not
-/// there is the caller's, and gets the code a handler names to the model.
-pub(crate) fn confined(failure: io::Error) -> Error {
-    match failure.raw_os_error() {
-        None if failure.kind() == io::ErrorKind::PermissionDenied => error::path_refused(),
-        Some(code) if code == Errno::NXIO.raw_os_error() => error::not_a_file(),
-        _other if failure.kind() == io::ErrorKind::NotFound => error::not_found(failure),
-        _other => failure.into(),
-    }
-}
-
 /// Writes one file's content and gives it `mode`.
 fn unpack_file(dir: &Dir, path: &Path, mode: u32, mut entry: Entry<'_, &File>) -> Result<()> {
     clear(dir, path)?;
     let mut options = OpenOptions::new();
     options.write(true).create(true).truncate(true);
     let mut file = regular(dir, path, &mut options, Parents::Make)?;
-    io::copy(&mut entry, &mut file)?;
+    copy_keeping_holes(&mut entry, &mut file)?;
     Ok(file.set_permissions(Permissions::from_mode(mode))?)
+}
+
+/// Copies `from` into the empty `file`, stepping over each run of zeros
+/// instead of writing it.
+///
+/// The stream leaves a file's holes out and the reader hands them back as
+/// zeros, one hole or one run of data per read. Written, those zeros would
+/// take the blocks the hole never did, and a file a few bytes long in its
+/// stream would land as large as it claims to be; stepped over, it lands in
+/// the space its stream took.
+fn copy_keeping_holes(from: &mut impl Read, file: &mut cap_std::fs::File) -> io::Result<()> {
+    let mut block = vec![0; COPY_BYTES];
+    let mut length = 0_u64;
+    loop {
+        let read = from.read(&mut block)?;
+        let Some(bytes) = block.get(..read).filter(|bytes| !bytes.is_empty()) else {
+            // A file that ends in a hole is as long as the hole reaches.
+            return file.set_len(length);
+        };
+        length = length.saturating_add(u64::try_from(read).unwrap_or(u64::MAX));
+        if bytes.iter().all(|byte| *byte == 0) {
+            file.seek(SeekFrom::Start(length))?;
+        } else {
+            file.write_all(bytes)?;
+        }
+    }
 }
 
 /// Removes a link or file already at `path`, so what lands replaces it
@@ -184,56 +117,6 @@ fn clear(dir: &Dir, path: &Path) -> Result<()> {
         Err(missing) if missing.kind() == io::ErrorKind::NotFound => Ok(()),
         Err(failure) => Err(confined(failure)),
     }
-}
-
-/// Packs one entry, and what is below it when it is a directory.
-fn pack_entry<W: io::Write>(dir: &Dir, builder: &mut Builder<W>, path: &Path) -> Result<()> {
-    let found = dir.symlink_metadata(path).map_err(confined)?;
-    let mut header = Header::new_gnu();
-    header.set_size(0);
-    header.set_mode(found.permissions().mode() & PERMISSION_BITS);
-    if let Ok(modified) = found.modified()
-        && let Ok(since) = modified.into_std().duration_since(std::time::UNIX_EPOCH)
-    {
-        header.set_mtime(since.as_secs());
-    }
-    let kind = found.file_type();
-    if kind.is_symlink() {
-        header.set_entry_type(EntryType::Symlink);
-        let target = dir.read_link_contents(path).map_err(confined)?;
-        builder.append_link(&mut header, path, target)?;
-    } else if kind.is_dir() {
-        header.set_entry_type(EntryType::Directory);
-        builder.append_data(&mut header, path, io::empty())?;
-        pack_children(dir, builder, path)?;
-    } else if kind.is_file() {
-        let file = regular(dir, path, OpenOptions::new().read(true), Parents::Keep)?;
-        header.set_entry_type(EntryType::Regular);
-        header.set_size(file.metadata()?.len());
-        builder.append_data(&mut header, path, file)?;
-    } else {
-        // A socket, a pipe or a device: nothing a tree carries.
-    }
-    Ok(())
-}
-
-/// Packs every entry of the directory `path`, in name order.
-fn pack_children<W: io::Write>(dir: &Dir, builder: &mut Builder<W>, path: &Path) -> Result<()> {
-    let listed = if path.as_os_str().is_empty() {
-        Path::new(CURRENT_DIRECTORY)
-    } else {
-        path
-    };
-    let mut names = dir
-        .read_dir(listed)
-        .map_err(confined)?
-        .map(|entry| entry.map(|entry| entry.file_name()))
-        .collect::<io::Result<Vec<_>>>()?;
-    names.sort();
-    for name in names {
-        pack_entry(dir, builder, &path.join(name))?;
-    }
-    Ok(())
 }
 
 /// Every entry of the stream in `spool` checked, read from its start, and

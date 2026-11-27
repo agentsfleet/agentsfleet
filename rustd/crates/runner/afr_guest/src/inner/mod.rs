@@ -9,9 +9,11 @@
 //!             namespace whose /proc shows that namespace alone; reaps orphans
 //!   entry  ─► the forking thread's next child joins init's process namespace
 //!          ─► child: init's mount namespace, cd, pickable again, the guest
-//!             user, no_new_privs, Landlock, seccomp (`unshare` refused) ─► exec
+//!             user, no_new_privs, Landlock, seccomp (no namespace made or
+//!             joined) ─► exec
 //!   renew  ─► SIGKILL init: the kernel ends every process inside, and init
-//!             is reaped only once they all are ─► /workspace emptied ─► build
+//!             is reaped only once they all are ─► /workspace, /tmp and
+//!             /dev/shm emptied ─► build
 //!   hosts  ─► as user 0: a new hosts file staged, its bind swapped in beneath
 //!             the old one, which goes; the swap reaches init's namespace
 //! ```
@@ -34,7 +36,9 @@ use rustix::thread::ThreadNameSpaceType;
 use seccompiler::BpfProgram;
 
 use crate::error::{Result, unconfined};
-use crate::harden::{PROC_SELF_STATUS, file_system_rules, program, single_threaded};
+use crate::harden::{
+    DEV_SHM, PROC_SELF_STATUS, SANDBOX_TMP, file_system_rules, programs, single_threaded,
+};
 
 mod enter;
 mod files;
@@ -48,6 +52,10 @@ use self::files::{FilesAs, clear};
 /// Why a spawn found no environment to enter: a renewal is building the
 /// next one.
 const DETAIL_RENEWING: &str = "the inner environment is being built again";
+/// The trees beside the workspace a tenant process writes and its files
+/// outlive it in: the disk's scratch space and the shared-memory `tmpfs`. A
+/// pseudo-terminal goes with the process that held it.
+const SCRATCH: [&str; 2] = [SANDBOX_TMP, DEV_SHM];
 
 /// A process namespace and a mount namespace of their own, which every
 /// tenant process runs in as the guest user, confined as a sandbox is.
@@ -59,8 +67,8 @@ pub struct Namespaced {
     /// one is staged in.
     hosts: PathBuf,
     staging: PathBuf,
-    /// The seccomp program every tenant process installs, compiled once.
-    seccomp: Arc<BpfProgram>,
+    /// The seccomp programs every tenant process installs, compiled once.
+    seccomp: Arc<[BpfProgram; 2]>,
     /// The environment's init, by its process descriptor; none while a
     /// renewal builds the next one.
     init: Mutex<Option<OwnedFd>>,
@@ -89,7 +97,7 @@ impl Namespaced {
             workspace: workspace.to_owned(),
             hosts: hosts.to_owned(),
             staging: staging.to_owned(),
-            seccomp: Arc::new(program()?),
+            seccomp: Arc::new(programs()?),
             init: Mutex::new(None),
         };
         *built.held() = Some(init::start()?);
@@ -128,7 +136,9 @@ impl InnerEnvironment for Namespaced {
         if let Some(init) = old {
             end(&init)?;
         }
-        FilesAs::root(self.user, || clear(&self.workspace))?;
+        // Nothing the old environment wrote outlives it: what a restore
+        // imports lands beside no file of the run before.
+        FilesAs::root(self.user, || clear(written(&self.workspace)))?;
         let fresh = init::start().map_err(io::Error::other)?;
         *self.held() = Some(fresh);
         Ok(())
@@ -139,6 +149,12 @@ impl InnerEnvironment for Namespaced {
             names::replace(&self.staging, &self.hosts, file)
         })
     }
+}
+
+/// Every tree a tenant process writes that outlives it: `workspace`, then
+/// [`SCRATCH`].
+fn written(workspace: &Path) -> impl Iterator<Item = &Path> {
+    std::iter::once(workspace).chain(SCRATCH.into_iter().map(Path::new))
 }
 
 /// Kills `init` and waits until it is reaped, which the kernel allows only

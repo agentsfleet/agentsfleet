@@ -38,6 +38,7 @@ mod jail;
 mod kvm;
 mod lock;
 mod sweep;
+#[cfg(target_os = "linux")]
 mod vsock;
 
 pub use self::admission::{Admission, Reservation};
@@ -51,4 +52,5 @@ pub use self::engine::{FirecrackerBackend, FirecrackerConfig, FirecrackerEngine}
 pub use self::error::{Error, MECHANISM_KVM, Result};
 pub use self::kvm::{KVM_PATH, admit, probe};
 pub use self::lock::ImageLock;
+#[cfg(target_os = "linux")]
 pub use self::vsock::VsockTransport;

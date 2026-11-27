@@ -4,8 +4,8 @@
 //! `af_core::error_shell!` hull. The engine answers the seam's errors, into
 //! which every building block's failure lifts; this type holds what no
 //! building block raises: a host whose KVM device a microVM cannot open, a
-//! workspace image another monitor holds, a host whose memory bound is
-//! reached, a monitor that exited or never answered, a host whose every jail
+//! workspace image another monitor holds, a state directory another runner
+//! serves, a host whose memory bound is reached, a monitor that exited or never answered, a host whose every jail
 //! user is held. It crosses the seam as
 //! itself, and a refused KVM device still reads as the seam's missing
 //! mechanism. The code is the registry's existing one, as every runner
@@ -44,6 +44,15 @@ pub(crate) enum ErrorKind {
     ImageHeld {
         /// The image.
         image: PathBuf,
+    },
+
+    /// Another engine holds the state directory's lock: a second runner
+    /// started over a serving one's directory.
+    #[cfg(target_os = "linux")]
+    #[error("another runner serves this state directory: its lock {} is held", .lock.display())]
+    StateHeld {
+        /// The lock file.
+        lock: PathBuf,
     },
 
     /// The host's overcommitted memory bound is reached: that many microVMs
@@ -151,6 +160,12 @@ pub(crate) fn kvm_refused(kvm: Kvm) -> afr_engine::Error {
 /// Refuses a second attach of `image`.
 pub(crate) fn image_held(image: PathBuf) -> afr_engine::Error {
     Error::from(ErrorKind::ImageHeld { image }).into()
+}
+
+/// Refuses a second engine over the state directory `lock` is in.
+#[cfg(target_os = "linux")]
+pub(crate) fn state_held(lock: PathBuf) -> afr_engine::Error {
+    Error::from(ErrorKind::StateHeld { lock }).into()
 }
 
 /// Refuses a microVM past the host's memory bound of `sandboxes_max`.

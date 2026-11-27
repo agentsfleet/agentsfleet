@@ -23,6 +23,7 @@ use crate::admission::{Admission, MEMINFO_PATH, mem_available};
 use crate::capabilities::CAPABILITIES;
 use crate::config::FirecrackerTuning;
 use crate::jail::{DIR_MODE, JailIds, Layout};
+use crate::lock::StateLock;
 
 mod backend;
 mod build;
@@ -51,7 +52,8 @@ pub struct FirecrackerConfig {
     pub toolbox: Arc<Toolbox>,
     /// The delegated cgroup each monitor's leaf is made under.
     pub cgroup_root: PathBuf,
-    /// Where each sandbox's directory is made. Swept when the engine is built.
+    /// Where each sandbox's directory is made. Locked, then swept, when the
+    /// engine is built.
     pub state_dir: PathBuf,
     /// The formatter each workspace image is made with.
     pub tools: HostTools,
@@ -63,6 +65,9 @@ pub(crate) struct Shared {
     pub(crate) config: FirecrackerConfig,
     pub(crate) jails: Arc<JailIds>,
     pub(crate) admission: Admission,
+    /// Held while the engine or a sandbox of it lives: no second engine
+    /// sweeps or builds over this state directory.
+    _state: StateLock,
 }
 
 impl Shared {
@@ -84,21 +89,27 @@ pub struct FirecrackerEngine {
 
 impl FirecrackerEngine {
     /// An engine building from `config`, holding the host to the memory
-    /// bound its `MemAvailable` makes now, once it has swept what a previous
-    /// runner left in its state directory.
+    /// bound its `MemAvailable` makes now, once it holds its state
+    /// directory's lock and has swept what a previous runner left there.
     ///
     /// # Errors
-    /// `/proc/meminfo` would not read or states no `MemAvailable`, or the
-    /// tuning's limits are not ones a microVM is granted.
+    /// Another engine holds the state directory, which is refused naming its
+    /// lock before anything is swept; `/proc/meminfo` would not read or
+    /// states no `MemAvailable`; or the tuning's limits are not ones a
+    /// microVM is granted.
     pub fn new(config: FirecrackerConfig) -> Result<Self> {
         let available = mem_available(Path::new(MEMINFO_PATH))?;
         let admission = Admission::new(memory_bound(&config.tuning, available)?);
         let jails = JailIds::new(config.tuning.first_jail_id);
+        // Before the sweep: a directory another engine holds is its live
+        // sandboxes', never leftovers.
+        let state = StateLock::take(&config.state_dir)?;
         let engine = Self {
             shared: Arc::new(Shared {
                 config,
                 jails,
                 admission,
+                _state: state,
             }),
         };
         let _logged = engine.swept(Sweep::Leftovers);
@@ -121,7 +132,6 @@ impl FirecrackerEngine {
         // First: a host at its bound formats no image and starts no monitor.
         let reservation = self.shared.admission.admit()?;
         let layout = self.shared.layout(spec.id);
-        fs::create_dir_all(&self.shared.config.state_dir)?;
         // Fresh, never reused: a directory already there belongs to a live or
         // parked sandbox, or to a leftover only a sweep may remove.
         DirBuilder::new()
@@ -280,3 +290,6 @@ impl Plan {
         Some(addresses)
     }
 }
+
+#[cfg(test)]
+mod tests;

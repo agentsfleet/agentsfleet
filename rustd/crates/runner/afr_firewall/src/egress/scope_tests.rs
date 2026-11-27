@@ -72,7 +72,7 @@ fn test_a_scope_builds_its_rules_before_its_link() {
         kernel.seen_on(Protocol::Netfilter),
         [
             [NEWTABLE, NEWSET, NEWCHAIN, NEWCHAIN, NEWCHAIN, NEWSETELEM].as_slice(),
-            &[NEWRULE; 8],
+            &[NEWRULE; 9],
             &[DELTABLE],
         ]
         .concat()

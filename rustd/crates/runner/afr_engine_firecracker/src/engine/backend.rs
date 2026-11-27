@@ -66,15 +66,16 @@ impl Backend for FirecrackerBackend<'_> {
             Toolboxes::open(self.home.images(), KernelMounter::new(self.home.mounts()))?;
         let toolbox = toolboxes.verify_incoming(self.release, &self.home.incoming())?;
         let resources = Mounted(MountedToolboxes::from(toolboxes));
-        // Before any scope is built, and before the sweep, which would
-        // otherwise remove a second runner's live links on this host.
-        if host.egress {
-            afr_firewall::own_host()?;
-            if let Err(error) = afr_firewall::sweep() {
-                let Logged { error_code, reason } = error.logged();
-                let event = EVENT_SWEEP_FAILED;
-                tracing::warn!(error_code, reason, event);
-            }
+        // Always, and before either sweep: a second runner on this host is
+        // refused here, whether or not the host enforces egress, before it
+        // removes the first one's links or hands out its jail users.
+        afr_firewall::own_host()?;
+        if host.egress
+            && let Err(error) = afr_firewall::sweep()
+        {
+            let Logged { error_code, reason } = error.logged();
+            let event = EVENT_SWEEP_FAILED;
+            tracing::warn!(error_code, reason, event);
         }
         let engine = FirecrackerEngine::new(FirecrackerConfig {
             tuning: self.tuning,

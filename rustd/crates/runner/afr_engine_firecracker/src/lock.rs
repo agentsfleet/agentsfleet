@@ -6,6 +6,11 @@
 //! `checksum invalid` — and Firecracker takes no lock of its own. The lock is
 //! the kernel's `flock` on the image's inode, so the hard link in a jail is
 //! the same lock, and a runner that dies drops it with its descriptor.
+//!
+//! One engine per state directory, the same way: [`StateLock`] is taken
+//! before the engine's boot sweep, which removes every sandbox directory it
+//! finds, so a second runner started over a serving one's directory is
+//! refused instead of removing its live microVMs.
 
 use std::fs::{File, TryLockError};
 use std::path::{Path, PathBuf};
@@ -13,6 +18,44 @@ use std::path::{Path, PathBuf};
 use afr_engine::Result;
 
 use crate::error::image_held;
+#[cfg(target_os = "linux")]
+use crate::error::state_held;
+
+/// The lock file's name in a state directory: no sandbox identifier, so no
+/// sweep reads it as a sandbox.
+#[cfg(target_os = "linux")]
+const STATE_LOCK_FILE: &str = "engine.lock";
+
+/// The exclusive lock on one state directory, released when dropped.
+#[cfg(target_os = "linux")]
+#[derive(Debug)]
+pub(crate) struct StateLock {
+    /// Kept open: the lock lives as long as this descriptor.
+    _file: File,
+}
+
+#[cfg(target_os = "linux")]
+impl StateLock {
+    /// Takes the lock on `state_dir`, made when absent, without waiting.
+    ///
+    /// # Errors
+    /// Another engine holds it, which is refused naming the lock file, or
+    /// the directory or the file cannot be made.
+    pub(crate) fn take(state_dir: &Path) -> Result<Self> {
+        std::fs::create_dir_all(state_dir)?;
+        let lock = state_dir.join(STATE_LOCK_FILE);
+        let file = File::options()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(&lock)?;
+        match file.try_lock() {
+            Ok(()) => Ok(Self { _file: file }),
+            Err(TryLockError::WouldBlock) => Err(state_held(lock)),
+            Err(TryLockError::Error(error)) => Err(error.into()),
+        }
+    }
+}
 
 /// The exclusive lock on one workspace image, released when dropped.
 #[derive(Debug)]

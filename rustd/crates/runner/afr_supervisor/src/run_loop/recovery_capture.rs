@@ -107,7 +107,8 @@ impl BoundaryOwner<'_, '_> {
                     return Ok(RecoverySave::Skipped(RecoverySkip::Unavailable));
                 };
                 let staged = self.run.lessee.staging.stage(sandbox.id())?;
-                if let Err(failure) = staged.export(sandbox.executor()).await {
+                let disk_bytes = sandbox.granted().limits().disk_bytes;
+                if let Err(failure) = staged.export(sandbox.executor(), disk_bytes).await {
                     // A workspace that cannot be read out skips this save, as
                     // one the host could not scan did: the run goes on.
                     let error_code = failure.code();

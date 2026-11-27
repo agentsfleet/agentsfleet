@@ -23,9 +23,6 @@ afr_engine.workspace = true
 # Every guest serves the same executor; the host dials it over vsock.
 afr_executor.workspace = true
 async-trait.workspace = true
-# The vsock handshake, retried while a guest boots, without a hand-written
-# loop.
-backon.workspace = true
 # The guest entry's flags, parsed once here for the runner binary.
 clap.workspace = true
 # The monitor's `--config-file`: one JSON document per boot.
@@ -36,6 +33,9 @@ tokio = { workspace = true, features = ["io-util", "macros", "net", "process", "
 tracing.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
+# The vsock handshake, retried while a guest boots, without a hand-written
+# loop.
+backon.workspace = true
 # A guest's cgroup leaf under the delegated subtree.
 afr_cgroup.workspace = true
 # Its namespace, tap and host table.

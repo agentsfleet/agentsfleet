@@ -1,6 +1,6 @@
 //! No restore/capture operation may follow a tenant-controlled link outside root.
 
-use super::files::{Entry, Workspace};
+use super::files::{Entry, Identity, Workspace};
 use std::{
     fs,
     os::unix::{
@@ -159,5 +159,46 @@ fn individually_relative_links_cannot_combine_into_a_root_escape() -> crate::Res
         .err()
         .ok_or_else(|| crate::error::config("unsafe operation was accepted"))?;
     super::links::validate([("x/link", "../file"), ("alias", "x/link")].into_iter())?;
+    Ok(())
+}
+
+#[test]
+fn links_that_together_name_the_parent_are_never_followed_by_restore_or_capture()
+-> crate::Result<()> {
+    // `l -> .` and `x -> l/..` each pass the lexical link check, and together
+    // `x` is the workspace's parent. Only opening every directory with no
+    // link followed keeps restore and capture inside.
+    let outer = tempfile::tempdir()?;
+    let root = outer.path().join("workspace");
+    fs::create_dir(&root)?;
+    fs::write(outer.path().join("secret"), b"outside private data")?;
+    let metadata = root.metadata()?;
+    let owner = (metadata.uid(), metadata.gid());
+    let workspace = Workspace::open(&root)?;
+    workspace.make_link("l", ".", owner)?;
+    workspace.make_link("x", "l/..", owner)?;
+    assert_eq!(fs::read(root.join("x/secret"))?, b"outside private data");
+    // The file's own identity: a capture that followed `x` would pass every
+    // check after the open and return the bytes.
+    let identity = Identity::of(&fs::metadata(outer.path().join("secret"))?);
+
+    let followed = [
+        workspace.make_file("x/planted", 0, false, owner).is_ok(),
+        workspace.make_directory("x/made", owner).is_ok(),
+        workspace.make_link("x/alias", "secret", owner).is_ok(),
+        workspace.chunk("x/secret", &identity, 0).is_ok(),
+        workspace.directory("x").is_ok(),
+    ];
+
+    assert_eq!(followed, [false; 5]);
+    let mut outside: Vec<_> = fs::read_dir(outer.path())?
+        .map(|entry| entry.map(|entry| entry.file_name()))
+        .collect::<std::io::Result<_>>()?;
+    outside.sort();
+    assert_eq!(outside, ["secret", "workspace"]);
+    assert_eq!(
+        fs::read(outer.path().join("secret"))?,
+        b"outside private data"
+    );
     Ok(())
 }

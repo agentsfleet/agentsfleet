@@ -139,9 +139,11 @@ impl Layout {
         self.dir.join(NAMESPACE_FILE)
     }
 
-    /// The monitor's vsock socket, as the host reaches it.
-    pub(crate) fn socket(&self) -> PathBuf {
-        self.in_jail(VSOCK)
+    /// The jail's chroot, and the monitor's vsock socket's name beneath it:
+    /// the host reaches the socket by that name inside that directory, never
+    /// by a path a monitor could redirect.
+    pub(crate) fn socket(&self) -> (&Path, &'static str) {
+        (&self.root, VSOCK.trim_start_matches('/'))
     }
 
     /// Where `path`, as the monitor names it, sits on the host.

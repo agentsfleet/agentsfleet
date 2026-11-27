@@ -45,6 +45,9 @@ const BACKGROUND_ALIVE: &str =
 /// that survived a restore would have to have been carried into it.
 const SURVIVOR: &str = "if cat /proc/[0-9]*/cmdline 2>/dev/null | tr '\\0' ' ' | \
      grep -q '[s]leep 600'; then echo alive; else echo gone; fi";
+/// Every tree a tenant process writes that outlives it, which a restore
+/// leaves holding the checkpoint and nothing else.
+const WRITTEN: &str = "/workspace /tmp /dev/shm";
 /// The names a stopped sandbox is built to reach, then re-planned to; the
 /// guest resolves each through its hosts file alone.
 const FIRST_NAME: &str = "first.far.test";
@@ -190,9 +193,10 @@ fn stopped_resumes(lane: &Lane) -> Result<(), Failed> {
     })
 }
 
-/// A checkpoint restored into a running guest replaces its workspace and
-/// ends every process the old inner environment ran, and the monitor is the
-/// one that ran before: the guest never rebooted.
+/// A checkpoint restored into a running guest replaces its workspace, leaves
+/// nothing the old inner environment wrote in the scratch space or the
+/// shared memory, and ends every process it ran, and the monitor is the one
+/// that ran before: the guest never rebooted.
 fn restored_in_place(lane: &Lane) -> Result<(), Failed> {
     let id = id_of("restored");
     runtime().block_on(async {
@@ -211,18 +215,20 @@ fn restored_in_place(lane: &Lane) -> Result<(), Failed> {
             .await?;
         let mut checkpoint = Vec::new();
         executor.export(&["."], &mut checkpoint).await?;
-        let script = format!("echo before > /workspace/before && {START_BACKGROUND}");
+        let script = format!(
+            "for tree in {WRITTEN}; do echo before > $tree/before; done; {START_BACKGROUND}"
+        );
         run(executor, shell(&script)).await?;
         executor.renew().await?;
         executor.import(".", &mut checkpoint.as_slice()).await?;
-        let script = format!("ls -A /workspace; {SURVIVOR}");
+        let script = format!("for tree in {WRITTEN}; do ls -A $tree; done; {SURVIVOR}");
         let said = run(executor, shell(&script)).await?.output;
         let after = fs::read_to_string(&procs)?;
         sandbox.destroy().await?;
         expect(after == monitor, "the same monitor runs: no reboot")?;
         expect(
             said == "restored\ngone\n",
-            format!("the checkpoint's tree, no old process, got {said:?}"),
+            format!("the checkpoint's tree alone, no old process, got {said:?}"),
         )
     })
 }

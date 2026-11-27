@@ -3,16 +3,19 @@
 
 #![expect(
     clippy::unwrap_used,
-    reason = "test module: a slot the test names itself is in range"
+    clippy::indexing_slicing,
+    reason = "test module: a slot the test names itself is in range, and a batch it built has the rules it reads"
 )]
 
+use std::net::Ipv4Addr;
+
 use netlink_packet_netfilter::nftables::{
-    DataAttribute, Expressions, Immediate, Meta, MetaKey, Verdict, VerdictAttribute,
+    Cmp, DataAttribute, Expressions, Immediate, Meta, MetaKey, Operator, Verdict, VerdictAttribute,
 };
 
 use super::expressions::{ACCEPT, DROP};
-use super::tests::{read_back, rules, tables};
-use super::{FORWARD, INPUT, POSTROUTING, install};
+use super::tests::{compared, read_back, rules, tables};
+use super::{FORWARD, INPUT, POSTROUTING, install, install_guest_side};
 use crate::egress::slot::Slot;
 
 /// The side of the link a rule reads: the first interface name it loads.
@@ -43,7 +46,8 @@ fn ends_in(expressions: &[Expressions]) -> Option<u32> {
 }
 
 /// What keeps a sandbox contained is each rule's verdict on its side of the
-/// link, in order: from the sandbox, the resolver port is dropped on both
+/// link, in order: from the sandbox, a source not its own is dropped, the
+/// resolver port is dropped on both
 /// transports, the set accepted and the rest dropped; into it, only answered
 /// traffic is accepted; and nothing from it reaches the host's own input. A
 /// verdict flipped, or a rule reading the other side, fails here.
@@ -61,6 +65,7 @@ fn test_each_rule_ends_in_its_verdict_on_its_side_of_the_link() {
     let expected = [
         (FORWARD, from, Some(DROP)),
         (FORWARD, from, Some(DROP)),
+        (FORWARD, from, Some(DROP)),
         (FORWARD, from, Some(ACCEPT)),
         (FORWARD, from, Some(DROP)),
         (FORWARD, to, Some(ACCEPT)),
@@ -70,4 +75,35 @@ fn test_each_rule_ends_in_its_verdict_on_its_side_of_the_link() {
     ]
     .map(|(chain, side, verdict)| (chain.to_owned(), side, verdict));
     assert_eq!(shape, expected);
+}
+
+/// A sender on a link is the one address it was given: the tap's table drops
+/// what the guest sends under any other source, and the host's table what the
+/// slot's link carries under any but the slot's own, each as the first rule
+/// of its forward chain, so no forged source is translated or accepted.
+#[test]
+fn test_a_forged_source_is_dropped_before_anything_from_the_link_is_accepted() {
+    let guest = Ipv4Addr::new(172, 16, 0, 2);
+    let network = (Ipv4Addr::new(172, 16, 0, 0), 30);
+    let tap = read_back(install_guest_side("afguest", "tap0", guest, network));
+    let host = read_back(install(Slot::new(7).unwrap(), &[]));
+
+    for (batch, link, source) in [
+        (tap, "tap0", [172, 16, 0, 2]),
+        (host, "afv7", [10, 69, 7, 2]),
+    ] {
+        let rules = rules(&tables(&batch));
+        let (chain, first) = &rules[0];
+        let mut name = link.as_bytes().to_vec();
+        name.resize(16, 0);
+        let values: Vec<_> = first.iter().filter_map(compared).collect();
+        let differs = first.iter().any(|expression| {
+            matches!(expression, Expressions::Cmp(parts) if parts.contains(&Cmp::Op(Operator::NotEqual)))
+        });
+
+        assert_eq!(chain, "forward", "{link}");
+        assert_eq!(values, [name, vec![2], source.to_vec()], "{link}");
+        assert!(differs, "{link}: any source but its own");
+        assert_eq!(ends_in(first), Some(DROP), "{link}");
+    }
 }

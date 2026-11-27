@@ -56,7 +56,8 @@ impl Run<'_> {
         } = &task.target
         {
             let staged = self.lessee.staging.stage(sandbox.id())?;
-            staged.export(sandbox.executor()).await?;
+            let disk_bytes = sandbox.granted().limits().disk_bytes;
+            staged.export(sandbox.executor(), disk_bytes).await?;
             verify_fresh_checkout(staged.path(), repository, head).await?;
             return self
                 .native_base(task, staged.path().to_owned(), scope, toolbox, permit)

@@ -1,5 +1,5 @@
-//! Whom the executor's file calls act as, and the workspace emptied for the
-//! next environment.
+//! Whom the executor's file calls act as, and every tree a tenant writes
+//! emptied for the next environment.
 //!
 //! The executor keeps user 0 and its capabilities, which building namespaces
 //! needs, but acts on files as the guest user: what it writes the tenant
@@ -75,18 +75,20 @@ fn set((uid, gid): (Uid, Gid)) -> (Uid, Gid) {
     (Uid::from_raw(raw(uid)), Gid::from_raw(raw(gid)))
 }
 
-/// Removes everything `workspace` holds and keeps the directory itself: a
-/// link is removed, never followed.
+/// Removes everything each of `trees` holds and keeps the directories
+/// themselves, which are mounts: a link is removed, never followed.
 ///
 /// # Errors
 /// An entry could not be read or removed.
-pub(super) fn clear(workspace: &Path) -> io::Result<()> {
-    for entry in fs::read_dir(workspace)? {
-        let entry = entry?;
-        if entry.file_type()?.is_dir() {
-            fs::remove_dir_all(entry.path())?;
-        } else {
-            fs::remove_file(entry.path())?;
+pub(super) fn clear<'a>(trees: impl IntoIterator<Item = &'a Path>) -> io::Result<()> {
+    for tree in trees {
+        for entry in fs::read_dir(tree)? {
+            let entry = entry?;
+            if entry.file_type()?.is_dir() {
+                fs::remove_dir_all(entry.path())?;
+            } else {
+                fs::remove_file(entry.path())?;
+            }
         }
     }
     Ok(())

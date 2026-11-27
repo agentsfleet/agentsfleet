@@ -26,7 +26,10 @@ use afr_executor::{Executor, Imported};
 use cap_std::ambient_authority;
 use cap_std::fs::Dir;
 
+use self::bounded::Bounded;
 use crate::error::{self, Result};
+
+mod bounded;
 
 /// Only the runner reads or writes a stage: a tenant's files pass through it.
 const STAGE_MODE: u32 = 0o700;
@@ -36,6 +39,8 @@ const EVENT_SWEEP_LEFT: &str = "staging_sweep_left";
 const WHOLE: &str = ".";
 /// Why a stage could not be filled from the workspace.
 const DETAIL_EXPORT: &str = "the workspace would not export into its stage";
+/// Why an export that outgrew the workspace's own disk was cut off.
+const DETAIL_OUTGROWN: &str = "the workspace's export outgrew the disk the run was granted";
 /// Why a stage could not be imported into the workspace.
 const DETAIL_IMPORT: &str = "the workspace refused a staged tree";
 /// Why a restore found the workspace already holding files.
@@ -143,22 +148,39 @@ impl Staged {
     /// Exports the whole workspace `executor` serves and unpacks it into the
     /// stage, every entry checked as an import checks it.
     ///
+    /// The stream is spooled on the host, so it is held to `disk_bytes`, the
+    /// workspace disk the run was granted. A pack carries each byte the tree
+    /// holds on that disk once, a second name as a link and a hole not at
+    /// all, so a longer stream is no pack of it: its guest is sending bytes
+    /// it does not hold, or the tree is more names than content, each entry's
+    /// 512-byte header against a directory entry a fraction of that. The
+    /// unpack writes no more than the stream held, a hole landing as a hole;
+    /// but whoever reads the stage reads a hole as bytes, so the content its
+    /// files claim, holes included, is held to the same disk. Past either,
+    /// the export ends as too large and its stage is the caller's to drop.
+    ///
     /// # Errors
-    /// The executor would not export, or an entry would leave the stage.
-    pub async fn export(&self, executor: &dyn Executor) -> Result<()> {
-        let mut stream = tokio::fs::File::from_std(self.spool()?);
-        executor
-            .export(&[WHOLE], &mut stream)
-            .await
-            .map_err(|source| error::boundary(DETAIL_EXPORT, source))?;
-        let (spool, into) = (stream.into_std().await, self.path().to_owned());
-        tokio::task::spawn_blocking(move || {
+    /// The executor would not export; the stream, or the files it claims,
+    /// outgrew `disk_bytes`, which is the checkpoint-limit class; or an entry
+    /// would leave the stage. The spool goes with the call either way.
+    pub async fn export(&self, executor: &dyn Executor, disk_bytes: u64) -> Result<()> {
+        let mut stream = Bounded::new(tokio::fs::File::from_std(self.spool()?), disk_bytes);
+        let exported = executor.export(&[WHOLE], &mut stream).await;
+        if stream.outgrown() {
+            return Err(error::capture_limit(DETAIL_OUTGROWN));
+        }
+        exported.map_err(|source| error::boundary(DETAIL_EXPORT, source))?;
+        let (spool, into) = (stream.into_spool().into_std().await, self.path().to_owned());
+        let unpacked = tokio::task::spawn_blocking(move || {
             let dir = Dir::open_ambient_dir(&into, ambient_authority())?;
             afr_executor::tree::unpack(&dir, Path::new(WHOLE), &spool)
         })
         .await?
-        .map(|_unpacked| ())
-        .map_err(|source| error::boundary(DETAIL_EXPORT, source))
+        .map_err(|source| error::boundary(DETAIL_EXPORT, source))?;
+        if unpacked.bytes > disk_bytes {
+            return Err(error::capture_limit(DETAIL_OUTGROWN));
+        }
+        Ok(())
     }
 
     /// Imports a restored stage into the workspace `executor` serves, which

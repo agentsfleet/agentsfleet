@@ -6,7 +6,8 @@
 //! another sandbox's traffic or the host's own:
 //!
 //! ```text
-//! forward      iif afvN tcp dport 53 drop · iif afvN udp dport 53 drop
+//! forward      iif afvN ip saddr != 10.69.N.2 drop
+//!              iif afvN tcp dport 53 drop · iif afvN udp dport 53 drop
 //!              iif afvN ip daddr @allow accept · iif afvN drop
 //!              oif afvN ct state established,related accept · oif afvN drop
 //! input        iif afvN drop
@@ -32,7 +33,7 @@ use netlink_packet_netfilter::nftables::{
 };
 use netlink_packet_netfilter::{NetfilterMessage, NetfilterMessageInner};
 
-use self::expressions::{ACCEPT, forward, from, masquerade};
+use self::expressions::{ACCEPT, forward, from, from_another, masquerade};
 #[cfg(feature = "test-util")]
 use self::message::nf_in;
 use self::message::{base_chain, batch, new_rule, new_table, nf};
@@ -146,9 +147,11 @@ fn install_flagged(
     if !addresses.is_empty() {
         messages.push(elements(&table, addresses));
     }
+    // First in the chain: no accept below sees a source the slot was not given.
+    let own_source = std::iter::once(from_another(&link, slot.sandbox()));
     messages.extend(
-        forward(&link, policy)
-            .into_iter()
+        own_source
+            .chain(forward(&link, policy))
             .map(|rule| new_rule(&table, FORWARD, rule)),
     );
     messages.push(new_rule(&table, INPUT, from(&link, Vec::new(), DROP)));
@@ -192,17 +195,26 @@ fn slot_chains(table: &str) -> [Message; 3] {
 }
 
 /// The batch that builds the table a guest's namespace forwards through,
-/// owned by no socket so it lives as long as the namespace: everything the
-/// tap's `network`/`prefix_len` sends leaves under the namespace's own
-/// address, and nothing from the tap reaches the namespace itself.
+/// owned by no socket so it lives as long as the namespace: the tap forwards
+/// only what `guest`, the one address on it, sends; that leaves under the
+/// namespace's own address, as everything of the tap's `network`/`prefix_len`
+/// does; and nothing from the tap reaches the namespace itself.
 pub(super) fn install_guest_side(
     table: &str,
     tap: &str,
-    network: Ipv4Addr,
-    prefix_len: u8,
+    guest: Ipv4Addr,
+    (network, prefix_len): (Ipv4Addr, u8),
 ) -> Vec<Message> {
     batch(vec![
         new_table(table, TableFlags::empty()),
+        base_chain(
+            table,
+            FORWARD,
+            FILTER,
+            InetHookNumber::Forward,
+            FILTER_PRIORITY,
+            ACCEPT,
+        ),
         base_chain(
             table,
             INPUT,
@@ -219,6 +231,7 @@ pub(super) fn install_guest_side(
             SOURCE_NAT_PRIORITY,
             ACCEPT,
         ),
+        new_rule(table, FORWARD, from_another(tap, guest)),
         new_rule(table, INPUT, from(tap, Vec::new(), DROP)),
         new_rule(table, POSTROUTING, masquerade(network, prefix_len, tap)),
     ])
