@@ -2,7 +2,8 @@
 //! layer, no crate dev-depends on a crate that depends on it, each folder and
 //! prefix names its layer, the runner links no datastore client, lower layers
 //! hold no SQL, each item has one public path, each handler crate names its
-//! own plane, and each crate runs in exactly one test shard.
+//! own plane, each crate runs in exactly one test shard, and only the
+//! cryptographic home names a cryptographic crate and only `af_stream` QUIC.
 //!
 //! Every proof reads manifests, sources or make files: no subprocess, no
 //! network, no datastore, so the file runs in `make test-unit-all`. Each rule
@@ -12,6 +13,8 @@
     reason = "a workspace file the rule cannot read fails the proof loudly"
 )]
 
+#[path = "layers/crypto.rs"]
+mod crypto;
 #[path = "layers/rules.rs"]
 mod rules;
 #[path = "layers/shards.rs"]

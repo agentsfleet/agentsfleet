@@ -7,17 +7,14 @@ use std::io::{self, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use af_crypto::digest::Sha256Writer;
+use af_crypto::signature::testing::EcdsaP256Signer;
 use afr_image::{
     MANIFEST_SUFFIX, Manifest, Release, SIGNATURE_SUFFIX, TOOLBOX_PREFIX, TOOLBOX_SUFFIX,
 };
-use aws_lc_rs::encoding::AsDer as _;
-use aws_lc_rs::rand::SystemRandom;
-use aws_lc_rs::signature::{ECDSA_P256_SHA256_ASN1_SIGNING, EcdsaKeyPair, KeyPair as _};
 use base64::Engine as _;
-use digest_io::IoWrapper;
 use libtest_mimic::Failed;
 use serde_json::json;
-use sha2::{Digest as _, Sha256};
 
 use crate::run::expect;
 
@@ -35,40 +32,27 @@ pub(crate) const INNER: &str = "inner";
 
 /// The key the lane signs its releases with.
 #[derive(Debug)]
-pub(crate) struct Signer(EcdsaKeyPair);
+pub(crate) struct Signer(EcdsaP256Signer);
 
 impl Signer {
-    /// A fresh P-256 key.
-    pub(crate) fn new() -> Result<Self, Failed> {
-        EcdsaKeyPair::generate(&ECDSA_P256_SHA256_ASN1_SIGNING)
-            .map(Self)
-            .map_err(|_unspecified| "a P-256 key".into())
+    /// A fresh P-256 key; a host whose entropy source fails stops the lane here.
+    pub(crate) fn new() -> Self {
+        Self(EcdsaP256Signer::generate())
     }
 
     /// The check a host makes, against this key, for this runner.
-    pub(crate) fn release(&self) -> Result<Release, Failed> {
-        let key = self
-            .0
-            .public_key()
-            .as_der()
-            .map_err(|_unspecified| Failed::from("the key's public half"))?;
-        Ok(Release::signed_by(key.as_ref(), RUNNER_VERSION))
+    pub(crate) fn release(&self) -> Release {
+        Release::signed_by(&self.0.public_key_der(), RUNNER_VERSION)
     }
 
     /// `bytes`' signature, as `cosign sign-blob` writes it: base64 DER.
-    fn sign(&self, bytes: &[u8]) -> Result<String, Failed> {
-        let signature = self
-            .0
-            .sign(&SystemRandom::new(), bytes)
-            .map_err(|_unspecified| Failed::from("a signature"))?;
-        Ok(base64::engine::general_purpose::STANDARD.encode(signature.as_ref()))
+    fn sign(&self, bytes: &[u8]) -> String {
+        base64::engine::general_purpose::STANDARD.encode(self.0.sign(bytes))
     }
 
     /// `bytes`, signed and verified as a host verifies a release manifest.
     pub(crate) fn verified(&self, bytes: &[u8]) -> Result<Manifest, Failed> {
-        Ok(self
-            .release()?
-            .verify(bytes, self.sign(bytes)?.as_bytes())?)
+        Ok(self.release().verify(bytes, self.sign(bytes).as_bytes())?)
     }
 
     /// The manifest the build wrote beside `image`, signed with this key.
@@ -86,7 +70,7 @@ impl Signer {
         staged.push(MANIFEST_SUFFIX);
         fs::write(&staged, &manifest)?;
         staged.push(SIGNATURE_SUFFIX);
-        fs::write(&staged, self.sign(&manifest)?)?;
+        fs::write(&staged, self.sign(&manifest))?;
         let mut copied = named.into_os_string();
         copied.push(TOOLBOX_SUFFIX);
         fs::copy(image, copied)?;
@@ -108,9 +92,9 @@ impl Signer {
 
 /// The SHA-256 of `path`'s bytes, lowercase hexadecimal.
 pub(crate) fn sha256_file(path: &Path) -> Result<String, Failed> {
-    let mut hasher = IoWrapper(Sha256::new());
+    let mut hasher = Sha256Writer::new(io::sink());
     io::copy(&mut BufReader::new(fs::File::open(path)?), &mut hasher)?;
-    Ok(hex::encode(hasher.0.finalize()))
+    Ok(hex::encode(hasher.finish().0))
 }
 
 /// A small EROFS image at `<dir>/<name>.erofs` holding one [`MARKER`] file

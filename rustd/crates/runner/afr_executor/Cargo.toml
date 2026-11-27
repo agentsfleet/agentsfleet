@@ -56,7 +56,7 @@ tracing.workspace = true
 
 [dev-dependencies]
 # The digest a tree that crossed both ways is compared by.
-sha2.workspace = true
+af_crypto.workspace = true
 # The log capture a test reads a process's end back through.
 af_core = { workspace = true, features = ["test-util"] }
 tempfile.workspace = true

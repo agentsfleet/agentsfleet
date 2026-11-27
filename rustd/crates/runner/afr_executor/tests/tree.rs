@@ -10,8 +10,8 @@ use std::io::Read as _;
 use std::os::unix::fs::MetadataExt as _;
 use std::path::Path;
 
+use af_crypto::digest::Sha256;
 use afr_executor::Executor as _;
-use sha2::{Digest as _, Sha256};
 use tar::{Archive, Builder, EntryType, Header};
 
 use crate::support::{MIB, PATIENCE, start};
@@ -98,13 +98,11 @@ fn digest(stream: &[u8]) -> [u8; 32] {
     listing.sort();
     let mut hasher = Sha256::new();
     for (path, kind, mode, target, content) in listing {
-        hasher.update(format!(
-            "{path}\0{kind}\0{mode:o}\0{target}\0{}\0",
-            content.len()
-        ));
-        hasher.update(content);
+        hasher
+            .update(format!("{path}\0{kind}\0{mode:o}\0{target}\0{}\0", content.len()).as_bytes());
+        hasher.update(&content);
     }
-    hasher.finalize().into()
+    hasher.finish()
 }
 
 /// The names directly in `dir`.

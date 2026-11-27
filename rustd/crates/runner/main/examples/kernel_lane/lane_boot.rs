@@ -117,7 +117,7 @@ fn build(image: &Path, cgroup_root: PathBuf) -> Result<Lane, Failed> {
     let state = tempfile::Builder::new()
         .prefix(STATE_PREFIX)
         .tempdir_in(STATE_PARENT)?;
-    let signer = Signer::new()?;
+    let signer = Signer::new();
     let manifest = signer.manifest_beside(image)?;
     let host_paths = HostPaths {
         cgroup_root,
@@ -152,7 +152,7 @@ pub(super) fn firecracker(
 ) -> Result<afr_engine::Result<Booted<FirecrackerEngine>>, Failed> {
     let home = ToolboxHome::open(toolbox.to_owned())?;
     signer.stage(image, digest, &home.incoming())?;
-    let release = signer.release()?;
+    let release = signer.release();
     let backend = FirecrackerBackend {
         release: &release,
         home: &home,

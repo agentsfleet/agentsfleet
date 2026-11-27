@@ -1477,6 +1477,7 @@ name = "afr_executor"
 version = "0.90.0"
 dependencies = [
  "af_core",
+ "af_crypto",
  "async-trait",
  "backon",
  "base64 0.23.1",
@@ -1492,7 +1493,6 @@ dependencies = [
  "rustix 1.1.6",
  "serde",
  "serde_json",
- "sha2 0.11.2",
  "tar",
  "tempfile",
  "thiserror 2.0.21",
@@ -1710,12 +1710,10 @@ dependencies = [
  "afr_telemetry",
  "afr_tools",
  "async-trait",
- "aws-lc-rs",
  "axum",
  "base64 0.23.1",
  "bytes",
  "clap",
- "digest-io",
  "futures-util",
  "garde",
  "guffbolt",
@@ -1728,7 +1726,6 @@ dependencies = [
  "rustix 1.1.6",
  "serde",
  "serde_json",
- "sha2 0.11.2",
  "tempfile",
  "tokio",
  "tokio-util",
@@ -3359,15 +3356,6 @@ dependencies = [
  "const-oid",
  "crypto-common 0.2.2",
  "ctutils",
-]
-
-[[package]]
-name = "digest-io"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2de63d600bc7fab91180bc17385f29b342468dc8ef2af09dceba450a293de3da"
-dependencies = [
- "digest 0.11.3",
 ]
 
 [[package]]
