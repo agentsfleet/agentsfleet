@@ -171,7 +171,7 @@ async fn grep_keeps_the_last_matches_context_when_its_limit_is_reached() {
     .await;
     assert_eq!(zero.text, LIMIT_REACHED);
     let absent = call(&tools, "grep", json!({"pattern":"missing","context":2})).await;
-    assert!(absent.text.is_empty());
+    assert_eq!(absent.text, "");
 }
 
 #[tokio::test]

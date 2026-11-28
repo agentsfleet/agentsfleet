@@ -969,7 +969,7 @@ An `Env` runs processes and touches files under one root. It starts a process an
 
 Every path is relative to `Env::root`. The environment refuses a path that leaves the root, by name or through a link. A process's unread output keeps its first and last 512 KiB, and the middle is counted.
 
-`find` and `grep` make one `Env::search` call, answered where the files are. The search skips `.git` and whatever `.gitignore` names, and follows no link. `LocalEnv` runs it with the `ignore` walker and `grep-searcher` on the host.
+`find` and `grep` make one `Env::search` call, answered where the files are. Pass `context: 1` to `grep` to include the line before and after a match. The limit counts matching lines. Each displayed line keeps its first 500 Unicode characters and carries a note when shortened. The search skips `.git` and whatever `.gitignore` names, and follows no link. `LocalEnv` runs it with the `ignore` walker and `grep-searcher` on the host.
 
 ```rust
 use guffbolt::tools::env::{Env, Hit, LocalEnv, Pattern, Search};
@@ -1118,7 +1118,7 @@ async fn connect() -> Result<Vec<Box<ContextTool<'static>>>, Box<dyn std::error:
 
 ### Deferred tools
 
-A run with many tools, such as every tool of several MCP servers, can hold most of them unoffered with `Tools::hold`. `tool_search` searches their names and descriptions, and loads the best matches.
+A run with many tools, such as every tool of several MCP servers, can hold most of them unoffered with `Tools::hold`. `tool_search` searches their names and descriptions, and loads the best eight matches by default. Pass an explicit `limit` to change that count.
 
 Build a `tools::search::Deferred` from `Tools::held_specs`, and offer `Typed::new(ToolSearch::new(deferred))` beside your tools. In your `offered`, add each held tool `Deferred::is_loaded` names.
 

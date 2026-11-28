@@ -87,7 +87,7 @@ async fn tool_search_answers_eight_when_no_limit_is_named() {
         .expect("no backend needed");
     let empty = call(&tools, "tool_search", json!({"query":"notes","limit":0})).await;
     assert_eq!(empty.text, "no deferred tool matches notes");
-    assert!(deferred.loaded().is_empty());
+    assert_eq!(deferred.loaded(), Vec::<String>::new());
     let answer = call(&tools, "tool_search", json!({"query":"notes"})).await;
     let expected: Vec<_> = names
         .iter()
