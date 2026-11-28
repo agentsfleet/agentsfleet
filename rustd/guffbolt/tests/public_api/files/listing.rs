@@ -180,6 +180,8 @@ async fn a_search_refuses_a_glob_or_pattern_it_cannot_compile() {
             text: text.to_owned(),
             literal: false,
             ignore_case: false,
+            context: 0,
+            line_chars: None,
         }),
         limit: 10,
     };

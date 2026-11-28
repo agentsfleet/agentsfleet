@@ -79,7 +79,7 @@ async fn grep_reads_a_digit_class() {
 }
 
 #[tokio::test]
-async fn grep_shows_a_long_line_whole_and_stops_at_the_output_budget() {
+async fn grep_keeps_its_output_budget_after_cutting_long_lines() {
     let desk = Desk::new();
     let long = format!("hit {}", "\u{00e9}".repeat(600));
     desk.put("long.txt", format!("{long}\n").repeat(100));
@@ -88,13 +88,90 @@ async fn grep_shows_a_long_line_whole_and_stops_at_the_output_budget() {
     let output = call(&tools, "grep", json!({"pattern": "hit"})).await;
 
     let first = output.text.lines().next().expect("a line");
-    assert_eq!(first, format!("long.txt:1: {long}"));
+    assert_eq!(
+        first,
+        format!(
+            "long.txt:1: hit {} [line cut at 500 characters]",
+            "é".repeat(496)
+        )
+    );
     let lines = output.text.lines().count();
     assert!(
         lines < 100,
         "the 40,000-byte budget stops it first: {lines} lines"
     );
     assert!(output.text.ends_with(LIMIT_REACHED));
+}
+
+#[tokio::test]
+async fn grep_cuts_a_long_line_at_500_characters() {
+    let desk = Desk::new();
+    let boundary = "é".repeat(500);
+    let long = format!("{}hit", "λ".repeat(1_997));
+    desk.put("notes.txt", format!("{boundary}\n{long}\n"));
+    let tools = desk.tools(false);
+    let output = call(&tools, "grep", json!({"pattern":"hit","context":1})).await;
+    assert_eq!(
+        output.text,
+        format!(
+            "notes.txt:1: {boundary}\nnotes.txt:2: {} [line cut at 500 characters]",
+            "λ".repeat(500)
+        )
+    );
+}
+
+#[tokio::test]
+async fn grep_shows_context_lines_around_a_match() {
+    let desk = Desk::new();
+    desk.put("notes.txt", "one\r\nhit-a\r\nthree\nhit-b\nfive\nmiss\n");
+    let tools = desk.tools(false);
+    let nearby = call(&tools, "grep", json!({"pattern":"hit","context":1})).await;
+    let plain = call(&tools, "grep", json!({"pattern":"hit"})).await;
+    assert_eq!(
+        nearby.text,
+        "notes.txt:1: one\nnotes.txt:2: hit-a\nnotes.txt:3: three\nnotes.txt:4: hit-b\nnotes.txt:5: five"
+    );
+    assert_eq!(plain.text, "notes.txt:2: hit-a\nnotes.txt:4: hit-b");
+}
+
+#[tokio::test]
+async fn grep_context_reaches_a_match_beyond_the_file_read_window() {
+    let desk = Desk::new();
+    let bytes = usize::try_from(desk.env.max_read_bytes()).expect("local file-read size fits");
+    desk.put(
+        "log",
+        format!("{}\nbefore\nneedle\nafter\n", "x".repeat(bytes)),
+    );
+    let tools = desk.tools(false);
+    let answer = call(&tools, "grep", json!({"pattern":"needle","context":1})).await;
+    assert_eq!(answer.text, "log:2: before\nlog:3: needle\nlog:4: after");
+}
+
+#[tokio::test]
+async fn grep_keeps_the_last_matches_context_when_its_limit_is_reached() {
+    let desk = Desk::new();
+    desk.put("a", "hit-a\nhit-b\nthree\nskip\nhit-c\n");
+    desk.put("b", "hit-d\n");
+    let tools = desk.tools(false);
+    let answer = call(
+        &tools,
+        "grep",
+        json!({"pattern":"hit","context":2,"limit":1}),
+    )
+    .await;
+    assert_eq!(
+        answer.text,
+        format!("a:1: hit-a\na:2: hit-b\na:3: three\n{LIMIT_REACHED}")
+    );
+    let zero = call(
+        &tools,
+        "grep",
+        json!({"pattern":"hit","context":2,"limit":0}),
+    )
+    .await;
+    assert_eq!(zero.text, LIMIT_REACHED);
+    let absent = call(&tools, "grep", json!({"pattern":"missing","context":2})).await;
+    assert!(absent.text.is_empty());
 }
 
 #[tokio::test]

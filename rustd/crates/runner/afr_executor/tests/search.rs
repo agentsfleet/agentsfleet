@@ -29,6 +29,8 @@ fn search(path: &str, glob: Option<&str>, pattern: Option<&str>, limit: u64) -> 
             text: text.to_owned(),
             literal: false,
             ignore_case: false,
+            context: 0,
+            line_chars: None,
         }),
         limit,
     }

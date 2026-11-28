@@ -71,3 +71,35 @@ async fn tool_search_before_any_search_has_loaded_nothing() {
     assert!(!deferred.is_loaded("anything"));
     assert_eq!(deferred.loaded(), Vec::<String>::new());
 }
+
+#[tokio::test]
+async fn tool_search_answers_eight_when_no_limit_is_named() {
+    let parameters = json!({"type":"object"});
+    let names: Vec<_> = (1..=12).map(|n| format!("search_{n}")).collect();
+    let deferred = Arc::new(Deferred::new(names.iter().map(|name| ToolSpec {
+        name,
+        description: "Search notes.",
+        parameters: &parameters,
+    })));
+    let tools: Tools<ContextTool<'_>> = Tools::builder()
+        .with_tool(Typed::new(ToolSearch::new(Arc::clone(&deferred))))
+        .build(&ToolsConfig::new(["tool_search"]).expect("tool name"))
+        .expect("no backend needed");
+    let empty = call(&tools, "tool_search", json!({"query":"notes","limit":0})).await;
+    assert_eq!(empty.text, "no deferred tool matches notes");
+    assert!(deferred.loaded().is_empty());
+    let answer = call(&tools, "tool_search", json!({"query":"notes"})).await;
+    let expected: Vec<_> = names
+        .iter()
+        .take(8)
+        .map(|name| format!("{name}: Search notes."))
+        .chain(std::iter::once(
+            "These tools are offered from your next step.".to_owned(),
+        ))
+        .collect();
+    assert_eq!(answer.text, expected.join("\n"));
+    assert_eq!(deferred.loaded().len(), 8);
+    let all = call(&tools, "tool_search", json!({"query":"notes","limit":12})).await;
+    assert_eq!(all.text.lines().count(), 13);
+    assert_eq!(deferred.loaded().len(), 12);
+}

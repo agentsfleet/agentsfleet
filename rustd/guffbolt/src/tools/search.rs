@@ -19,6 +19,8 @@ use guffbolt_ai::ToolSpec;
 
 /// What a search that found nothing reads back.
 const FOUND_NOTHING: &str = "no deferred tool matches";
+/// The default number of deferred tools offered after one search.
+const DEFAULT_MATCHES: usize = 8;
 /// What a search that loaded tools reads back last.
 const LOADED: &str = "These tools are offered from your next step.";
 
@@ -103,7 +105,7 @@ impl Deferred {
 pub struct Query {
     /// What the tool should do, in a few words, such as `create github issue`.
     query: String,
-    /// The most tools to load: every match when absent.
+    /// The most tools to load, eight when absent.
     #[serde(default)]
     limit: Option<usize>,
 }
@@ -135,7 +137,7 @@ impl Handler for ToolSearch {
         arguments: Query,
         _context: Context<'_>,
     ) -> impl Future<Output = ToolOutput> + Send {
-        let limit = arguments.limit.unwrap_or(usize::MAX);
+        let limit = arguments.limit.unwrap_or(DEFAULT_MATCHES);
         let found = self.deferred.search(&arguments.query, limit);
         let answer = if found.is_empty() {
             format!("{FOUND_NOTHING} {}", arguments.query)
