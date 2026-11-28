@@ -18,11 +18,13 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Status:** IN_PROGRESS
 
+**Progress:** 31 of 43 dimensions complete. Live extraction (1.7), dashboard search and read (9.1), and redirect approval and denial (9.3–9.4) passed. The 12 open dimensions are 5.3, 6.1, 7.1–7.5, 8.1–8.4 and 9.2. They depend on merged M258 and the Firecracker browser work. [Product PR](https://github.com/agentsfleet/agentsfleet/pull/874) · [Dashboard acceptance](https://github.com/agentsfleet/agentsfleet/actions/runs/46114949902/job/140886570326)
+
 **Priority:** P1, 13 of the 21 catalogue models offer no search, and every browser call is refused
 
 **Categories:** API, CLI, DOCS, INFRA, OBS, UI
 
-**Batch:** B1. Per Indy on Nov 27, web tools (§§1–5) start on `feat/m259-web-tools` alongside M258. The Firecracker spike (§6) starts after M258 merges. M259_002 follows as B2.
+**Batch:** B1. Per Indy on Nov 27, web tools (§§1–5) start on `feat/m259-web-tools` alongside M258. The Firecracker spike (§6) starts after M258 merges. M259_002 opened as B2 after Dimensions 1.7, 9.1, 9.3 and 9.4 passed.
 
 **Depends on:** M258_001 (Firecracker engine), M258_003 (production switch and bubblewrap retirement), and M258_002 (checkpoint behavior). The dependency applies to the browser. Review the three active M258 specs against the merged compute layer before §6.
 
@@ -530,7 +532,7 @@ Same spelling, other meaning, kept: `afd_http/src/openapi/mod.rs` ("Hosted sched
 - **Dashboard search evidence, Nov 28.** The hosted `prime-curious-otter` journey passed on its first attempt in 22.281 seconds at `343927d31`. One real fleet searched, read its first result, and reloaded the same citations from Sources. Its answering run reserved exactly one Parallel Fast search and one Parallel extract. The full dashboard suite reported 106 passed, four failed, two skipped and 14 did not run. The failures were in fleet-thread, careful-squirrel, queen-bee and stubborn-mule. [Hosted job](https://github.com/agentsfleet/agentsfleet/actions/runs/46114949902/job/140886570326) · [Playwright evidence](https://github.com/agentsfleet/agentsfleet/actions/runs/46114949902/artifacts/15252115276)
 - **Redirect approval evidence, Nov 28.** Three daemon-and-runner scenarios passed on PostgreSQL and NATS. Approval with a retry carried the requested URL into a checkpoint-free continuation and fetched the destination once. Approval without a retry and denial produced zero destination DNS lookups, connections or requests. Every scenario recorded zero vendor dispatches and reservations. The saved tenant turn included a successful read only for the retry. Five thread-history, 63 approval and five runner-access regressions passed.
 - **Vendor terms for rollout.** Parallel's customer terms cover API integration into a customer product subject to end-user protections and restrictions on reselling API access. Exa's MSA covers integration under an applicable order. Confirm the platform account's order and retention settings before routing customer queries under those terms. The development probes above used public documentation. [Parallel customer terms](https://parallel.ai/customer-terms) · [Exa MSA](https://exa.ai/msa)
-- **Next workstream.** The owner authorized starting M259_002 after Dimensions 1.7, 9.1, 9.3 and 9.4 pass. The Firecracker work in this spec still uses merged M258.
+- **Next workstream.** M259_002 is active on its own branch from the verified web-tools baseline. [Workstream 002](https://github.com/agentsfleet/agentsfleet/tree/feat/m259-002-prompts-and-images)
 - **Delivery.** Start §§1–5 on the current main baseline. Sync the feature branch with merged M258 before §6. Reconcile shared route inventories, schema registration, error codes, protocol version, OpenAPI and acceptance setup there. Run §6 before §§7–8 and the live browser fixture.
   Start with the reservation table and migration registration, vendor interface, and Dimension 1.1 against a fake vendor. The spike is ready once the merged engine is available. Shipping browser actions additionally requires confinement evidence, policy isolation, intact transport, successful final capture and §9.2.
 - **Deferrals and transfers** — none. Each one needs an owner quote below, as `> Owner (<name>, <MMM DD, YYYY HH:MM>): "<quote>" — context: <item, why>`.
