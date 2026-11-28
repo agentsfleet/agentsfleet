@@ -62,6 +62,8 @@ impl Handler for ScheduleOnce<'_> {
     const DESCRIPTION: &'static str = "Schedule one more run at a given moment, with a message \
         saying what to do then. It is removed after it runs. Call it only when the person's \
         newest message asks for a later run.";
+    const GUIDANCE: &'static str = "Use schedule for a one-time run only when the person's \
+        newest message asks you to schedule it.";
     type Arguments = At;
 
     async fn run(&self, arguments: At, context: Context<'_>) -> ToolOutput {

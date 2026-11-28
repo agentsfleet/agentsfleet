@@ -79,9 +79,10 @@ async fn test_a_question_waits_for_a_running_child_to_answer() {
         "the report carries the question"
     );
     let sent = script.sent();
-    let child = sent.iter().filter(|request| {
-        matches!(request.messages.first(), Some(Message::User(text)) if text.starts_with(DELEGATED))
-    });
+    let kickoff = format!("{}\n{DELEGATED}", guffbolt::HARNESS_TAG);
+    let child = sent.iter().filter(
+        |request| matches!(request.messages.first(), Some(Message::User(text)) if text == &kickoff),
+    );
     assert_eq!(
         (sent.len(), child.count()),
         (2, 1),

@@ -44,6 +44,8 @@ fn a_glob_or_pattern_that_does_not_compile_is_refused() {
         text: text.to_owned(),
         literal: false,
         ignore_case: false,
+        context: 0,
+        line_chars: None,
     };
 
     glob_matcher("a[b").unwrap_err();

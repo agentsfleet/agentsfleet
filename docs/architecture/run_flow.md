@@ -90,7 +90,8 @@ GitHub                  agentsfleetd                          agentsfleet-runner
   |                        |                                       | sandbox; clone linkwarden
   |                        |                                       | from the host side
   |                        |<-- memory window ---------------------|
-  |                        |                                       | prompt: fixed text
+  |                        |                                       | prompt: identity and harness facts
+  |                        |                                       |  + guidance for offered tools
   |                        |                                       |  + pinned memory
   |                        |                                       | user turn: digest JSON
   |                        |<-- activity frames -------------------| model answers with
@@ -104,7 +105,7 @@ The assignment reads the fleet row and its approved grant, then builds the run's
 The approved read scope becomes a repository binding. The egress rules admit `GET` and `HEAD` under `/repos/agentsfleet/linkwarden/` and nothing else on `api.github.com`.
 
 The runner clones the bound repository into the run's workspace from outside the sandbox, so the token never enters it.
-The system prompt is the fixed text with the fleet's name, then its pinned memory ([capabilities](capabilities.md)).
+The system prompt begins with the fleet's identity and the fixed harness facts. Each model request adds guidance for the tools that loop is offered, followed by the run's context, including pinned memory. A child offered fewer tools receives only the guidance for its own tools. The saved summary digest covers the fixed prefix, so changing the tool set preserves the summary. [Capabilities](capabilities.md)
 The first user turn is the digest JSON, because the digest has no `message` field.
 
 The digest already holds `number`, so the model can answer without calling GitHub.

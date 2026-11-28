@@ -113,6 +113,10 @@ pub(crate) struct Shared<'run> {
     pub(crate) registry: Agents,
     /// The system prompt every loop of the run opens with.
     pub(crate) instructions: String,
+    /// End of the redacted fixed prefix, before all run-dependent blocks.
+    pub(crate) guidance_at: usize,
+    /// Source information rendered only for loops that can steer a task.
+    pub(crate) task_context: Option<String>,
     /// The fixed text the system prompt opens with: all a compaction's
     /// pinned digest covers, so pinned memory or access changing between
     /// runs keeps the thread's saved summary readable.
@@ -157,6 +161,14 @@ impl<'run> Shared<'run> {
     ) -> Self {
         let policy = &run.run.policy;
         let started = Instant::now();
+        let fixed = scrub.text(&prompt.fixed);
+        // A secret spanning the block boundary may redact part of the prefix.
+        // In that case append to the intact, redacted prompt.
+        let guidance_at = if prompt.instructions.starts_with(fixed.as_ref()) {
+            fixed.len()
+        } else {
+            prompt.instructions.len()
+        };
         Self {
             payload: run.run,
             recovered_durable_task: run.recovered_durable_task,
@@ -191,6 +203,8 @@ impl<'run> Shared<'run> {
             meter: run.meter,
             registry,
             instructions: prompt.instructions,
+            guidance_at,
+            task_context: prompt.task_context,
             fixed: prompt.fixed,
             started,
         }

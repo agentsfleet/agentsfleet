@@ -67,8 +67,11 @@ impl Model for Worker {
 
     fn stream<'a>(&'a self, request: Request<'a>) -> BoxStream<'a, Result<Chunk, Unfinished>> {
         let task = match request.messages.last() {
-            Some(Message::User(task)) => task.clone(),
-            _ => String::new(),
+            Some(Message::User(task)) => task
+                .split_once('\n')
+                .filter(|(source, _)| *source == crate::HARNESS_TAG)
+                .map_or("", |(_, body)| body),
+            _ => "",
         };
         if task == NEVER {
             return stream::pending().boxed();

@@ -35,6 +35,7 @@ impl<'s, 'run> Harness<'s, 'run> {
             durable_task_report: None,
             shared,
             id: 0,
+            child_tools: None,
             depth: 0,
             stop: shared.stop.clone(),
             selection,
@@ -86,6 +87,7 @@ impl<'s, 'run> Harness<'s, 'run> {
             depth,
             stop,
             transcript,
+            tools,
         } = seat;
         let run_id = shared.run_id;
         let child_id = id;
@@ -100,6 +102,7 @@ impl<'s, 'run> Harness<'s, 'run> {
             durable_task_report: None,
             shared,
             id,
+            child_tools: Some(tools),
             depth,
             stop,
             selection,

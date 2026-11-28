@@ -117,7 +117,7 @@ async fn an_extension_can_refuse_a_step_before_its_calls_run() {
 }
 
 #[tokio::test]
-async fn a_continued_answer_stays_in_the_conversation_and_the_model_is_told_why() {
+async fn a_continue_reason_reaches_the_model_tagged_as_the_harness() {
     let mut run = Scripted::new([answer("Halfway."), answer("Finished.")]);
     let mut extension = Recording {
         continue_once: Some("The goal remains incomplete."),
@@ -130,7 +130,7 @@ async fn a_continued_answer_stays_in_the_conversation_and_the_model_is_told_why(
         Some(&vec![
             user("deploy the fix"),
             said("Halfway."),
-            user("The goal remains incomplete."),
+            user("[Source: harness]\nThe goal remains incomplete."),
         ])
     );
 }

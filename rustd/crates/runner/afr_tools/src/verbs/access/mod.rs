@@ -51,6 +51,9 @@ pub(crate) struct RequestAccess;
 
 #[async_trait::async_trait]
 impl Handler for RequestAccess {
+    const GUIDANCE: &'static str = "Use request_access when the person's newest request needs a host, secret or \
+        integration this fleet lacks. Ask for one hostname or credential name. For GitHub include the \
+        repositories and read or write access. Approval grants access to this fleet for future runs.";
     const ENTRY: &'static Entry = &REQUEST_ACCESS;
     const DESCRIPTION: &'static str = "Call this tool only when the person's newest message \
         asks for work that needs access to a secret, integration or web host you do not hold. Do not call it for \

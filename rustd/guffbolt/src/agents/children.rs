@@ -169,6 +169,7 @@ fn turn<R: Raise>(raise: &R, id: u64) -> Option<Running<'_>> {
     } = agents.begin(id)?;
     let me = Me { id, depth };
     let seat = Seat {
+        tools: tools.clone(),
         id,
         depth,
         stop: stop.clone(),

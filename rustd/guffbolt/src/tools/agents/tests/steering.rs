@@ -45,7 +45,11 @@ async fn a_finished_child_takes_a_followup_task_with_its_transcript() {
     assert_eq!(turns.len(), 2, "the child ran again");
     assert_eq!(
         turns.get(1).map(|sent| sent.messages.clone()),
-        Some(vec![user("count to one"), said("one"), user("now to two")]),
+        Some(vec![
+            user("[Source: harness]\ncount to one"),
+            said("one"),
+            user("now to two")
+        ]),
         "its second request holds its first turn"
     );
 }

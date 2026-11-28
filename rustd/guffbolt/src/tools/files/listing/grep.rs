@@ -11,6 +11,8 @@ use crate::tools::{Context, Handler, code};
 
 /// The matches `grep` answers with when the model names no limit.
 const GREP_DEFAULT: usize = 100;
+/// The approved per-line display limit, measured in Unicode scalar values.
+const LINE_CHARACTERS: usize = 500;
 
 /// `grep`'s arguments.
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -31,6 +33,9 @@ pub struct Lines {
     /// Whether `pattern` is text rather than a regular expression.
     #[serde(default)]
     literal: bool,
+    /// Lines to show before and after each matching line, zero when absent.
+    #[serde(default)]
+    context: usize,
     /// The most matching lines to answer with: 100 when absent.
     #[serde(default)]
     limit: Option<usize>,
@@ -46,7 +51,8 @@ impl Handler for Grep<'_> {
     const DESCRIPTION: &'static str = "Search the files in the working directory for a pattern, a \
         regular expression or, with `literal`, text, and read back each matching line as \
         `path:line: text`. `glob` keeps only files whose path matches it. `.git` and what \
-        `.gitignore` names are skipped. At most `limit` lines (100 when absent).";
+        `.gitignore` names are skipped. `limit` counts matches (100 when absent). `context` adds \
+        surrounding lines. Lines longer than 500 characters are marked where they are cut.";
     type Arguments = Lines;
 
     async fn run(&self, arguments: Lines, _context: Context<'_>) -> ToolOutput {
@@ -59,6 +65,9 @@ async fn grep(env: &dyn Env, arguments: &Lines) -> Answer {
         text: arguments.pattern.clone(),
         literal: arguments.literal,
         ignore_case: arguments.ignore_case,
+        context: arguments.context,
+        // One extra character distinguishes a cut from a line exactly at the limit.
+        line_chars: Some(LINE_CHARACTERS + 1),
     };
     line_matcher(&pattern)
         .map_err(|refused| ToolOutput::failed(code::INVALID_ARGUMENTS, &refused.to_string()))?;
@@ -78,4 +87,13 @@ async fn grep(env: &dyn Env, arguments: &Lines) -> Answer {
     };
     let note = (found.limited || found.cut).then_some(LIMIT_REACHED);
     Ok(ToolOutput::succeeded(answer(env, shown(found), note)))
+}
+
+/// A single numbered result, with any shortened content marked at the cut.
+pub(super) fn shown_line(path: &str, number: u64, mut text: String) -> String {
+    if let Some((end, _)) = text.char_indices().nth(LINE_CHARACTERS) {
+        text.truncate(end);
+        text.push_str(" [line cut at 500 characters]");
+    }
+    format!("{path}:{number}: {text}")
 }

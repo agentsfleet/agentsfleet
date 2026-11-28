@@ -18,6 +18,10 @@ fn pattern_of(pattern: &Pattern) -> afr_executor::Pattern {
         text: pattern.text.clone(),
         literal: pattern.literal,
         ignore_case: pattern.ignore_case,
+        context: u64::try_from(pattern.context).unwrap_or(u64::MAX),
+        line_chars: pattern
+            .line_chars
+            .map(|n| u64::try_from(n).unwrap_or(u64::MAX)),
     }
 }
 

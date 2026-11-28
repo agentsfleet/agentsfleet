@@ -105,6 +105,9 @@ impl AgentEngine for Loop {
         let span = spans::invoke_agent(policy);
         let mut prompt = Prompt::new(run.run, &run.memory);
         prompt.instructions = scrub.clean(prompt.instructions).into_inner();
+        prompt.task_context = prompt
+            .task_context
+            .map(|context| scrub.clean(context).into_inner());
         if let Some(prepared) = run.prepared_durable_task {
             let native = serde_json::json!({ "current_durable_task": prepared.inputs.current_durable_task,
                 "accepted_interpretation": prepared.inputs.current_interpretation,
@@ -202,6 +205,8 @@ pub(crate) struct Harness<'s, 'run> {
     pub(crate) shared: &'s Shared<'run>,
     /// The child this loop is a turn of: zero for the root.
     pub(crate) id: u64,
+    /// Tools the parent gave this child. The root uses the complete offer.
+    child_tools: Option<Vec<String>>,
     /// How many loops this one is inside: zero for the root.
     pub(crate) depth: u8,
     /// Cancelled when this loop is to end: the run's token for the root, a
@@ -286,6 +291,9 @@ mod budget_tests;
 
 #[cfg(test)]
 mod history_tests;
+
+#[cfg(test)]
+mod guidance_tests;
 
 #[cfg(test)]
 mod provider_failure_tests;

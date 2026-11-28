@@ -480,6 +480,8 @@ Each event takes `&self`, and `guffbolt` waits on none of them. `call_started` r
 
 A tool implements two traits. `Describe` gives the model its name, description and parameters' JSON Schema. `Tool<Cx>` runs one call with the context `Cx` your loop lends it.
 
+A tool can also contribute instructions through `Describe::guidance`, or `Handler::GUIDANCE` for a typed handler. `Chat` appends these instructions in the order it offers the tools. An embedder that builds its own prompt can implement `Conversation::instructions` and look up each requested tool with `Tools::guidance_for`. A child request carries its narrowed list.
+
 `Tools` holds one loop's tools, offers them in order and dispatches a call by name. `Tools::hold` keeps a tool callable without offering it.
 
 A tool answers a `ToolOutput`: the text the model reads, an exit code, an `ErrorCode`, an `Image` and a question for the person. A failed call is a result too, as [When a tool fails](#when-a-tool-fails) shows.
@@ -967,7 +969,7 @@ An `Env` runs processes and touches files under one root. It starts a process an
 
 Every path is relative to `Env::root`. The environment refuses a path that leaves the root, by name or through a link. A process's unread output keeps its first and last 512 KiB, and the middle is counted.
 
-`find` and `grep` make one `Env::search` call, answered where the files are. The search skips `.git` and whatever `.gitignore` names, and follows no link. `LocalEnv` runs it with the `ignore` walker and `grep-searcher` on the host.
+`find` and `grep` make one `Env::search` call, answered where the files are. Pass `context: 1` to `grep` to include the line before and after a match. The limit counts matching lines. Each displayed line keeps its first 500 Unicode characters and carries a note when shortened. The search skips `.git` and whatever `.gitignore` names, and follows no link. `LocalEnv` runs it with the `ignore` walker and `grep-searcher` on the host.
 
 ```rust
 use guffbolt::tools::env::{Env, Hit, LocalEnv, Pattern, Search};
@@ -983,6 +985,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             text: "pub struct Chat<".to_owned(),
             literal: true,
             ignore_case: false,
+            context: 0,
+            line_chars: None,
         }),
         limit: 10,
     };
@@ -1114,7 +1118,7 @@ async fn connect() -> Result<Vec<Box<ContextTool<'static>>>, Box<dyn std::error:
 
 ### Deferred tools
 
-A run with many tools, such as every tool of several MCP servers, can hold most of them unoffered with `Tools::hold`. `tool_search` searches their names and descriptions, and loads the best matches.
+A run with many tools, such as every tool of several MCP servers, can hold most of them unoffered with `Tools::hold`. `tool_search` searches their names and descriptions, and loads the best eight matches by default. Pass an explicit `limit` to change that count.
 
 Build a `tools::search::Deferred` from `Tools::held_specs`, and offer `Typed::new(ToolSearch::new(deferred))` beside your tools. In your `offered`, add each held tool `Deferred::is_loaded` names.
 
@@ -1771,7 +1775,11 @@ impl Model for Lead {
             Some(Message::User(task)) if may_spawn => {
                 call(id, "spawn_agent", json!({ "message": task, "fork_turns": "none" }))
             }
-            Some(Message::User(task)) => answer(format!("Done: {task}")),
+            Some(Message::User(task)) => {
+                let (source, body) = task.split_once('\n').expect("a child task has a source");
+                assert_eq!(source, guffbolt::HARNESS_TAG);
+                answer(format!("Done: {body}"))
+            }
             Some(Message::ToolResult { output, .. }) if output.contains("agent_id") => {
                 call(id, "wait_agent", json!({ "target": 1 }))
             }

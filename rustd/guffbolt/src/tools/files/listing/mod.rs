@@ -170,7 +170,7 @@ fn shown(found: Found) -> Vec<String> {
         .into_iter()
         .map(|hit| match hit {
             Hit::File(path) => path,
-            Hit::Line { path, number, text } => format!("{path}:{number}: {text}"),
+            Hit::Line { path, number, text } => grep::shown_line(&path, number, text),
         })
         .collect()
 }

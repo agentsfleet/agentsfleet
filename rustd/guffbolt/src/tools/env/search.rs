@@ -33,6 +33,10 @@ pub struct Pattern {
     pub literal: bool,
     /// Whether case is ignored.
     pub ignore_case: bool,
+    /// Lines before and after each of the first matching lines to include.
+    pub context: usize,
+    /// The most characters to carry per line. None returns the complete text.
+    pub line_chars: Option<usize>,
 }
 
 /// What a search found, in path order, and a line's file in line order.
@@ -52,7 +56,7 @@ pub struct Found {
 pub enum Hit {
     /// A file, by its path relative to the path searched.
     File(String),
-    /// A line holding the pattern.
+    /// A matching line or a line within its requested context.
     Line {
         /// Its file, by its path relative to the path searched.
         path: String,

@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use cap_std::fs::OpenOptions;
 use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
 use grep_regex::{RegexMatcher, RegexMatcherBuilder};
-use grep_searcher::{Searcher, SearcherBuilder, Sink, SinkMatch};
+use grep_searcher::{Searcher, SearcherBuilder, Sink, SinkContext, SinkMatch};
 use ignore::WalkBuilder;
 use jsonrpsee_types::{Id, Response, ResponsePayload};
 
@@ -37,14 +37,18 @@ impl Workspace {
     /// Answers `search` from the workspace, cut to fit a `frame`-byte line.
     pub(in crate::server) fn search(&self, search: &Search, frame: usize) -> Result<Found> {
         let glob = search.glob.as_deref().map(glob_matcher).transpose()?;
-        let matcher = search.pattern.as_ref().map(line_matcher).transpose()?;
+        let matcher = search
+            .pattern
+            .as_ref()
+            .map(|pattern| line_matcher(pattern).map(|matcher| (matcher, pattern)))
+            .transpose()?;
         let inside = self.inside(&search.path)?;
         let mut files = self.files(inside, &search.path)?;
         files.retain(|(shown, _path)| glob.as_ref().is_none_or(|glob| glob.is_match(shown)));
         files.sort_unstable();
         let limit = usize::try_from(search.limit).unwrap_or(usize::MAX);
-        let found = if let Some(matcher) = matcher {
-            self.lines(files, &matcher, limit)
+        let found = if let Some((matcher, pattern)) = matcher {
+            self.lines(files, &matcher, limit, pattern)
         } else {
             listed(files, limit)
         };
@@ -85,8 +89,14 @@ impl Workspace {
             .collect())
     }
 
-    /// The lines `matcher` finds in `files`, in order, at most `limit`.
-    fn lines(&self, files: Vec<(String, PathBuf)>, matcher: &RegexMatcher, limit: usize) -> Found {
+    /// The first matching lines and their context in path order; only matches use the limit.
+    fn lines(
+        &self,
+        files: Vec<(String, PathBuf)>,
+        matcher: &RegexMatcher,
+        mut remaining: usize,
+        pattern: &Pattern,
+    ) -> Found {
         let mut found = Found::default();
         for (shown, path) in files {
             let mut read = OpenOptions::new();
@@ -94,14 +104,20 @@ impl Workspace {
             let Ok(file) = self.regular_at(&path, &mut read, Parents::Keep) else {
                 continue;
             };
-            let most = limit.saturating_sub(found.hits.len()).saturating_add(1);
-            for (number, text) in matched(&file.into_std(), matcher, most) {
-                if found.hits.len() == limit {
-                    found.limited = true;
-                    return found;
-                }
-                let path = shown.clone();
-                found.hits.push(Hit::Line { path, number, text });
+            let Some(lines) = matched(&file.into_std(), matcher, remaining, pattern) else {
+                continue;
+            };
+            remaining = lines.remaining;
+            found
+                .hits
+                .extend(lines.hits.into_iter().map(|(number, text)| Hit::Line {
+                    path: shown.clone(),
+                    number,
+                    text,
+                }));
+            if lines.limited {
+                found.limited = true;
+                break;
             }
         }
         found
@@ -147,46 +163,82 @@ fn line_matcher(pattern: &Pattern) -> Result<RegexMatcher> {
         .map_err(|_failure| error::invalid_params(DETAIL_PATTERN))
 }
 
-/// The lines of `file` that `matcher` finds, at most `most`; none when one
-/// of them is not text, or the file cannot be read.
-fn matched(file: &std::fs::File, matcher: &RegexMatcher, most: usize) -> Vec<(u64, String)> {
-    let mut sink = Lines {
-        most,
-        found: Vec::new(),
-        text: true,
+/// Matching lines and their context from one file. A read error or non-text line skips the file.
+fn matched(
+    file: &std::fs::File,
+    matcher: &RegexMatcher,
+    remaining: usize,
+    pattern: &Pattern,
+) -> Option<Lines> {
+    let context = usize::try_from(pattern.context).unwrap_or(usize::MAX);
+    let mut lines = Lines {
+        remaining,
+        context: u64::try_from(context).unwrap_or(u64::MAX),
+        line_chars: pattern
+            .line_chars
+            .map(|n| usize::try_from(n).unwrap_or(usize::MAX)),
+        through: 0,
+        limited: false,
+        hits: Vec::new(),
     };
-    let searched = SearcherBuilder::new()
+    SearcherBuilder::new()
         .line_number(true)
+        .before_context(context)
+        .after_context(context)
         .build()
-        .search_file(matcher, file, &mut sink);
-    if searched.is_err() || !sink.text {
-        return Vec::new();
-    }
-    sink.found
+        .search_file(matcher, file, &mut lines)
+        .ok()?;
+    Some(lines)
 }
 
-/// What one file's search keeps: its matched lines, up to `most`.
+/// `through` retains trailing context for the last accepted match even if another
+/// match inside the same window has already reached the match limit.
 struct Lines {
-    most: usize,
-    found: Vec<(u64, String)>,
-    /// Whether every matched line was text.
-    text: bool,
+    remaining: usize,
+    context: u64,
+    line_chars: Option<usize>,
+    through: u64,
+    limited: bool,
+    hits: Vec<(u64, String)>,
+}
+
+impl Lines {
+    fn line(&mut self, number: u64, bytes: &[u8]) -> io::Result<bool> {
+        let line = std::str::from_utf8(bytes).map_err(io::Error::other)?;
+        if self.remaining > 0 || number <= self.through {
+            let text = line
+                .strip_suffix('\n')
+                .map_or(line, |line| line.strip_suffix('\r').unwrap_or(line));
+            let end = self.line_chars.and_then(|max| text.char_indices().nth(max));
+            let kept = end
+                .and_then(|(offset, _)| text.get(..offset))
+                .unwrap_or(text);
+            self.hits.push((number, kept.to_owned()));
+        }
+        Ok(!self.limited || number < self.through)
+    }
 }
 
 impl Sink for Lines {
     type Error = io::Error;
 
     fn matched(&mut self, _searcher: &Searcher, hit: &SinkMatch<'_>) -> io::Result<bool> {
-        let Ok(line) = std::str::from_utf8(hit.bytes()) else {
-            self.text = false;
-            return Ok(false);
-        };
-        let line = line
-            .strip_suffix('\n')
-            .map_or(line, |line| line.strip_suffix('\r').unwrap_or(line));
         let number = hit.line_number().unwrap_or_default();
-        self.found.push((number, line.to_owned()));
-        Ok(self.found.len() < self.most)
+        if self.remaining == 0 {
+            self.limited = true;
+        } else {
+            self.remaining -= 1;
+            self.through = number.saturating_add(self.context);
+        }
+        self.line(number, hit.bytes())
+    }
+
+    fn context(&mut self, _searcher: &Searcher, line: &SinkContext<'_>) -> io::Result<bool> {
+        let number = line.line_number().unwrap_or_default();
+        if self.remaining == 0 && number > self.through {
+            return Ok(!self.limited);
+        }
+        self.line(number, line.bytes())
     }
 }
 

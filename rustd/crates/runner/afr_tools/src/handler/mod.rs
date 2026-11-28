@@ -23,6 +23,8 @@ pub(crate) trait Handler: Send + Sync + fmt::Debug + 'static {
     const ENTRY: &'static Entry;
     /// What the tool does, as the model reads it.
     const DESCRIPTION: &'static str;
+    /// Model instructions for a loop offered this tool.
+    const GUIDANCE: &'static str = "";
     /// What one call carries.
     type Arguments: DeserializeOwned + JsonSchema + Send;
 
@@ -49,6 +51,10 @@ impl<H: Handler> Typed<H> {
 }
 
 impl<H: Handler> Describe for Typed<H> {
+    fn guidance(&self) -> &'static str {
+        H::GUIDANCE
+    }
+
     fn spec(&self) -> ToolSpec<'_> {
         self.schema.spec(H::ENTRY.name())
     }

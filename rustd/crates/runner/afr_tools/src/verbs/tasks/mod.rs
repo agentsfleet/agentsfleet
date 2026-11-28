@@ -100,6 +100,7 @@ pub(crate) struct TaskStart;
 
 #[async_trait::async_trait]
 impl Handler for TaskStart {
+    const GUIDANCE: &'static str = "Use task_start when the person's newest message asks for work that must continue beyond this run.";
     const ENTRY: &'static Entry = &TASK_START;
     const DESCRIPTION: &'static str = "Call this tool only when the person's newest message \
         asks for work that must keep going past this run, such as fixing something until a \

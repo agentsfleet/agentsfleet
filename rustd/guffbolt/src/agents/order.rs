@@ -235,7 +235,12 @@ fn start(agents: &Agents, caller: Caller<'_>, spawn: Spawn) -> Result<u64, Refus
         tools.retain(|name| !TOOLS.contains(&name.as_str()));
     }
     let opening = forked(caller.history, spawn.fork);
-    agents.reserve(caller.me, tools, opening, spawn.message)
+    agents.reserve(
+        caller.me,
+        tools,
+        opening,
+        crate::drive::harness_text(&spawn.message),
+    )
 }
 
 /// `value` as a succeeded call's text: JSON, which these shapes always are.

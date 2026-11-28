@@ -59,9 +59,15 @@ pub trait Conversation: Send + Sync {
     /// The tools the model is offered on the next call, in order.
     fn offered(&self) -> Vec<ToolSpec<'_>>;
 
-    /// The next call's request, sending `window` and offering `tools`: the
-    /// model, the instructions and the rest are the embedder's.
+    /// The next call's request, sending `window` and offering `tools`.
+    /// The loop passes it to [`Self::instructions`] before streaming.
     fn request<'a>(&'a self, window: &'a Window, tools: &'a [ToolSpec<'a>]) -> Request<'a>;
+
+    /// Instructions for this exact request, after the loop has narrowed its tools.
+    /// Embedders that fit by token count measure the request with these instructions.
+    fn instructions<'a>(&'a self, request: &Request<'a>) -> std::borrow::Cow<'a, str> {
+        std::borrow::Cow::Borrowed(request.instructions)
+    }
 
     /// Runs `call`, which sits at `call_ref`, with whatever this loop lends
     /// it; a tool whose backend acts outside the process is lent `call_ref`
