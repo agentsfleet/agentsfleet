@@ -18,6 +18,7 @@ const AUTH_APP_PATH = "/(auth)/";
 const CONNECTOR_COMPLETION_APP_PATH = "/connectors/complete/page";
 const CLI_AUTH_APP_PATH = "/cli-auth/";
 const DASHBOARD_APP_PATH = "/(dashboard)/";
+const DASHBOARD_ENTRY_PAGE = "/(entry)/page";
 const PAGE_APP_PATH_SUFFIX = "/page";
 const FRAMEWORK_APP_PATH_PREFIX = "/_";
 const GZIP = true;
@@ -51,6 +52,7 @@ const ROUTE_CLASS = {
   auth: "auth",
   cliAuth: "cli_auth",
   dashboard: "dashboard",
+  dashboardEntry: "dashboard_entry",
 };
 const DASHBOARD_ROUTE_LIMITS = new Map([
   ["/w/[workspaceId]/fleets/new", "75 KiB"],
@@ -120,6 +122,7 @@ function routeClass(appPath) {
   if (appPath.startsWith(AUTH_APP_PATH)) return ROUTE_CLASS.auth;
   if (appPath === CONNECTOR_COMPLETION_APP_PATH) return ROUTE_CLASS.auth;
   if (appPath.startsWith(CLI_AUTH_APP_PATH)) return ROUTE_CLASS.cliAuth;
+  if (appPath === DASHBOARD_ENTRY_PAGE) return ROUTE_CLASS.dashboardEntry;
   if (appPath.startsWith(DASHBOARD_APP_PATH)) return ROUTE_CLASS.dashboard;
   return null;
 }
@@ -307,7 +310,8 @@ async function createConfig() {
     sizeCheck("authenticated dashboard shared", sharedFiles, BUDGETS.dashboardShared),
   ];
   for (const route of routes) {
-    if (route.classification === ROUTE_CLASS.dashboard) {
+    // The entry can render the shell for onboarding and shares its incremental budget.
+    if (route.classification === ROUTE_CLASS.dashboard || route.classification === ROUTE_CLASS.dashboardEntry) {
       const files = union(frameworkFiles, route.files).filter(
         (file) => !sharedSet.has(file),
       );

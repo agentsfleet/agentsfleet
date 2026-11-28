@@ -1,9 +1,11 @@
 import type { ReactNode } from "react";
-import type { FleetSettingsValue } from "./FleetSettings";
+import { StrictMode } from "react";
+import type { NativeFleetDetail } from "@/lib/api/fleet-detail";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { TooltipProvider } from "@agentsfleet/design-system";
+import { FleetDetailSchema } from "@/lib/api/fleet-detail";
 import { FLEET_DETAIL, FLEET_ID, GRANT_ID, MODEL, SCHEDULE, TRIGGER_ID, WORKSPACE, response } from "@/tests/helpers/fleet-fixtures";
 import { FleetWorkspace } from "./FleetWorkspace";
 import { FleetListSections } from "./FleetListSections";
@@ -12,6 +14,8 @@ import { FleetNetworkSection } from "../network/FleetNetworkSection";
 import { FleetModelSelect } from "../models/FleetModelSelect";
 
 const identity = vi.hoisted(() => ({userId: "person" as string | null, isLoaded: true}));
+const router = vi.hoisted(() => ({refresh: vi.fn()}));
+vi.mock("next/navigation", () => ({useRouter: () => router}));
 vi.mock("@/lib/auth/client", () => ({useCurrentUser: () => identity}));
 
 const BASE = `/live/v1/workspaces/${WORKSPACE}/fleets/${FLEET_ID}`;
@@ -29,21 +33,23 @@ const PIN = {key: "evidence", content: "Always link the evidence.", category: "c
 type Route = (init: RequestInit) => Response | Promise<Response>;
 let routes: Map<string, Route>;
 let calls: {method: string; path: string; body?: unknown; headers?: HeadersInit}[];
+let detail: NativeFleetDetail;
 
 function serve(method: string, path: string, route: Route) {routes.set(`${method} ${path}`, route);}
 function lists({schedules = [SCHEDULE], triggers = [WEBHOOK], grants = [GITHUB, PENDING], pinned = [PIN]}: {schedules?: unknown[]; triggers?: unknown[]; grants?: unknown[]; pinned?: unknown[]} = {}) {
+  detail = FleetDetailSchema.parse({...FLEET_DETAIL, schedules, triggers, grants});
   serve("GET", `${BASE}/schedules`, () => response({schedules}));
   serve("GET", `${BASE}/triggers`, () => response({items: triggers}));
   serve("GET", `${BASE}/integration-grants`, () => response({items: grants}));
   serve("GET", `${BASE}/memories?limit=100`, () => response({items: pinned, total: pinned.length, next_cursor: null}));
 }
-function page(children: ReactNode = <><FleetListSections /><FleetNetworkSection /><FleetModelSelect label="Saved model" /></>, fleet: FleetSettingsValue & {id: string} = FLEET_DETAIL) {
+function page(children: ReactNode = <><FleetListSections /><FleetNetworkSection /><FleetModelSelect label="Saved model" /></>, fleet = detail) {
   return render(<TooltipProvider><FleetWorkspace account="account" workspace={WORKSPACE} fleet={fleet} models={[MODEL, {...MODEL, ref: "model:other", label: "Other model"}]} viewer="person">{children}</FleetWorkspace></TooltipProvider>);
 }
 const section = (name: string) => screen.getByRole("region", {name});
 
 beforeEach(() => {
-  routes = new Map(); calls = []; identity.userId = "person"; identity.isLoaded = true;
+  routes = new Map(); calls = []; detail = FleetDetailSchema.parse(FLEET_DETAIL); identity.userId = "person"; identity.isLoaded = true; router.refresh.mockClear();
   vi.stubGlobal("fetch", vi.fn(async (path: string, init: RequestInit = {}) => {
     const method = init.method ?? "GET";
     calls.push({method, path, body: typeof init.body === "string" ? JSON.parse(init.body) : undefined, headers: init.headers});
@@ -54,13 +60,14 @@ beforeEach(() => {
 afterEach(() => {cleanup(); vi.unstubAllGlobals();});
 
 describe("the fleet page's lists", () => {
-  it("the fleet page asks for no draft or setup", async () => {
+  it("renders the fleet detail's three lists immediately and reads only pinned memory", async () => {
     lists();
     page();
+    expect(screen.getByText(SCHEDULE.description)).toBeTruthy();
+    expect(screen.getByText("Webhook · sentry")).toBeTruthy();
+    expect(screen.getByRole("button", {name: "Revoke access: github"})).toBeTruthy();
     await screen.findByText("Always link the evidence.");
-    const reads = calls.map(call => `${call.method} ${call.path}`).sort();
-    expect(reads).toEqual([`GET ${BASE}/integration-grants`, `GET ${BASE}/memories?limit=100`, `GET ${BASE}/schedules`, `GET ${BASE}/triggers`]);
-    expect(calls.some(call => /\/(?:drafts|setup-context|revisions)\b/.test(call.path))).toBe(false);
+    expect(calls.map(call => `${call.method} ${call.path}`)).toEqual([`GET ${BASE}/memories?limit=100`]);
   });
 
   it("lists what wakes the fleet, what it can access and what it remembers, each with Remove", async () => {
@@ -109,7 +116,9 @@ describe("the fleet page's lists", () => {
   it("shows a list that could not be read with a retry, and reads all four again", async () => {
     lists();
     serve("GET", `${BASE}/triggers`, () => response({user_message: "Triggers are unavailable right now."}, 503));
-    page();
+    function Reload() {const lists = useFleetLists(); return <button onClick={lists?.reload}>Refresh</button>;}
+    page(<><FleetListSections /><Reload /></>);
+    fireEvent.click(screen.getByRole("button", {name: "Refresh"}));
     const wakes = section("Wakes on");
     expect(await within(wakes).findByText("Triggers are unavailable right now.")).toBeTruthy();
     expect(within(section("Can access")).getByRole("list")).toBeTruthy();
@@ -207,6 +216,58 @@ describe("the fleet page's lists", () => {
 });
 
 describe("the lists' owner", () => {
+  it("cancels a revoke and schedule retry when their viewer unmounts", async () => {
+    lists();
+    const remote = Promise.withResolvers<void>();
+    const completed = Promise.withResolvers<(string | null)[]>();
+    const signals: (AbortSignal | null | undefined)[] = [];
+    serve("POST", `${BASE}/schedules/${SCHEDULE.schedule_id}/sync`, async init => {signals.push(init.signal); await remote.promise; return response(SCHEDULE);});
+    serve("DELETE", `${BASE}/integration-grants/${GRANT_ID}`, async init => {signals.push(init.signal); await remote.promise; return response(null, 204);});
+    function Actions() {
+      const lists = useFleetLists();
+      return <button onClick={() => {if (lists) completed.resolve(Promise.all([lists.retrySchedule(SCHEDULE), lists.remove({kind: "grant", grant: GITHUB})]));}}>Update</button>;
+    }
+    const view = render(<FleetListsProvider workspace={WORKSPACE} fleet={FLEET_ID} initial={detail}><Actions /></FleetListsProvider>);
+    fireEvent.click(screen.getByRole("button", {name: "Update"}));
+    expect(signals.map(signal => signal?.aborted)).toEqual([false, false]);
+    view.unmount();
+    expect(signals.map(signal => signal?.aborted)).toEqual([true, true]);
+    remote.resolve();
+    expect(await completed.promise).toEqual([expect.any(String), expect.any(String)]);
+  });
+
+  it("keeps a confirmed revoke and schedule retry when earlier GETs finish after both writes", async () => {
+    const failed = {...SCHEDULE, sync: "failed", last_error: "Scheduler unavailable."};
+    lists({schedules: [failed]});
+    const writes = Promise.withResolvers<void>();
+    const reads = Promise.withResolvers<void>();
+    serve("POST", `${BASE}/schedules/${SCHEDULE.schedule_id}/sync`, async () => {await writes.promise; return response(SCHEDULE);});
+    serve("DELETE", `${BASE}/integration-grants/${GRANT_ID}`, async () => {await writes.promise; return response(null, 204);});
+    serve("GET", `${BASE}/schedules`, async () => {await reads.promise; return response({schedules: [failed]});});
+    serve("GET", `${BASE}/integration-grants`, async () => {await reads.promise; return response({items: [GITHUB, SENTRY]});});
+    function Content({settled}: {settled: number}) {useReloadListsAfter(settled); return <FleetListSections />;}
+    const tree = (settled: number) => <TooltipProvider><FleetListsProvider workspace={WORKSPACE} fleet={FLEET_ID} initial={detail}>
+      <Content settled={settled} />
+    </FleetListsProvider></TooltipProvider>;
+    const view = render(tree(0));
+    fireEvent.click(screen.getByRole("button", {name: "Retry registration"}));
+    fireEvent.click(screen.getByRole("button", {name: "Revoke access: github"}));
+    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", {name: "Revoke access"}));
+    view.rerender(tree(1));
+    view.rerender(tree(2));
+    expect(calls.filter(call => call.path === `${BASE}/integration-grants`)).toHaveLength(2);
+    await act(async () => writes.resolve());
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(screen.queryByText("Registration failed")).toBeNull();
+    expect(screen.queryByRole("button", {name: "Revoke access: github"})).toBeNull();
+    await act(async () => reads.resolve());
+    expect(await screen.findByRole("button", {name: "Revoke access: sentry"})).toBeTruthy();
+    expect(screen.queryByRole("button", {name: "Revoke access: github"})).toBeNull();
+    expect(screen.queryByText("Registration failed")).toBeNull();
+    expect(screen.getByText(SCHEDULE.description)).toBeTruthy();
+    expect(screen.getByText(PIN.content)).toBeTruthy();
+  });
+
   it("leaves a list that is still loading alone when a removal lands, and drops late reads after unmount", async () => {
     const late = Promise.withResolvers<Response>();
     lists();
@@ -230,17 +291,75 @@ describe("the lists' owner", () => {
   });
 
   it("reads the lists again only when another turn settles", async () => {
-    lists();
+    lists({schedules: [], triggers: [], grants: []});
     function Turns({settled}: {settled: number}) {useReloadListsAfter(settled); return null;}
-    const view = render(<FleetListsProvider workspace={WORKSPACE} fleet={FLEET_ID}><Turns settled={2} /></FleetListsProvider>);
-    await waitFor(() => expect(calls).toHaveLength(4));
-    view.rerender(<FleetListsProvider workspace={WORKSPACE} fleet={FLEET_ID}><Turns settled={2} /></FleetListsProvider>);
-    view.rerender(<FleetListsProvider workspace={WORKSPACE} fleet={FLEET_ID}><Turns settled={1} /></FleetListsProvider>);
-    expect(calls).toHaveLength(4);
-    view.rerender(<FleetListsProvider workspace={WORKSPACE} fleet={FLEET_ID}><Turns settled={3} /></FleetListsProvider>);
-    await waitFor(() => expect(calls).toHaveLength(8));
+    const tree = (settled: number) => <TooltipProvider><FleetListsProvider workspace={WORKSPACE} fleet={FLEET_ID} initial={detail}>
+      <Turns settled={settled} /><FleetListSections />
+    </FleetListsProvider></TooltipProvider>;
+    const view = render(tree(2));
+    expect(screen.getByText("Only a message wakes this fleet.")).toBeTruthy();
+    await screen.findByText(PIN.content);
+    view.rerender(tree(2));
+    view.rerender(tree(1));
+    expect(calls).toHaveLength(1);
+    serve("GET", `${BASE}/schedules`, () => response({schedules: [SCHEDULE]}));
+    serve("GET", `${BASE}/triggers`, () => response({items: [WEBHOOK]}));
+    serve("GET", `${BASE}/integration-grants`, () => response({items: [SENTRY]}));
+    view.rerender(tree(3));
+    expect(await screen.findByText(SCHEDULE.description)).toBeTruthy();
+    expect(await screen.findByText("Webhook · sentry")).toBeTruthy();
+    expect(await screen.findByRole("button", {name: "Revoke access: sentry"})).toBeTruthy();
     render(<Turns settled={1} />).rerender(<Turns settled={5} />);
-    expect(calls).toHaveLength(8);
+    expect(calls).toHaveLength(5);
+  });
+
+  it("discards the previous viewer's fleet detail and late reads on an identity change", async () => {
+    lists();
+    const oldMemory = Promise.withResolvers<Response>();
+    serve("GET", `${BASE}/memories?limit=100`, () => oldMemory.promise);
+    const tree = (viewer: string) => <StrictMode><TooltipProvider><FleetWorkspace account="account" workspace={WORKSPACE} fleet={detail} models={[MODEL]} viewer={viewer}>
+      <p>{viewer}'s conversation</p><FleetListSections />
+    </FleetWorkspace></TooltipProvider></StrictMode>;
+    const view = render(tree("person"));
+    const initialReads = calls.length;
+    expect(screen.getByRole("button", {name: "Revoke access: github"})).toBeTruthy();
+    identity.userId = "another person";
+    view.rerender(tree("person"));
+    view.rerender(tree("person"));
+    expect(router.refresh).toHaveBeenCalledTimes(1);
+    expect(calls).toHaveLength(initialReads);
+    expect(screen.getByLabelText("Loading page")).toBeTruthy();
+    expect(screen.queryByText("person's conversation")).toBeNull();
+    expect(screen.queryByText(SCHEDULE.description)).toBeNull();
+    expect(screen.queryByText("Webhook · sentry")).toBeNull();
+    expect(screen.queryByRole("button", {name: "Revoke access: github"})).toBeNull();
+    lists({schedules: [], triggers: [], grants: [SENTRY], pinned: []});
+    view.rerender(tree("another person"));
+    expect(screen.getByText("another person's conversation")).toBeTruthy();
+    expect(await screen.findByRole("button", {name: "Revoke access: sentry"})).toBeTruthy();
+    await act(async () => oldMemory.resolve(response({items: [PIN], total: 1, next_cursor: null})));
+    expect(screen.queryByText(PIN.content)).toBeNull();
+    expect(calls.map(call => call.path)).toEqual(Array.from({length: initialReads * 2}, () => `${BASE}/memories?limit=100`));
+  });
+
+  it("checks each unseeded list on mount and shows the endpoint's refusal again after refresh", async () => {
+    lists();
+    const denied = () => response({user_message: "Missing scope."}, 403);
+    serve("GET", `${BASE}/schedules`, denied);
+    serve("GET", `${BASE}/integration-grants`, denied);
+    const fleet = {...detail, schedules: undefined, grants: undefined};
+    render(<TooltipProvider><FleetWorkspace account="account" workspace={WORKSPACE} fleet={fleet} models={[MODEL]} viewer="person">
+      <FleetListSections />
+    </FleetWorkspace></TooltipProvider>);
+    expect(screen.queryByText(SCHEDULE.description)).toBeNull();
+    expect(screen.queryByRole("button", {name: "Revoke access: github"})).toBeNull();
+    expect(await within(section("Can access")).findByText(/doesn’t have access here/)).toBeTruthy();
+    expect(await within(section("Wakes on")).findByText(/doesn’t have access here/)).toBeTruthy();
+    expect(calls.map(call => call.path).sort()).toEqual([`${BASE}/integration-grants`, `${BASE}/memories?limit=100`, `${BASE}/schedules`]);
+    fireEvent.click(within(section("Can access")).getByRole("button", {name: "Try again"}));
+    await waitFor(() => expect(calls).toHaveLength(7));
+    expect(within(section("Can access")).getByText(/doesn’t have access here/)).toBeTruthy();
+    expect(screen.queryByRole("button", {name: "Revoke access: github"})).toBeNull();
   });
 });
 
@@ -262,7 +381,7 @@ describe("the fleet's own fields", () => {
   it("closes an open network with one patch", async () => {
     lists();
     serve("PATCH", BASE, () => response({...FLEET_DETAIL, http_egress: "restricted", etag: '"v2"'}));
-    page(undefined, {...FLEET_DETAIL, http_egress: "public"});
+    page(undefined, {...detail, http_egress: "public"});
     const allowAll = screen.getByRole("switch", {name: "Allow all public internet access"});
     expect(allowAll.getAttribute("aria-checked")).toBe("true");
     fireEvent.click(allowAll);

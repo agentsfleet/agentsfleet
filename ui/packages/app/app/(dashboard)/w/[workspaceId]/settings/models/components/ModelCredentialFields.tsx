@@ -78,7 +78,7 @@ function NewCredential({id, values, secrets, onChange}: Pick<Props, "id" | "valu
       <div className="space-y-md">
         <Label htmlFor={`${id}-api-key`}>API key</Label>
         <Input id={`${id}-api-key`} className="font-control" type="password" value={values.apiKey} onChange={event => onChange({apiKey: event.target.value})}
-          autoComplete="off" spellCheck={false} placeholder="Enter your provider key" />
+          autoComplete="off" data-1p-ignore="" spellCheck={false} placeholder="Enter your provider key" />
         <p className="text-eyebrow text-text-dim">The key is saved securely and its value stays hidden.</p>
       </div>
     </div>

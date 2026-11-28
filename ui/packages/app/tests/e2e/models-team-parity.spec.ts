@@ -6,6 +6,37 @@ const panel = ["width", "border-radius", "border-color", "background-color", "pa
 const icon = ["width", "height", "color"];
 const field = [...text, "width", "height", "border-radius", "background-color"];
 
+test("browsing models and choosing a fleet model keep provider keys out of the page", async ({page, chatProbe}) => {
+  const passwords = page.locator('input[type="password"]');
+  await page.goto(`${chatProbe}?research=1`);
+  await page.getByRole("combobox", {name: "Fleet model"}).click();
+  await expect(page.getByRole("listbox")).toBeVisible();
+  await expect(passwords).toHaveCount(0);
+
+  await page.goto(`${chatProbe}?resources=1&parity=1`);
+  const create = page.getByRole("button", {name: "Create model", exact: true});
+  await expect(create).toBeVisible();
+  await create.focus();
+  await expect(passwords).toHaveCount(0);
+  await create.click();
+  const key = page.getByRole("dialog").getByLabel("API key", {exact: true});
+  await expect(key).toHaveAttribute("type", "password");
+  await expect(key).toHaveAttribute("data-1p-ignore", "");
+  await key.fill("test-provider-key");
+  await expect(key).toHaveValue("test-provider-key");
+  await page.keyboard.press("Escape");
+  await expect(passwords).toHaveCount(0);
+
+  await page.getByRole("button", {name: "Manage gpt-4.1"}).click();
+  await page.getByRole("menuitem", {name: "Edit model"}).click();
+  await expect(key).toHaveAttribute("data-1p-ignore", "");
+  await expect(key).toHaveValue("");
+  await key.fill("test-replacement-key");
+  await expect(key).toHaveValue("test-replacement-key");
+  await page.keyboard.press("Escape");
+  await expect(passwords).toHaveCount(0);
+});
+
 for (const view of ["Models", "Team"] as const) {
   test(`${view} matches the reference at both palettes and supports its keyboard workflows`, async ({page, chatProbe, isMobile}, info) => {
     const reference = await page.context().newPage();

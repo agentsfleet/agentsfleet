@@ -23,12 +23,5 @@ async function readModelLabels(token: string): Promise<ModelLabels> {
   }
 }
 
-/**
- * Model display names, read once per document load.
- *
- * The dashboard layout is the only caller, and Next does not re-render a
- * layout on client navigation, so a sign-in or a refresh reads the catalogue
- * and the browser keeps the answer until the next one. `cache()` shares that
- * read within one server render, as the layout's other shell reads do.
- */
+/** The billing segment shares one catalogue walk across its server render. */
 export const modelLabelsCached = cache(readModelLabels);

@@ -7,7 +7,7 @@ import { ACCOUNT_ROLE } from "@/lib/api/workspaces-types";
 import type { WorkspaceMember } from "@/lib/api/tenant-members";
 import type { SenderName } from "@/lib/turns/sender-names";
 
-const VIEWER = "user_viewer";
+const VIEWER = "fleet-reader";
 const WORKSPACE_ID = "ws_1";
 const TOKEN = "token_abc";
 const BOB_NAME = "Bob";
@@ -37,7 +37,7 @@ vi.mock("@/lib/api/tenant-members", async (original) => ({
 
 beforeEach(() => {
   listWorkspaceMembersMock.mockResolvedValue([]);
-  authMock.mockResolvedValue({ getToken: vi.fn().mockResolvedValue(TOKEN), sessionClaims: { sub: VIEWER } });
+  authMock.mockResolvedValue({ getToken: vi.fn().mockResolvedValue(TOKEN), sessionClaims: { sub: VIEWER, scopes: "fleet:read schedule:read" } });
 });
 
 async function renderChat(fleet?: Record<string, unknown>): Promise<ChatViewProps | undefined> {

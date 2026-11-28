@@ -19,6 +19,9 @@ const listTenantWorkspacesCached = vi.fn();
 // The entry redirect reads ONE page (`limit=1`); the switcher's full walk is a
 // different call on a different surface, so the two are mocked separately.
 const firstTenantWorkspace = vi.fn();
+const defaultFleetPath = vi.fn(async (id: string) => `/w/${id}/fleets/new`);
+vi.mock("@/lib/api/fleets", () => ({ defaultFleetPath }));
+vi.mock("@/app/(dashboard)/layout", () => ({ default: ({children}: {children: React.ReactNode}) => children }));
 
 vi.mock("next/navigation", () => ({ notFound, redirect, useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("@clerk/nextjs/server", () => ({ auth }));
@@ -42,7 +45,7 @@ vi.mock("@clerk/nextjs", () => ({
   ClerkProvider: ({ children }: { children: React.ReactNode }) => children,
   SignIn: () => null,
   SignUp: () => null,
-  useUser: () => ({ isLoaded: false, isSignedIn: false, user: null }),
+  useSession: () => ({ isLoaded: false, isSignedIn: false, session: null }),
 }));
 
 // The page title of the screen a new account waits on.
@@ -153,15 +156,14 @@ describe("workspace ownership guard layout", () => {
 // ── Entry redirect + zero-workspace empty state ──────────────────────────────
 describe("dashboard entry page", () => {
   async function importEntry() {
-    return (await import("../app/(dashboard)/page")).default;
+    return (await import("../app/(entry)/page")).default;
   }
 
   it("resolves fleet conversations in the first owned workspace", async () => {
     firstTenantWorkspace.mockResolvedValue(OWNED.items[0]);
     const Page = await importEntry();
-    await expect(Page()).rejects.toThrow("redirect:/w/ws_first/fleets");
-    // The redirect fires before the layout tree renders, so it cannot share the
-    // switcher's cached walk — reading one page is the whole ask.
+    await expect(Page()).rejects.toThrow("redirect:/w/ws_first/fleets/new");
+    expect(defaultFleetPath).toHaveBeenCalledWith("ws_first", "tok_1");
     expect(listTenantWorkspacesCached).not.toHaveBeenCalled();
   });
 

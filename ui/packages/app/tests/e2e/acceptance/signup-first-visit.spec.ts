@@ -15,7 +15,7 @@
  */
 import * as crypto from "node:crypto";
 import { expect, test } from "@playwright/test";
-import { ACCOUNT_SETUP_GIVE_UP_MS } from "@/app/(dashboard)/AccountSetup";
+import { ACCOUNT_SETUP_GIVE_UP_MS } from "@/app/(entry)/AccountSetup";
 import { bootstrapTenant } from "./fixtures/bootstrap";
 import { deleteUser, findUserIdByEmail } from "./fixtures/clerk-admin";
 import { FIXTURE_KEY } from "./fixtures/constants";
@@ -24,7 +24,7 @@ import { activateSession, createClerkAccount } from "./fixtures/signup";
 const PASSWORD = "SignupFixture!2026-stable";
 /** `(dashboard)/error.tsx`'s title. */
 const ERROR_PAGE = "Something went wrong";
-/** `(dashboard)/AccountSetup.tsx`'s title. */
+/** `(entry)/AccountSetup.tsx`'s title. */
 const SETUP_PAGE = "Setting up your workspace";
 const WORKSPACE_PATH = /^\/w\/[0-9a-f-]{36}\//;
 /** Two thirds of `AccountSetup`'s own give-up, so a stall fails here before the page gives up. */

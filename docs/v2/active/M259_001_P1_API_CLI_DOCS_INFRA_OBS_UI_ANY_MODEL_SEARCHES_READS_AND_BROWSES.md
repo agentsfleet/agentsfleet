@@ -18,7 +18,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Status:** IN_PROGRESS
 
-**Progress:** 31 of 43 dimensions complete. Live extraction (1.7), dashboard search and page read (9.1), and redirect approval and denial (9.3–9.4) passed. Dimensions 5.3, 6.1, 7.1–7.5, 8.1–8.4 and 9.2 depend on merged M258 and the Firecracker browser work. [Product PR](https://github.com/agentsfleet/agentsfleet/pull/874) · [Dashboard acceptance](https://github.com/agentsfleet/agentsfleet/actions/runs/46129180070/artifacts/15257104912)
+**Progress:** 31 of 45 dimensions complete. Live extraction (1.7), dashboard search and page read (9.1), and redirect approval and denial (9.3–9.4) passed. Dimensions 5.3, 6.1, 7.1–7.5, 8.1–8.4 and 9.2 depend on merged M258 and the Firecracker browser work. Fleet-chat save notices (10.1–10.2) await the merged M258 events and a rebase of `feat/m259-web-tools`. [Product PR](https://github.com/agentsfleet/agentsfleet/pull/874) · [Dashboard acceptance](https://github.com/agentsfleet/agentsfleet/actions/runs/46129180070/artifacts/15257104912)
 
 **Priority:** P1, 13 of the 21 catalogue models offer no search, and every browser call is refused
 
@@ -26,7 +26,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Batch:** B1. Per Indy on Nov 27, web tools (§§1–5) start on `feat/m259-web-tools` alongside M258. The Firecracker spike (§6) starts after M258 merges. M259_002 opened as B2 after Dimensions 1.7, 9.1, 9.3 and 9.4 passed.
 
-**Depends on:** M258_001 (Firecracker engine), M258_003 (production switch and bubblewrap retirement), and M258_002 (checkpoint behavior). The dependency applies to the browser. Review the three active M258 specs against the merged compute layer before §6.
+**Depends on:** M258_001 (Firecracker engine), M258_003 (production switch and bubblewrap retirement), and M258_002 (checkpoint behavior). The browser uses all three. Fleet-chat save notices (§10) use M258_002's saved activity and can proceed independently of the browser spike once M258 has merged and `feat/m259-web-tools` has been rebased onto merged main.
 
 **Provenance:** Originally drafted Nov 26, 2026. Readiness review on Nov 27 compared main at `ece273764` with the compute branch at `46723c018`.
 
@@ -135,9 +135,10 @@ browser_open · browser · screenshot ─► afr_tools RunBrowser ─► CDP ove
 | `rustd/crates/e2e/af_e2e/tests/support/definition_run.rs` | EDIT | it filters on `Runtime::Provider`, which goes |
 | `rustd/Cargo.toml`, `rustd/Cargo.lock` | EDIT | `chromiumoxide` 0.9.1, the CDP client |
 | `scripts/toolbox/**` | EDIT, with Indy's sign-off for any new script | §7: the browser image `[?]` |
-| `deploy/local/bootstrap.ts`, `deploy/local/bootstrap.test.ts`, `deploy/local/acceptance.sh` | EDIT | the local platform-admin vault gets `parallel` from `PARALLEL_API_KEY`, and `exa` when `EXA_API_KEY` is set |
-| `.github/workflows/acceptance-on-demand.yml`, `.orly/orly.json` (`burst`) | EDIT, with Indy's approval at build | both vendor keys from 1Password; the item names are `[?]` |
+| `deploy/local/bootstrap-vault.ts`, `deploy/local/bootstrap.test.ts`, `deploy/local/acceptance.sh` | EDIT | Bootstrap stores each vendor key in the platform-admin workspace. It reads the environment override or the configured development vault. Exa is optional when running locally without that vault. |
+| `.github/workflows/acceptance-on-demand.yml`, `.orly/orly.json` (`burst`) | EDIT | Hosted acceptance passes the development vault to bootstrap. The burst configuration uses `op://ZMB_CD_DEV/parallel/credential` and `op://ZMB_CD_DEV/exa/credential`. |
 | `ui/packages/app/components/domain/{conversation/summary,approvals,fleet}/**`, `ui/packages/app/lib/**` | EDIT | §4: a host card and "Can access" row; §5: the Sources list |
+| `ui/packages/app/components/domain/conversation/**`, `ui/packages/app/lib/streaming/**`, their component tests and `ui/packages/app/tests/e2e/fleet-chat-save-notices.spec.ts` | EDIT/CREATE after M258 merges and the branch is rebased | §10 renders save activity from the existing chat stream and stored thread history |
 | `cli/src/commands/{grant,approvals}/**`, `cli/test/**` | EDIT | §4: grant and approval lists show a host |
 | `tests/fixtures/fleets/{curious-otter,nosy-magpie}.json`, `tests/fixtures/fleets/README.md`, `ui/packages/app/tests/e2e/acceptance/prime-{curious-otter,nosy-magpie}.spec.ts` | CREATE/EDIT | §9: the two end-to-end fleets |
 | `public/openapi.json` | EDIT | regenerated with `--no-banner` |
@@ -335,6 +336,21 @@ Use CDP request interception before navigation on each target. Apply shared egre
 - **Dimension 9.3** — DONE. `approving_a_redirected_host_finishes_the_original_read` (af_e2e): a scripted model follows the retry instruction: zero contacts before Approve, one after the resumed fetch, and the final answer contains the page sentinel. A second script declines to retry: the continuation arrives, the destination sees zero requests, and the UI never reports a successful read.
 - **Dimension 9.4** — DONE. `denying_a_redirected_host_contacts_neither_it_nor_a_vendor` (af_e2e): zero destination DNS lookups, connections, vendor requests and reservations. The grant is revoked and the resumed agent explains the denial.
 
+### §10 — Fleet chat shows when recent changes cannot be saved
+
+Start after M258 merges and `feat/m259-web-tools` is rebased onto the merged commit. Check the activity types in merged `af_wire` and the M258_002 Discovery entry “The per-save upload ceilings are Indy's numbers.” Use the merged field names and report any missing event or history projection that prevents the UI from rendering it. This slice owns only the dashboard. M258 owns the wire, event emission, persistence and limits.
+
+M258 is expected to emit `save_refused_for_size` once at the start of a refusal streak and `save_resumed` when saving succeeds again. Expected fields include `scope` (`turn`, `task_base`, `task_increment`), `new_bytes`, `ceiling_bytes`, `task_id` for task scopes and `first_refused_at` to identify the streak. The daemon supplies the ceiling. The owner's values are 16 GiB per turn save, 16 GiB per task base save and 1 GiB per task increment. The dashboard displays the event's sizes in human-readable units and never calculates eligibility.
+
+Show the warning inline in the affected fleet chat. For a turn save, use this copy:
+
+> This fleet's latest changes (<new_bytes, human-readable>) are larger than one save can hold (<ceiling_bytes>). It keeps working, but these changes won't survive a host failure until they shrink.
+
+For either task scope, name the affected task in the warning using its name already present in the chat or its `task_id`. On the matching `save_resumed`, show a quiet “Saving again” and collapse the warning and recovery into one entry. Other open streaks keep their warnings. Derive the same state from live activity and from stored history after reload. Use the chat's existing stream and history read. No new route, polling or second fetch.
+
+- **Dimension 10.1** — PENDING. Component tests `shows the fleet or task whose latest changes exceed one save` and `collapses only the matching warning when saving resumes`. Cover all three scopes, check the copy and both byte counts against event values, replay a refusal without duplicating its warning, and resolve one streak while another remains open.
+- **Dimension 10.2** — PENDING. Playwright test `fleet chat restores the save warning and its recovery without another request` in `fleet-chat-save-notices.spec.ts`. Deliver the events through the fake chat stream. Reload once with only the persisted refusal and again after the matching recovery, with live delivery held back. Assert the same active or collapsed entry, count the ordinary history read on each load, and compare the other requests with the same chat without save activity. Attach screenshots of the rendered warning and the collapsed “Saving again” entry on a passing run. Report changed files, exact test commands with verbatim results, app typecheck, coverage and screenshot paths.
+
 ## Interfaces
 
 **Tools.**
@@ -430,6 +446,7 @@ POST L/access   {fencing_token, name, scope?} | {fencing_token, host, evidence?:
 | R11 | The live paths work (§9) | `make acceptance SUITE=all` | exit 0; `prime-curious-otter.spec.ts` and `prime-nosy-magpie.spec.ts` passed | P1 | |
 | R12 | The asking turn resumes and its scripted retry reads only after approval (§9.3–4) | `make test-integration-rustd` | both af_e2e redirect grant cases pass | P0 | |
 | R13 | Host and credential grants keep separate authority, dispatch is bounded, and reloaded sources preserve redirect privacy (§1, §4, §5) | `make test-integration-rustd` | Dimensions 1.8, 4.7–8 and 5.3 pass | P0 | |
+| R14 | Save refusal and recovery render from the existing fleet chat feed and survive reload (§10) | `(cd ui/packages/app && bun run typecheck)`, `make test-coverage-app`, `make dry-app` | Typecheck and coverage pass, both component tests and the fake-stream browser test pass, and both screenshots are attached | P1 | |
 | S1 | Lint | `make lint-all` | exit 0 | P0 | |
 | S2 | Unit | `make test-unit-all` | exit 0 | P0 | |
 | S3 | Integration | `make test-integration-rustd` | exit 0 | P0 | |

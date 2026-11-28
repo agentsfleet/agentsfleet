@@ -77,6 +77,7 @@ Models and billing resolve from the workspace owner's account; members get the o
 
 **New fleet** (`/w/{workspaceId}/fleets/new`) renders the composer, and opening it creates nothing.
 Its suggestion buttons fill the composer with editable text from `public/fleet-starters.json`.
+On sign-in at `/`, the server selects the default workspace, reads its first fleet and redirects directly to the conversation or new composer. The destination loads the workspace switcher, balance and invites. The billing page loads the global model catalog for display labels.
 `/w/{workspaceId}/fleets` redirects to the first fleet, or to **New fleet** when the workspace has none.
 
 Sending calls `POST /v1/workspaces/{workspace_id}/fleets`, and the browser replaces the URL with the fleet's page.
@@ -87,6 +88,7 @@ A refused create returns the text to the composer with **Resend** and names the 
 
 The sidebar's **Your Fleets** button shows or hides the workspace's fleet list (`components/layout/SidebarFleets.tsx`, `RecentFleetList.tsx`).
 **Fleet actions** holds **Archive**, permanent **Delete** and **Saved memories**.
+The fleet detail supplies each initial list the viewer has permission to read. Schedules require `schedule:read`, triggers require `fleet:read` and grants require `grant:read`. Pinned memory has its own read. Turn completion or an approval can refresh the lists.
 Beside the chat, three short lists show rows that exist (`components/domain/fleet/FleetListSections.tsx`).
 
 | List | Reads | A person's action |

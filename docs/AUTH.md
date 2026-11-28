@@ -590,8 +590,7 @@ That reference also states the browser checks and their compatibility limits.
 > Reads run in Server Components, mutations in Server Actions, and live proxies resolve the same credential.
 > [Web app architecture](architecture/web_app.md) owns the dashboard boundary.
 
-`AuthSessionKeeper` calls Clerk's `user.reload()` while the signed-in dashboard is active and when the browser resumes.
-This refreshes the `__session` cookie without returning token bytes to application code.
+On mount, focus and reconnect, `AuthSessionKeeper` checks the active session's expiry. While the page is visible, it requests renewal 15 seconds before expiry. When expiry is unavailable, it renews on a 45-second cadence. The keeper and account setup share an in-flight renewal for the same session. Account setup can request fresh claims immediately after signup. The browser SDK refreshes the `__session` cookie without exposing token bytes to the dashboard.
 
 The root layout (`ui/packages/app/app/layout.tsx`) keeps `ClerkProvider` and
 `AuthSessionKeeper`. `ShellFrame` owns persistent markup on the server.
@@ -602,7 +601,7 @@ provider or create a second session-refresh lifecycle.
 
 ### Shape: browser dashboard
 
-The dashboard's server resolves the request's session through `credential()`.
+During a server render, the dashboard shares one request-scoped Clerk session across bearer, claims and account identity reads. `credential()` reads the session's bearer once in that render. Each independent live route request resolves its own session.
 Server Components, Server Actions and authenticated route handlers attach the resulting Bearer token to backend requests.
 The browser sends its same-origin cookie to the dashboard.
 

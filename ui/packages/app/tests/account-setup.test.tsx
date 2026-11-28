@@ -7,17 +7,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // and says so. Clerk is faked at the SDK boundary: `user.reload()` is what
 // mints the token, so the real `useSessionRefresh` runs under the screen.
 
-const { reload, routerRefresh, useUser } = vi.hoisted(() => ({
+const { reload, routerRefresh, useSession } = vi.hoisted(() => ({
   reload: vi.fn<() => Promise<unknown>>(),
   routerRefresh: vi.fn(),
-  useUser: vi.fn(),
+  useSession: vi.fn(),
 }));
 
 vi.mock("@clerk/nextjs", () => ({
   ClerkProvider: ({ children }: { children: React.ReactNode }) => children,
   SignIn: () => null,
   SignUp: () => null,
-  useUser,
+  useSession,
 }));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: routerRefresh }),
@@ -27,7 +27,7 @@ import {
   ACCOUNT_SETUP_GIVE_UP_MS,
   ACCOUNT_SETUP_POLL_MS,
   AccountSetup,
-} from "@/app/(dashboard)/AccountSetup";
+} from "@/app/(entry)/AccountSetup";
 
 const PAGE_TITLE = "Setting up your workspace";
 const WAITING_TITLE = "Creating your account";
@@ -43,7 +43,7 @@ describe("AccountSetup", () => {
     vi.useFakeTimers();
     vi.clearAllMocks();
     reload.mockResolvedValue({});
-    useUser.mockReturnValue({ isLoaded: true, isSignedIn: true, user: { id: "user_new", reload } });
+    useSession.mockReturnValue({ isLoaded: true, isSignedIn: true, session: { id: "onboarding", user: { id: "user_new", reload } } });
   });
 
   afterEach(() => {

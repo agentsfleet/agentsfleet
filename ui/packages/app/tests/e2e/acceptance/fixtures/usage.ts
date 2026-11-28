@@ -30,7 +30,7 @@ export async function fleetUsage(handle: ClientHandle, fleetId: string): Promise
     models: row.models, activityCount: row.totals.activity_count };
 }
 
-/** The labels the dashboard's shared store resolves, read from the same complete catalogue. */
+/** The labels the billing layout resolves, read from the same complete catalogue. */
 export async function catalogueLabels(handle: ClientHandle): Promise<ModelLabels> {
   const models: CataloguePage["models"] = [];
   let cursor: string | null = null;

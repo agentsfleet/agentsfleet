@@ -12,6 +12,21 @@ const { authMock, redirectMock } = vi.hoisted(() => ({
 vi.mock("@clerk/nextjs/server", () => ({ auth: authMock }));
 vi.mock("next/navigation", () => ({ redirect: redirectMock }));
 
+// Vitest has no React Server Component render scope. Give cache() a fresh
+// request store only in the test that exercises shared request memoization.
+const request = vi.hoisted(() => ({ store: null as Map<() => unknown, unknown> | null }));
+vi.mock("react", async importOriginal => {
+  const react = await importOriginal<typeof import("react")>();
+  return { ...react, cache: (read: () => unknown) => {
+    const uncachedRender = react.cache(read);
+    return () => {
+      if (!request.store) return uncachedRender();
+      if (!request.store.has(read)) request.store.set(read, read());
+      return request.store.get(read);
+    };
+  } };
+});
+
 // Deliberately NOT JWT-shaped. Nothing here parses the token — it is an
 // opaque string the boundary hands back — and a realistic `eyJ…` fixture
 // trips the secret scanner on entropy, which is the scanner working.
@@ -21,6 +36,7 @@ const OTHER_TOKEN = "a-different-bearer";
 const SIGN_IN = "/sign-in";
 
 afterEach(() => {
+  request.store = null;
   authMock.mockReset();
   redirectMock.mockClear();
   // `cache()` memoizes per module instance, so each test needs its own.
@@ -33,6 +49,24 @@ async function load() {
 }
 
 describe("credential — the dashboard's only bearer", () => {
+  it("uses one verified session for the bearer, claims, and identity during each request", async () => {
+    const { credential, claims, accountSessionIdentity } = await load();
+    for (const subject of ["first", "second"]) {
+      request.store = new Map();
+      const getToken = vi.fn().mockResolvedValue(`token-for-${subject}`);
+      authMock.mockResolvedValueOnce({ userId: subject, sessionId: "session", getToken,
+        sessionClaims: { subject }, has: () => true });
+      const [token, verified, identity, repeated] = await Promise.all([
+        credential(), claims(), accountSessionIdentity(), credential(),
+      ]);
+      expect([token, repeated]).toEqual([`token-for-${subject}`, `token-for-${subject}`]);
+      expect(verified).toEqual({ subject });
+      expect(identity?.subject).toBe(subject);
+      expect(getToken).toHaveBeenCalledOnce();
+    }
+    expect(authMock).toHaveBeenCalledTimes(2);
+  });
+
   it("hands back the token the provider resolved", async () => {
     authMock.mockResolvedValue({ getToken: async () => TOKEN });
     const { credential } = await load();
