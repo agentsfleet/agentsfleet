@@ -28,6 +28,9 @@ pub(crate) struct RootRecovery {
     pub(crate) pinned: usize,
     #[garde(dive)]
     pub(crate) folds: Vec<FoldRef>,
+    #[garde(skip)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) task_source: Option<afr_tools::TaskSource>,
 }
 
 impl RootRecovery {

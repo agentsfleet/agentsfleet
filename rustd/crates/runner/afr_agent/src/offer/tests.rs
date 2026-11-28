@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use af_egress::testing::RecordingTransport;
 use afr_executor::{ExecutorSlot, Unavailable};
-use afr_tools::catalog::{MEMORY_RECALL, TASK_INPUT, TASK_START, UPDATE_PLAN, WEB_SEARCH};
+use afr_tools::catalog::{IMAGE, MEMORY_RECALL, TASK_INPUT, TASK_START, UPDATE_PLAN, WEB_SEARCH};
 use afr_tools::{Backends, Catalog, Run};
 use guffbolt::ToolSpec;
 use guffbolt::agents::{Agents, TOOLS};
@@ -22,6 +22,35 @@ use crate::harness::tests::{drive, engine};
 /// A run with no sandbox, as a supervisor-side run has.
 fn no_sandbox() -> ExecutorSlot<'static> {
     ExecutorSlot::unavailable(Unavailable::NoSandbox)
+}
+
+#[tokio::test]
+async fn a_run_on_a_text_only_wire_is_not_offered_image() {
+    for image_input in [true, false] {
+        let script = Script::new([vec![say("done")]]);
+        let script = if image_input {
+            script
+        } else {
+            script.text_only()
+        };
+        let engine = engine(Vec::new(), &script);
+        drive(
+            &engine,
+            &payload(&[IMAGE.name()], unbounded()),
+            &CancellationToken::new(),
+        )
+        .await;
+        let sent = script.sent();
+        let request = sent.first().unwrap();
+        let expected: &[&str] = if image_input { &["image"] } else { &[] };
+        assert_eq!(request.tools, expected);
+        assert_eq!(
+            request
+                .instructions
+                .contains("This model cannot read images."),
+            !image_input
+        );
+    }
 }
 
 #[test]

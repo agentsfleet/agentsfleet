@@ -18,7 +18,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Status:** IN_PROGRESS
 
-**Progress:** 9 of 30 dimensions complete. Root and child guidance, tagged harness messages, fixed prompt facts, and the standalone `tool_search` and `grep` changes passed their tests. [Implementation PR](https://github.com/agentsfleet/agentsfleet/pull/874)
+**Progress:** 17 of 30 dimensions complete. Guidance, sender provenance, date, network and working directory, the stable prefix, task input defaults, text-only model handling and the standalone tool changes passed their tests. [Implementation PR](https://github.com/agentsfleet/agentsfleet/pull/874)
 
 **Priority:** P1, every run is told about tools it may not hold, and a webhook body reads as the person's own message
 
@@ -186,9 +186,9 @@ A history `Turn` (`af_wire/src/run/payload.rs:18-33`) gains both fields, so an e
 
 **Implementation default:** the line states the source and says the body is data to act on under standing guidance. Wording too strong makes a webhook-fed fleet refuse its own job, so §2 changes advice, not enforcement.
 
-- **Dimension 2.1** — a delivered turn names its source → Test `a_delivered_turn_is_told_its_source` (unit, `afr_agent`): a webhook, a schedule firing and another fleet's request each carry their line. A person's chat message carries none.
+- **Dimension 2.1** — DONE. a delivered turn names its source → Test `a_delivered_turn_is_told_its_source` (unit, `afr_agent`): a webhook, a schedule firing and another fleet's request each carry their line. A person's chat message carries none.
 - **Dimension 2.2** — DONE. harness text is tagged → Test `a_continue_reason_reaches_the_model_tagged_as_the_harness` (unit, guffbolt): a durable task's "continue" line → wrapped in the harness tag, never bare user text.
-- **Dimension 2.3** — an earlier turn renders the same bytes → Test `an_earlier_webhook_turn_renders_the_same_bytes_next_run` (unit, `afr_agent`): a webhook turn as the head, then as history → identical text both times.
+- **Dimension 2.3** — DONE. an earlier turn renders the same bytes → Test `an_earlier_webhook_turn_renders_the_same_bytes_next_run` (unit, `afr_agent`): a webhook turn as the head, then as history → identical text both times.
 
 ### §3 — An environment block, fed by the run's facts
 
@@ -198,9 +198,9 @@ Outbound network from commands comes from M258_001's `EgressFacts`; a browser or
 
 The date line reads "Today is Thursday, November 26, 2026 (UTC).", from the turn's `created_at` (`af_wire/src/turn/mod.rs:114`). It is day-grained and sits outside the fixed text, so the prefix changes at most once a day and a test needs no clock.
 
-- **Dimension 3.1** — the date is there and stays out of the digest → Test `a_runs_prompt_carries_the_turns_date_outside_the_digest` (unit, `afr_agent`): `created_at` 2026-11-26T09:00Z → the date line in the instructions. `Prompt.fixed` does not hold it.
-- **Dimension 3.2** — a private fleet is told → Test `a_private_fleets_prompt_says_search_is_off` (unit): `restricted` → the network line names "Allow all". `public` → it says search is on.
-- **Dimension 3.3** — commands' home is named only with a sandbox → Test `a_run_with_a_sandbox_is_told_where_commands_run` (unit): a sandbox tool held → the working directory and `sh -c`. None held → no such line.
+- **Dimension 3.1** — DONE. the date is there and stays out of the digest → Test `a_runs_prompt_carries_the_turns_date_outside_the_digest` (unit, `afr_agent`): `created_at` 2026-11-26T09:00Z → the date line in the instructions. `Prompt.fixed` does not hold it.
+- **Dimension 3.2** — DONE. a private fleet is told → Test `a_private_fleets_prompt_says_search_is_off` (unit): `restricted` → the network line names "Allow all". `public` → it says search is on.
+- **Dimension 3.3** — DONE. commands' home is named only with a sandbox → Test `a_run_with_a_sandbox_is_told_where_commands_run` (unit): a sandbox tool held → the working directory and `sh -c`. None held → no such line.
 - **Dimension 3.4** — a missing browser is named → Test `a_run_whose_engine_has_no_browser_is_told_so` (unit): a run with no browser source → one line saying no browser is available. With one → the browser line.
 
 ### §4 — One stable cached prefix
@@ -209,8 +209,8 @@ The date line reads "Today is Thursday, November 26, 2026 (UTC).", from the turn
 
 Blocks follow the order in the design flow, most shared first. On a Messages request the conversation tail is the top-level breakpoint the provider moves (`guffbolt-ai/src/wire/request/mod.rs:63-65`), not a marker on the last block. No test asserts such a marker.
 
-- **Dimension 4.1** — a judged follow-up repeats the prefix → Test `a_judged_follow_up_repeats_the_first_runs_prefix` (unit, `afr_agent`): the history fixture gains a decision profile and the task tools. The follow-up's first request repeats the system prompt, whole tool specs and earlier message byte for byte.
-- **Dimension 4.2** — a task needs no copied offsets → Test `task_start_without_a_span_takes_the_whole_newest_message` (unit, `afr_tools`): no span → the verb posts the newest turn with 0 and its byte length. A span past the message's end → `invalid_arguments`, and nothing is posted.
+- **Dimension 4.1** — DONE. a judged follow-up repeats the prefix → Test `a_judged_follow_up_repeats_the_first_runs_prefix` (unit, `afr_agent`): the history fixture gains a decision profile and the task tools. The follow-up's first request repeats the system prompt, whole tool specs and earlier message byte for byte.
+- **Dimension 4.2** — DONE. a task needs no copied offsets → Test `task_start_without_a_span_takes_the_whole_newest_message` (unit, `afr_tools`): no span → the verb posts the newest turn with 0 and its byte length. A span past the message's end → `invalid_arguments`, and nothing is posted.
 
 ### §5 — Only tools that can work are offered
 
@@ -218,7 +218,7 @@ Blocks follow the order in the design flow, most shared first. On a Messages req
 
 §3's block names each withheld capability in one line, so the model can tell the person. A withheld tool's earlier call still replays as history. The daemon's policy does not change.
 
-- **Dimension 5.1** — no `image` on a text-only wire → Test `a_run_on_a_text_only_wire_is_not_offered_image` (unit, `afr_agent`): a Chat-wire model → `image` absent. A Messages-wire model → present.
+- **Dimension 5.1** — DONE. no `image` on a text-only wire → Test `a_run_on_a_text_only_wire_is_not_offered_image` (unit, `afr_agent`): a Chat-wire model → `image` absent. A Messages-wire model → present.
 - **Dimension 5.2** — no browser where the engine has none → Test `a_run_whose_engine_has_no_browser_is_not_offered_the_browser_tools` (unit): a run with no browser source → none of the three offered.
 - **Dimension 5.3** — every offered tool can run → Test `no_offered_tool_refuses_every_call` (unit): walking the offered set against the run's backends → no tool answers `browser_unavailable`, `image_input_unavailable` or `tool_not_offered` by construction.
 - **Dimension 5.4** — history survives a withheld tool → Test `a_withheld_tools_earlier_call_still_replays` (unit): a history `screenshot` call on a run that withholds it → the call and its result replay, with no refusal.
@@ -404,4 +404,5 @@ The first phrase has one production hit at `679002666`, `afr_agent/src/prompt/mo
 - **Model reviews** — none yet.
 - **Initial implementation evidence, Nov 28.** The agent, runner tool and standalone guffbolt library suites passed 775 tests. Another 59 file-tool API cases passed. The suites exercised the root and narrowed child request, stable summary identity, source labels on real continuations and child task messages, eight default matches, Unicode line shortening, and grep context through one executor call.
 - **Opening decision, Nov 28.** The owner requested this workstream start once M259_001 Dimensions 1.7, 9.1, 9.3 and 9.4 were complete. All four passed on the web-tools branch. The independent prompt and tool changes can proceed there. The engine-dependent dimensions still need merged M258 and the browser capability evidence. [Web-tools PR](https://github.com/agentsfleet/agentsfleet/pull/874) · [Dashboard acceptance](https://github.com/agentsfleet/agentsfleet/actions/runs/46114949902/job/140886570326)
+- **Sender, environment and task input evidence, Nov 28.** 263 runner agent tests, 15 daemon history unit tests, five PostgreSQL history cases and seven task tool tests passed. The delegation journey also passed on the consolidated branch. A later run presents the same webhook message it presented on delivery. The date stays outside the saved summary digest. A judged follow-up preserves its instructions and fills a missing task span from the latest human message.
 - **Deferrals and transfers** — none. Each one needs an owner quote below, as `> Owner (<name>, <MMM DD, YYYY HH:MM>): "<quote>" — context: <item, why>`.

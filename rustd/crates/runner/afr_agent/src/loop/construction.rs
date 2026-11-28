@@ -1,7 +1,7 @@
 //! Root and child state start under the current run's authority.
 
 use super::{EVENT_CHILD_STARTED, Harness, Shared, context, publication};
-use crate::{context::Checkpoints, events::Live, offer, router::Router};
+use crate::{context::Checkpoints, events::Live, offer, prompt::turn_message, router::Router};
 use af_wire::run::{EarlierCall, Turn};
 use af_wire::tool_trace::CALL_ID_SEPARATOR;
 use guffbolt::agents::Seat;
@@ -150,7 +150,9 @@ pub(super) fn opening(
         }
         let start = messages.len();
         messages.push(Message::User(
-            scrub.clean(turn.message.to_string()).into_inner(),
+            scrub
+                .clean(turn_message(&turn.message, turn.event_type, &turn.actor))
+                .into_inner(),
         ));
         let mut answer = String::new();
         for call in &turn.calls {

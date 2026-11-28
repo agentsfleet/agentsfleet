@@ -1,6 +1,6 @@
 -- The action is the parsed key of the trusted QuestionAnswer producer. The
 -- asking id must independently agree with the gate the action resolved.
-SELECT asking.id, asking.sequence, asking.request_json::text,
+SELECT asking.id, asking.sequence, asking.actor, asking.kind, asking.request_json::text,
        COALESCE(asking.answer_text, g.proposed_action)
   FROM fleet.approval_gates g
   JOIN thread.turns asking

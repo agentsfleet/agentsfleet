@@ -55,6 +55,8 @@ fn row(index: u64, status: &str, message: &str, answer: Option<&str>) -> Finishe
         turn_id: turn_id(index),
         created_at: at(index),
         sequence: i64::try_from(index).unwrap(),
+        actor: "steer:fixture".to_owned(),
+        kind: TurnKind::Chat.as_str().to_owned(),
         status: status.to_owned(),
         failure_reason: None,
         request_json: json!({ "message": message }).to_string(),
@@ -470,6 +472,8 @@ async fn test_a_history_past_the_frame_drops_its_oldest_turns() {
     let history = (1..=TURNS)
         .map(|sequence| Turn {
             sequence,
+            actor: "steer:fixture".into(),
+            event_type: Some(TurnKind::Chat),
             message: format!("m{sequence}").into(),
             calls: Vec::new(),
             answer: answer.clone().into(),
@@ -558,7 +562,12 @@ async fn test_history_metrics_recorded() {
     let rows = processed(3, "answer");
     let stored: usize = rows
         .iter()
-        .map(|row| row.request_json.len() + row.answer_text.as_ref().map_or(0, String::len))
+        .map(|row| {
+            row.request_json.len()
+                + row.actor.len()
+                + row.kind.len()
+                + row.answer_text.as_ref().map_or(0, String::len)
+        })
         .sum();
     turns_for(&Fake::new(Some(rows)), TurnKind::Chat).await;
     turns_for(&Fake::new(None), TurnKind::Chat).await;

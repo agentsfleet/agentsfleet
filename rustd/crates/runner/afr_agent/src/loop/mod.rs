@@ -98,12 +98,16 @@ impl AgentEngine for Loop {
 
     async fn run(&self, run: AgentRun<'_>) -> Result<RunOutput> {
         let policy = &run.run.policy;
-        let names = crate::offer::names(run.run);
-        let selection = self.catalog.select(&names)?;
         let provider = self.connect.connect(run.run)?;
+        let image_input = provider.accepts_images();
+        let mut names = crate::offer::names(run.run);
+        if !image_input {
+            names.retain(|name| *name != afr_tools::catalog::IMAGE.name());
+        }
+        let selection = self.catalog.select(&names)?;
         let scrub = Scrub::new(policy)?;
         let span = spans::invoke_agent(policy);
-        let mut prompt = Prompt::new(run.run, &run.memory);
+        let mut prompt = Prompt::new(run.run, &run.memory, selection.needs_sandbox(), image_input);
         prompt.instructions = scrub.clean(prompt.instructions).into_inner();
         prompt.task_context = prompt
             .task_context
@@ -141,7 +145,22 @@ impl AgentEngine for Loop {
         // memory, verbs, guard, sandbox and children borrow it, and every loop
         // borrows them. A recovered root brings its children back from its
         // saved state.
-        let tools_run = shared::run_state(&run, memory, provider.as_ref(), self.limits);
+        let mut tools_run = shared::run_state(&run, memory, provider.as_ref(), self.limits);
+        let event = &run.run.event;
+        let chat_person = event.event_type == af_wire::turn::TurnKind::Chat
+            && event.actor != "steer:api"
+            && !event.actor.starts_with("fleet:");
+        let initial =
+            (chat_person || event.actor.starts_with("slack:")).then(|| afr_tools::TaskSource {
+                turn_id: event.turn_id.to_string(),
+                bytes: af_wire::turn::message_of(&event.request_json).len(),
+            });
+        *tools_run.task_source.get_mut() = match state.as_ref() {
+            Some(saved) if saved.task_source.is_some() || !saved.folds.is_empty() => {
+                saved.task_source.clone()
+            }
+            _ => initial,
+        };
         let caps = self.limits.caps;
         let (registry, requests) = state.as_ref().map_or_else(
             || Agents::new(caps),

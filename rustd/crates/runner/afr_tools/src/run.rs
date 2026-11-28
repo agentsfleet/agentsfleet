@@ -18,6 +18,7 @@ use afr_memory::Loaded;
 use tokio::sync::Mutex;
 
 use guffbolt::tools::{Limits, Sessions};
+use serde::{Deserialize, Serialize};
 
 use crate::generic::RunMemory;
 use crate::sandbox::Checkout;
@@ -54,6 +55,17 @@ pub struct Run<'run> {
     pub verbs: &'run dyn RunVerbs,
     /// Each open call's number in the run, which an effect names its item by.
     pub calls: CallNumbers,
+    /// The most recent human input the run received, before secret masking.
+    pub task_source: Mutex<Option<TaskSource>>,
+}
+
+/// The data needed to name a message and its byte span at the task boundary.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskSource {
+    /// The message's turn.
+    pub turn_id: String,
+    /// The byte length of the original message.
+    pub bytes: usize,
 }
 
 /// Each open call's number in its run, by the provider's id for the call.
@@ -104,6 +116,7 @@ impl<'run> Run<'run> {
             image_input: false,
             verbs,
             calls: CallNumbers::default(),
+            task_source: Mutex::new(None),
         }
     }
 

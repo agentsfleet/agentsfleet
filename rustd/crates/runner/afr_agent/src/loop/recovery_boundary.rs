@@ -127,6 +127,7 @@ impl<'run> Harness<'_, 'run> {
             memory: self.shared.run.memory.snapshot().await?,
             pinned: self.context.pinned,
             folds: self.folded_inputs.clone(),
+            task_source: self.shared.run.task_source.lock().await.clone(),
         };
         // Checked as a restore will check it, so a checkpoint whose children
         // could not come back is skipped rather than saved.

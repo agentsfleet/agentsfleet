@@ -144,7 +144,7 @@ async fn a_child_given_fewer_tools_is_told_about_fewer() {
 }
 
 fn identity(run: &RunPayload<'_>) -> af_context::Result<Identity> {
-    let fixed = Prompt::new(run, &afr_memory::Seed::default()).fixed;
+    let fixed = Prompt::new(run, &afr_memory::Seed::default(), false, true).fixed;
     let (model, pinned) = digests(
         &run.policy.context.model,
         run.policy.inference.as_ref(),
@@ -178,6 +178,8 @@ fn the_harness_facts_sit_inside_the_fixed_text() {
     let prompt = Prompt::new(
         &payload(&["memory_store"], unbounded()),
         &afr_memory::Seed::default(),
+        false,
+        true,
     );
     let source = format!(
         "The harness labels its reasons to continue and tasks it gives a child with {}.",

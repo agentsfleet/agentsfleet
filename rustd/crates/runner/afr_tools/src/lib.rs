@@ -51,7 +51,7 @@ pub use self::backed::{Backends, RunTools};
 pub use self::catalog::{Catalog, Entry};
 pub use self::error::{Error, Result};
 pub use self::generic::{LazySandboxEnv, RunMemory, SandboxEnv};
-pub use self::run::{CallNumbers, Run};
+pub use self::run::{CallNumbers, Run, TaskSource};
 pub use self::runtime::{CatalogTool, RunTool, Runtime, ToolContext, ToolErrorCode};
 pub use self::selection::{Offered, Selection};
 #[cfg(any(test, feature = "test-util"))]

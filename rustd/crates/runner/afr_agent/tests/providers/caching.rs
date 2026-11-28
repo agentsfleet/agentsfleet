@@ -267,6 +267,8 @@ async fn test_history_prefix_is_byte_identical_on_the_wire() {
         let earlier = first_request(wire, ASKED, Vec::new()).await;
         let turn = Turn {
             sequence: 1,
+            actor: "steer:fixture".into(),
+            event_type: Some(af_wire::turn::TurnKind::Chat),
             message: ASKED.into(),
             calls: Vec::new(),
             answer: ANSWER.into(),

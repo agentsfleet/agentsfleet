@@ -106,7 +106,7 @@ The approved read scope becomes a repository binding. The egress rules admit `GE
 
 The runner clones the bound repository into the run's workspace from outside the sandbox, so the token never enters it.
 The system prompt begins with the fleet's identity and the fixed harness facts. Each model request adds guidance for the tools that loop is offered, followed by the run's context, including pinned memory. A child offered fewer tools receives only the guidance for its own tools. The saved summary digest covers the fixed prefix, so changing the tool set preserves the summary. [Capabilities](capabilities.md)
-The first user turn is the digest JSON, because the digest has no `message` field.
+The runner identifies the first user turn as a webhook delivery, then includes the digest JSON because the digest has no `message` field. The daemon keeps the sender and event type with history so a later model request gives the delivery the same label. A person’s ordinary chat text opens as written.
 
 The digest already holds `number`, so the model can answer without calling GitHub.
 The answer settles the turn `processed`. A person reads it in the fleet's chat, and the live view shows `turn_complete`.

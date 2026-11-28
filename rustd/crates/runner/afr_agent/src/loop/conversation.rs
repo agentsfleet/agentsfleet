@@ -27,8 +27,12 @@ impl Harness<'_, '_> {
         };
         // An inbox that replays a message must not join it twice.
         assigned.retain(|folded| folded.sequence > self.folded_through);
-        if let Some(last) = assigned.iter().map(|folded| folded.sequence).max() {
-            self.folded_through = last;
+        if let Some(last) = assigned.iter().max_by_key(|folded| folded.sequence) {
+            self.folded_through = last.sequence;
+            *shared.run.task_source.lock().await = Some(afr_tools::TaskSource {
+                turn_id: last.turn_id.to_string(),
+                bytes: last.text.len(),
+            });
         }
         assigned
             .into_iter()

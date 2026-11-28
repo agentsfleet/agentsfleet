@@ -2,13 +2,14 @@ use std::borrow::Cow;
 
 use af_wire::policy::repository::{self, FIELD_REF, REFS_HEADS, REFS_PATH};
 use af_wire::policy::{
-    HttpJsonFieldRule, HttpMethod, HttpOriginPolicy, HttpPathMatch, HttpRequestRule,
+    HttpEgress, HttpJsonFieldRule, HttpMethod, HttpOriginPolicy, HttpPathMatch, HttpRequestRule,
     RepositoryAccess, RepositoryBinding,
 };
 use af_wire::run::RunPayload;
 
 use afr_memory::Seed;
-use afr_tools::catalog::{FILE_READ, GIT, HTTP_REQUEST};
+use afr_tools::Runtime;
+use afr_tools::catalog::{FILE_READ, GIT, HTTP_REQUEST, published};
 
 use super::Prompt;
 use crate::fixture::{payload, unbounded};
@@ -60,25 +61,70 @@ fn locked_ref(repository_name: &str) -> HttpRequestRule<'static> {
 
 /// The prompt for `run`, whose memory load carried nothing.
 fn prompt(run: &RunPayload<'_>) -> Prompt {
-    Prompt::new(run, &Seed::default())
-}
-
-/// `prompt`'s system prompt after its fixed text and the blank line that
-/// ends it.
-fn after_fixed(prompt: &Prompt) -> &str {
-    prompt
-        .instructions
-        .strip_prefix(&prompt.fixed)
-        .and_then(|rest| rest.strip_prefix("\n\n"))
-        .unwrap_or_default()
+    let sandbox = run
+        .policy
+        .tools
+        .iter()
+        .any(|tool| published(tool).is_some_and(|entry| entry.runtime() == Runtime::Sandbox));
+    Prompt::new(run, &Seed::default(), sandbox, true)
 }
 
 #[test]
-fn should_ask_the_events_message_under_the_fixed_text_alone() {
+fn should_ask_the_events_message_under_the_fixed_text() {
     let prompt = prompt(&payload(&[], unbounded()));
 
     assert_eq!(prompt.message, "triage the failed run");
-    assert_eq!(prompt.instructions, prompt.fixed);
+    assert!(prompt.instructions.starts_with(&prompt.fixed));
+}
+
+#[test]
+fn a_runs_prompt_carries_the_turns_date_outside_the_digest() {
+    let mut run = payload(&[], unbounded());
+    run.event.created_at = "2026-11-26T09:00:00Z".parse().expect("a fixture instant");
+    let today = prompt(&run);
+    assert!(
+        today
+            .instructions
+            .ends_with("Today is Thursday, November 26, 2026 (UTC).")
+    );
+    run.event.created_at = "2026-11-27T00:00:00Z".parse().expect("a fixture instant");
+    let tomorrow = prompt(&run);
+    assert!(
+        tomorrow
+            .instructions
+            .ends_with("Today is Friday, November 27, 2026 (UTC).")
+    );
+    assert_eq!(today.fixed, tomorrow.fixed);
+    assert!(!today.fixed.contains("Today is"));
+}
+
+#[test]
+fn a_private_fleets_prompt_says_search_is_off() {
+    let mut run = payload(&[], unbounded());
+    run.policy.network_policy.http_egress = HttpEgress::Restricted;
+    let restricted = prompt(&run);
+    assert!(restricted.instructions.contains(
+        "## Environment\nWeb search is off. A person can enable it with Allow all in Network."
+    ));
+    run.policy.network_policy.http_egress = HttpEgress::Public;
+    let public = prompt(&run);
+    assert!(
+        public
+            .instructions
+            .contains("## Environment\nNetwork policy allows public web search.")
+    );
+    assert!(!public.instructions.contains("Web search is off"));
+}
+
+#[test]
+fn a_run_with_a_sandbox_is_told_where_commands_run() {
+    let shell = "The working directory is /workspace. Shell commands run through sh -c.";
+    assert!(prompt(&offering(GIT.name())).instructions.contains(shell));
+    assert!(
+        !prompt(&offering(HTTP_REQUEST.name()))
+            .instructions
+            .contains(shell)
+    );
 }
 
 #[test]
@@ -102,15 +148,14 @@ fn test_prompt_carries_trusted_repair_context() {
         RepositoryAccess::Write,
         vec![locked_ref(REPOSITORY)],
     ));
-    assert_eq!(
-        after_fixed(&written),
+    assert!(written.instructions.contains(
         "## Trusted repair context\n\
          repository: agentsfleet/linkwarden\nrepair branch: agentsfleet-repair/run-41\n\
          trusted base: dev"
-    );
+    ));
 
     let read = prompt(&bound(RepositoryAccess::Read, vec![locked_ref(REPOSITORY)]));
-    assert_eq!(read.instructions, read.fixed);
+    assert!(!read.instructions.contains(REPAIR_HEADING));
 }
 
 #[test]
@@ -154,7 +199,7 @@ fn should_name_where_each_repository_is_checked_out_when_a_tool_runs_processes()
     let prompt = prompt(&offering(GIT.name()));
 
     assert!(
-        prompt.instructions.ends_with(
+        prompt.instructions.contains(
             "\n\n## Workspace\nagentsfleet/linkwarden is checked out at ./linkwarden on dev, \
              with origin set"
         ),
@@ -178,7 +223,7 @@ fn should_name_the_default_branch_for_a_binding_with_no_base() {
     let prompt = prompt(&run);
 
     assert!(
-        prompt.instructions.ends_with(
+        prompt.instructions.contains(
             "\n\n## Workspace\nagentsfleet/linkwarden is checked out at ./linkwarden on its \
              default branch, with origin set"
         ),

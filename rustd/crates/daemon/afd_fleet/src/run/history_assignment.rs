@@ -55,18 +55,19 @@ impl RunService {
         let Some((action, asked)) = answer_ids(&mut connection, acquired).await? else {
             return Ok(Vec::new());
         };
-        let asking: Option<(Uuid7, i64, String, String)> = sqlx::query_as(SELECT_HOST_ASKING_TURN)
-            .bind(&acquired.workspace_id)
-            .bind(&acquired.fleet_id)
-            .bind(&action)
-            .bind(&asked)
-            .bind(afd_approval::KIND_INTEGRATION_GRANT)
-            .bind(grant_type::HOST)
-            .fetch_optional(&mut *connection)
-            .await
-            .map_err(query("read the host approval's asking turn"))?;
+        let asking: Option<(Uuid7, i64, String, String, String, String)> =
+            sqlx::query_as(SELECT_HOST_ASKING_TURN)
+                .bind(&acquired.workspace_id)
+                .bind(&acquired.fleet_id)
+                .bind(&action)
+                .bind(&asked)
+                .bind(afd_approval::KIND_INTEGRATION_GRANT)
+                .bind(grant_type::HOST)
+                .fetch_optional(&mut *connection)
+                .await
+                .map_err(query("read the host approval's asking turn"))?;
         drop(connection);
-        let Some((turn, sequence, request, answer)) = asking else {
+        let Some((turn, sequence, actor, kind, request, answer)) = asking else {
             return Ok(Vec::new());
         };
         let calls = self
@@ -82,6 +83,8 @@ impl RunService {
             .collect();
         Ok(vec![Turn {
             sequence: u64::try_from(sequence).unwrap_or_default(),
+            actor: Cow::Owned(actor),
+            event_type: TurnKind::parse(&kind),
             message: Cow::Owned(message_of(&request).into_owned()),
             calls,
             answer: Cow::Owned(answer),

@@ -1,6 +1,10 @@
 //! A fleet's turn and the history it carries.
 
-use crate::{policy::ExecutionPolicy, tool_detail::ItemStatus, turn::TurnEnvelope};
+use crate::{
+    policy::ExecutionPolicy,
+    tool_detail::ItemStatus,
+    turn::{TurnEnvelope, TurnKind},
+};
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 
@@ -20,6 +24,12 @@ pub struct Turn<'a> {
     /// summary's watermark counts in it, and a run skips the turns a loaded
     /// summary covers.
     pub sequence: u64,
+    /// Who or what produced this turn, as stored on the thread.
+    #[serde(borrow, default)]
+    pub actor: Cow<'a, str>,
+    /// How the turn entered the system. Earlier assignments may omit this field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub event_type: Option<TurnKind>,
     /// The turn's message, as `turn::message_of` reads it.
     #[serde(borrow)]
     pub message: Cow<'a, str>,

@@ -26,7 +26,7 @@ use af_wire::protocol::MESSAGE_BYTES_MAX;
 use af_wire::run::{ANSWER_FAILED, ANSWER_FAILED_END, ANSWER_NONE, EarlierCall, RunPayload, Turn};
 use af_wire::tool_detail::ItemStatus;
 use af_wire::tool_trace::fenced_call_id;
-use af_wire::turn::message_of;
+use af_wire::turn::{TurnKind, message_of};
 use afd_db::Db;
 use afd_turns::view::Cursor;
 use jiff::Timestamp;
@@ -64,6 +64,10 @@ pub struct FinishedTurn {
     pub created_at: Timestamp,
     /// Its place in the thread, which a saved summary's watermark counts in.
     pub sequence: i64,
+    /// The producer recorded on the thread.
+    pub actor: String,
+    /// The kind the thread recorded when the turn entered.
+    pub kind: String,
     /// How it ended: processed or failed.
     pub status: String,
     /// The failure a failed turn ended on.
@@ -96,7 +100,10 @@ pub struct CallRow {
 impl FinishedTurn {
     /// The bytes of text the row stored: what the read counts toward one frame.
     fn stored_bytes(&self) -> usize {
-        self.request_json.len() + self.answer_text.as_ref().map_or(0, String::len)
+        self.request_json.len()
+            + self.actor.len()
+            + self.kind.len()
+            + self.answer_text.as_ref().map_or(0, String::len)
     }
 }
 
@@ -267,6 +274,8 @@ pub(super) fn turn(row: FinishedTurn, calls: Vec<CallRow>) -> Option<Turn<'stati
     };
     Some(Turn {
         sequence: u64::try_from(row.sequence).unwrap_or_default(),
+        actor: Cow::Owned(row.actor),
+        event_type: TurnKind::parse(&row.kind),
         message: Cow::Owned(message_of(&row.request_json).into_owned()),
         calls: calls.into_iter().filter_map(call).collect(),
         answer: Cow::Owned(answer),
