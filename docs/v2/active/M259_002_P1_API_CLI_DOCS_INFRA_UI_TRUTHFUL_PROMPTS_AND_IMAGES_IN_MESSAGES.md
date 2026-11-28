@@ -117,6 +117,7 @@ A **loop** is the root agent or one child it spawned. **Guidance** is the prompt
 |------|--------|-----|
 | `docs/v2/pending/M259_002_P1_API_CLI_DOCS_INFRA_UI_TRUTHFUL_PROMPTS_AND_IMAGES_IN_MESSAGES.md` | CREATE | this spec; moves to `active/`, then `done/` at close |
 | `rustd/crates/runner/afr_agent/src/{prompt,loop,offer,engine,fixture}/**`, `afr_agent/tests/golden/offered_tools.json` | EDIT/CREATE | §1 to §5 and §7; §6's golden file |
+| `rustd/crates/e2e/af_e2e/tests/integration_rust_runner_nested.rs` | EDIT | §1.2 and §2.2 verify narrowed guidance and tagged tasks in the delegation journey |
 | `rustd/guffbolt/src/{tools/mod.rs,tool/mod.rs,drive/mod.rs,tools/model_text_tests.rs}`, `rustd/guffbolt/README.md` | EDIT | guidance and examples beside each description; the harness tag |
 | `rustd/guffbolt/src/tools/{plan.rs,message/**,notify/**,memory/**,web/**,files/**,agents/**,schedule/**}` | EDIT | §6: descriptions in one shape |
 | `rustd/guffbolt/src/tools/{search.rs,files/listing/grep.rs}` | EDIT | §8: the two approved fixes |

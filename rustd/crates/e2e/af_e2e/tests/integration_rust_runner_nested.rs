@@ -14,7 +14,7 @@
 )]
 
 use agentsfleetd::supervisor::Supervisor;
-use guffbolt::Chunk;
+use guffbolt::{Chunk, HARNESS_TAG};
 use serde_json::{Value, json};
 
 use crate::definition_code::greeter_origin;
@@ -38,14 +38,22 @@ const FILE_READ: &str = "file_read";
 const SPAWN_AGENT: &str = "spawn_agent";
 const WAIT_AGENT: &str = "wait_agent";
 const SUCCEEDED: &str = "succeeded";
+const MEMORY_GUIDANCE: &str = "Use memory_store with category core";
+
+fn opening_task(asked: &Asked) -> &str {
+    asked
+        .user
+        .first()
+        .and_then(|message| message.strip_prefix(HARNESS_TAG)?.strip_prefix('\n'))
+        .unwrap_or_default()
+}
 
 /// What each loop says, decided from its own conversation: a child from the
 /// task it opened with and how many reads it has back, the root from how
 /// many results it has back: none, then the two children started, then
 /// their two answers. No turn order is assumed.
 fn triager(asked: &Asked) -> Vec<Chunk> {
-    let opening = asked.user.first().map_or("", String::as_str);
-    match (opening, asked.results.len()) {
+    match (opening_task(asked), asked.results.len()) {
         (SCRIPT_TASK | SUITE_TASK, 0) => vec![
             call("script", FILE_READ, json!({"path": SCRIPT})),
             call("suite", FILE_READ, json!({"path": SUITE})),
@@ -74,10 +82,7 @@ fn triager(asked: &Asked) -> Vec<Chunk> {
 
 /// Whether `asked` is a child's request: one opening with a task.
 fn is_child(asked: &Asked) -> bool {
-    matches!(
-        asked.user.first().map(String::as_str),
-        Some(SCRIPT_TASK | SUITE_TASK)
-    )
+    matches!(opening_task(asked), SCRIPT_TASK | SUITE_TASK)
 }
 
 /// A stored trace row as the id the runner numbered it with, its tool and
@@ -129,6 +134,10 @@ async fn test_delegating_definition_roundtrip() {
     let mut offered = root[0].tools.clone();
     offered.sort_unstable();
     assert_eq!(offered, offered_catalog(), "the root holds the catalog");
+    assert!(
+        root[0].instructions.contains(MEMORY_GUIDANCE),
+        "the root receives guidance for memory_store"
+    );
     assert_eq!(
         root[2].results[2..],
         [
@@ -141,8 +150,13 @@ async fn test_delegating_definition_roundtrip() {
     for child in &children {
         assert_eq!(child.tools, [FILE_READ], "a child holds what it was given");
         assert_eq!(
-            child.instructions, root[0].instructions,
-            "a child opens with its parent's system prompt"
+            child.instructions.lines().next(),
+            root[0].instructions.lines().next(),
+            "a child keeps the fleet's identity"
+        );
+        assert!(
+            !child.instructions.contains(MEMORY_GUIDANCE),
+            "a child holding only file_read receives no memory_store guidance"
         );
     }
     let reads: Vec<&String> = children.iter().flat_map(|child| &child.results).collect();
