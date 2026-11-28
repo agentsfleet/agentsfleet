@@ -1775,7 +1775,11 @@ impl Model for Lead {
             Some(Message::User(task)) if may_spawn => {
                 call(id, "spawn_agent", json!({ "message": task, "fork_turns": "none" }))
             }
-            Some(Message::User(task)) => answer(format!("Done: {task}")),
+            Some(Message::User(task)) => {
+                let (source, body) = task.split_once('\n').expect("a child task has a source");
+                assert_eq!(source, guffbolt::HARNESS_TAG);
+                answer(format!("Done: {body}"))
+            }
             Some(Message::ToolResult { output, .. }) if output.contains("agent_id") => {
                 call(id, "wait_agent", json!({ "target": 1 }))
             }
