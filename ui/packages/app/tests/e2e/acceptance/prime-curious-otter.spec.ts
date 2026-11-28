@@ -1,7 +1,7 @@
 /** A real search and page read, traced from the public fleet to its dashboard and vendor reservations. */
 import {execFileSync} from "node:child_process";
 import {fileURLToPath} from "node:url";
-import {expect, test} from "@playwright/test";
+import {expect, test, type Page} from "@playwright/test";
 import {z} from "zod";
 import {signInAs} from "./fixtures/auth";
 import {assertPassed, classifyTerminalTurn} from "./fixtures/execution";
@@ -43,6 +43,18 @@ function reservations(workspace: string, fleet: string, turn: string) {
   return rows ? rows.split("\n").map(row => Reservation.parse(JSON.parse(row))) : [];
 }
 
+/** Scope citations to the assistant's chat message, independently of the Sources panel. */
+async function expectAnswerInChat(page: Page, question: string, firstPage: string) {
+  const chat = page.getByRole("log", {name: "Chat"});
+  await expect(chat.locator('[data-role="user"]').filter({hasText: question})).toBeVisible({timeout: RENDER_TIMEOUT_MS});
+  const answer = chat.locator('[data-role="assistant"]').last();
+  const explanation = answer.locator("p").filter({hasText: /reserv|document|illustrat|designat|set aside/i}).first();
+  await expect(explanation).toBeVisible({timeout: RENDER_TIMEOUT_MS});
+  const citation = answer.locator(`a[href=${JSON.stringify(firstPage)}]`).first();
+  await expect(citation).toBeVisible({timeout: RENDER_TIMEOUT_MS});
+  await expect(citation).toHaveAttribute("href", firstPage);
+}
+
 test.describe(`prime fleet ${fixture.name}`, () => {
   test.setTimeout(JOURNEY_TIMEOUT_MS);
 
@@ -58,7 +70,8 @@ test.describe(`prime fleet ${fixture.name}`, () => {
       await allowAll.click();
       await expect(allowAll).toBeChecked({timeout: RENDER_TIMEOUT_MS});
 
-      const turn = await say(page, workspace, fleet.id, entry(fixture, fixture.follow_ups, 0, "question"));
+      const question = entry(fixture, fixture.follow_ups, 0, "question");
+      const turn = await say(page, workspace, fleet.id, question);
       assertPassed(classifyTerminalTurn(turn));
       const web = (turn.tool_calls?.calls ?? []).filter(call => call.name === "web_search" || call.name === "web_fetch");
       expect(web.map(call => [call.name, call.status])).toEqual([["web_search", "succeeded"], ["web_fetch", "succeeded"]]);
@@ -67,9 +80,10 @@ test.describe(`prime fleet ${fixture.name}`, () => {
       const searchSources = ToolSources.parse(search.sources);
       const fetchSources = ToolSources.parse(fetch.sources);
       const top = searchSources[0]?.url;
+      if (!top) throw new Error("Search returned no first source for the page read");
       expect(fetch.arguments.url).toBe(top);
       expect(fetchSources[0]?.url).toBe(top);
-      expect(turn.response_text?.match(/https?:\/\/[^\s<>]+/gu)).toEqual([top]);
+      await expectAnswerInChat(page, question, top);
 
       const rows = reservations(workspace, fleet.id, turn.turn_id);
       expect(new Set(rows.map(row => row.run_id)).size).toBe(1);
@@ -78,6 +92,7 @@ test.describe(`prime fleet ${fixture.name}`, () => {
       ]);
 
       await page.reload();
+      await expectAnswerInChat(page, question, top);
       const sources = page.getByRole("region", {name: "Sources", exact: true});
       await expect(sources).toBeVisible({timeout: RENDER_TIMEOUT_MS});
       const expectedLinks = new Set([...searchSources, ...fetchSources].map(source => source.url));
