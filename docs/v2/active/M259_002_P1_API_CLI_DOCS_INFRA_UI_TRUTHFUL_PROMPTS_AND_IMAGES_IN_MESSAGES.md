@@ -18,13 +18,13 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Status:** IN_PROGRESS
 
-**Progress:** 9 of 30 dimensions complete. Root and child guidance, tagged harness messages, fixed prompt facts, and the standalone `tool_search` and `grep` changes passed their tests. [Implementation PR](https://github.com/agentsfleet/agentsfleet/pull/875)
+**Progress:** 9 of 30 dimensions complete. Root and child guidance, tagged harness messages, fixed prompt facts, and the standalone `tool_search` and `grep` changes passed their tests. [Implementation PR](https://github.com/agentsfleet/agentsfleet/pull/874)
 
 **Priority:** P1, every run is told about tools it may not hold, and a webhook body reads as the person's own message
 
 **Categories:** API, CLI, DOCS, INFRA, UI
 
-**Batch:** B2, opened from M259_001 after Dimensions 1.7, 9.1, 9.3 and 9.4 passed.
+**Batch:** B2, opened from M259_001 after Dimensions 1.7, 9.1, 9.3 and 9.4 passed. Both workstreams share PR #874.
 
 **Depends on:** The starting branch includes M259_001 search and fetch. The browser and virtual-machine capability work in §§3 and 5 depends on the merged M258 engine and the M259_001 Firecracker spike.
 
