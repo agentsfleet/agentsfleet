@@ -59,6 +59,22 @@ mod tests {
     use serde_json::{Value, json};
 
     #[test]
+    fn an_oversized_report_without_citations_does_not_claim_items_can_restore_it()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let raw = crate::test_support::report_body();
+        let mut report: ReportRequest<'_> = serde_json::from_slice(&raw)?;
+        report.response_text = Cow::Owned("a".repeat(MESSAGE_BYTES_MAX));
+        for trace in [r#"{"calls":[]}"#, r#"{"calls":"unreadable"}"#] {
+            report.tool_calls = Some(serde_json::from_str(trace)?);
+            let encoded = encode(&report)?;
+            let preserved: ReportRequest<'_> = serde_json::from_slice(&encoded)?;
+            assert_eq!(preserved.tool_calls, report.tool_calls);
+            assert_eq!(preserved.response_text.len(), report.response_text.len());
+        }
+        Ok(())
+    }
+
+    #[test]
     fn expanded_report_cites_its_fenced_items_when_the_final_answer_fills_the_frame()
     -> std::result::Result<(), Box<dyn std::error::Error>> {
         let raw = crate::test_support::report_body();

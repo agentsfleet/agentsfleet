@@ -1,6 +1,7 @@
 use af_core::error_code;
 use axum::http::StatusCode;
 use serde_json::{Value, json};
+use std::time::Duration;
 
 use super::{BOTH, Fixtures, Reply, Scenario};
 
@@ -103,6 +104,59 @@ async fn an_extract_returns_the_pages_markdown() {
             .expect("web failure")
             .local_read_permitted()
     );
+    f.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn extraction_rechecks_fallback_and_counts_only_physical_attempts() {
+    let f = Fixtures::create().await;
+    let denied = Reply::new(StatusCode::FORBIDDEN, Value::Null);
+    let unreachable = Reply::new(
+        StatusCode::OK,
+        json!({"results":[],"errors":[{"url":URL,"error_type":"connect_error","http_status_code":null}]}),
+    );
+    let cooling = Reply::new(StatusCode::TOO_MANY_REQUESTS, Value::Null).cooling(30);
+    let s = Scenario::new(&f, BOTH, vec![denied, unreachable, cooling]).await;
+    let refused = s.extract(URL).await.expect_err("invalid vendor access");
+    assert_eq!(refused.code(), error_code::WEB_VENDOR_UNCONFIGURED);
+    assert!(
+        !refused
+            .web_failure()
+            .expect("vendor refusal")
+            .local_read_permitted()
+    );
+    for (wait, paid) in [
+        (None, 2),
+        (Some(Duration::from_secs(30)), 3),
+        (Some(Duration::from_secs(30)), 3),
+    ] {
+        let outage = s
+            .extract(URL)
+            .await
+            .expect_err("vendor temporarily unavailable");
+        assert_eq!(outage.code(), error_code::WEB_EXTRACT_UNAVAILABLE);
+        let detail = outage
+            .web_failure()
+            .expect("outage can permit one direct read");
+        assert!(detail.local_read_permitted());
+        assert_eq!(detail.retry_after(), wait);
+        assert_eq!(s.reservations(&f).await, paid);
+    }
+    f.set_network(&s.live.ready.fleet, "restricted", false)
+        .await;
+    let restricted = s
+        .extract(URL)
+        .await
+        .expect_err("restricted while vendor is cooling");
+    assert_eq!(restricted.code(), error_code::WEB_NETWORK_RESTRICTED);
+    assert!(
+        !restricted
+            .web_failure()
+            .expect("policy refusal")
+            .local_read_permitted()
+    );
+    assert_eq!(s.vendor.seen().len(), 3);
     f.cleanup().await;
 }
 

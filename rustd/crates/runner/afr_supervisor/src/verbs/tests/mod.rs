@@ -10,6 +10,7 @@ mod decision;
 mod durable_tasks;
 mod fleets;
 mod folds;
+mod web;
 
 use af_core::error_code;
 use af_core::id::Uuid7;

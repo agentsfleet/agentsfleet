@@ -152,3 +152,17 @@ fn an_image_rides_the_output_it_was_attached_to() {
 
     assert_eq!(output.image, Some(image));
 }
+
+#[test]
+fn taking_a_tools_citations_keeps_its_pending_child_action() {
+    use crate::agents::{Action, Agents, Caps, Order};
+    let (agents, _requests) = Agents::new(Caps { depth: 1, open: 1 });
+    let order = Order::new(agents, Action::List);
+    let source = super::Source {
+        url: "https://docs.test/".into(),
+        title: None,
+    };
+    let mut output = ToolOutput::ordering(order.clone()).with_sources(vec![source.clone()]);
+    assert_eq!(output.take_sources(), [source]);
+    assert_eq!(output.take_order(), Some(order));
+}

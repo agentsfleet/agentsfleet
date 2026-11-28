@@ -192,3 +192,6 @@ fn remaining(deadline: Instant) -> Result<Duration> {
         Ok(left)
     }
 }
+
+#[cfg(test)]
+mod tests;

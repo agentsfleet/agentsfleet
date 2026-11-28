@@ -211,6 +211,16 @@ impl Fleet {
         self
     }
 
+    /// The vendor replies the runner routes should serialize on a successful read.
+    pub(crate) fn with_web_replies(
+        mut self,
+        search: af_wire::web::SearchResponse,
+        extract: af_wire::web::ExtractResponse,
+    ) -> Self {
+        self.runs = NoWork::answering_web(search, extract);
+        self
+    }
+
     /// A run plane whose mint succeeds with `token`, for the case that
     /// proves the route writes it into the body and nowhere else.
     pub(crate) fn with_run_minting(mut self, token: &'static str, expires_at: Timestamp) -> Self {

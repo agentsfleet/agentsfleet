@@ -2,7 +2,9 @@
 
 use std::time::Duration;
 
+use af_crypto::secret::SecretString;
 use af_providers::web::{Exa, Parallel, Vendor, WebFailure};
+use af_wire::protocol::MESSAGE_BYTES_MAX;
 use reqwest::Url;
 use serde_json::json;
 
@@ -226,6 +228,7 @@ async fn incomplete_or_unknown_per_page_errors_keep_fallback_closed() {
         json!({"url":PAGE,"error_type":"connect_error"}),
         json!({"url":PAGE,"error_type":"http_error","http_status_code":null}),
         json!({"url":PAGE,"error_type":"unknown","http_status_code":null}),
+        json!({"url":"https://elsewhere.test","error_type":"http_error","http_status_code":503}),
     ] {
         let server = Server::start(vec![Reply::Json(json!({"results":[],"errors":[item]}))]).await;
         let failure = parallel(&server)
@@ -233,5 +236,71 @@ async fn incomplete_or_unknown_per_page_errors_keep_fallback_closed() {
             .await
             .expect_err("no usable error");
         assert_eq!(failure, WebFailure::InvalidResponse);
+    }
+}
+
+#[tokio::test]
+async fn invalid_web_credentials_are_rejected_before_connecting() {
+    let mut server = Server::start(vec![]).await;
+    let vendor = parallel(&server);
+    for key in [String::new(), "invalid\nheader".to_owned()] {
+        let result = vendor.extract(&SecretString::new(key), PAGE, BUDGET).await;
+        assert_eq!(
+            result.expect_err("invalid credential"),
+            WebFailure::InvalidCredential
+        );
+    }
+    assert_eq!(server.connections(), 0);
+    assert_eq!(server.unconsumed(), 0);
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_truncated_page_is_an_outage_and_excess_search_rows_are_invalid() {
+    let row = json!({"url":PAGE,"excerpts":[]});
+    let mut server = Server::start(vec![
+        Reply::Cut(br#"{"results":["#.to_vec()),
+        Reply::Json(json!({"results":vec![row; 11]})),
+    ])
+    .await;
+    let vendor = parallel(&server);
+    let key = credential();
+    let cut = vendor.extract(&key, PAGE, BUDGET).await;
+    assert_eq!(cut.expect_err("dropped response"), WebFailure::Transport);
+    assert_eq!(server.next().await.path, "/v1/extract");
+    let excess = vendor.search(&key, "question", BUDGET).await;
+    assert_eq!(
+        excess.expect_err("more than requested"),
+        WebFailure::InvalidResponse
+    );
+    assert_eq!(server.next().await.path, "/v1/search");
+    assert_eq!(server.unconsumed(), 0);
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn oversized_extraction_is_refused_with_and_without_content_length() {
+    for declared in [true, false] {
+        // Trailing JSON whitespace leaves a usable page if either size check is lost.
+        let mut bytes = json!({"results":[{"url":PAGE,"full_content":"page"}],"errors":[]})
+            .to_string()
+            .into_bytes();
+        bytes.resize(MESSAGE_BYTES_MAX + 1, b' ');
+        let reply = if declared {
+            Reply::Bytes(bytes)
+        } else {
+            Reply::Chunks(vec![bytes])
+        };
+        let mut server = Server::start(vec![reply]).await;
+        let result = parallel(&server)
+            .extract(&credential(), PAGE, af_wire::web::WEB_DEADLINE)
+            .await;
+        assert_eq!(
+            result.expect_err("oversized response"),
+            WebFailure::InvalidResponse
+        );
+        assert_eq!(server.next().await.path, "/v1/extract");
+        assert_eq!(server.unconsumed(), 0);
+        server.shutdown().await;
     }
 }

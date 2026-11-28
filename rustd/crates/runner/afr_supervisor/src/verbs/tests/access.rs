@@ -83,6 +83,18 @@ async fn a_200_is_a_covering_grant_or_a_pending_card() {
     assert_eq!(pending, Ok(AccessAnswer::Pending));
 }
 
+#[tokio::test]
+async fn a_new_card_without_an_id_cannot_suspend_a_run() {
+    let (answered, sent) = requested(|| {
+        Answer::Created(Bytes::from_static(
+            br#"{"state":"raised","grant_id":"g","gate_id":null}"#,
+        ))
+    })
+    .await;
+    assert_eq!(answered, Err(Unanswered::Unreachable));
+    assert_eq!(sent, 1);
+}
+
 /// A refusal keeps the code its problem named, and an unavailable daemon is
 /// asked once: a retry after a lost 201 would read its own card as pending.
 #[tokio::test]
