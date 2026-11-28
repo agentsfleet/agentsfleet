@@ -18,6 +18,8 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Status:** IN_PROGRESS
 
+**Progress:** 9 of 30 dimensions complete. Root and child guidance, tagged harness messages, fixed prompt facts, and the standalone `tool_search` and `grep` changes passed their tests. [Implementation PR](https://github.com/agentsfleet/agentsfleet/pull/875)
+
 **Priority:** P1, every run is told about tools it may not hold, and a webhook body reads as the person's own message
 
 **Categories:** API, CLI, DOCS, INFRA, UI
@@ -170,10 +172,10 @@ A loop's guidance is rendered from the specs it is offered. `request(window, too
 
 guffbolt's guidance names no host product, which its text test enforces (`guffbolt/src/tools/model_text_tests.rs:29-30`). Product sentences stay in `afr_agent` and `afr_tools`.
 
-- **Dimension 1.1** — a run hears only about tools it holds → Test `a_run_is_told_only_about_the_tools_it_holds` (unit, `afr_agent`): one case per guidance entry. Each entry's sentence is present exactly when its tool is offered; an unjudged run hears no `task_start`.
-- **Dimension 1.2** — a child hears only about its own tools → Test `a_child_given_fewer_tools_is_told_about_fewer` (unit, `afr_agent`, the scripted model in `fixture/model.rs`): a child given `shell` alone. Its instructions carry no `memory_store` guidance, and the root's still do.
-- **Dimension 1.3** — a tool-set change keeps the summary → Test `a_tool_set_change_keeps_the_saved_summary` (unit, `afr_agent`): two runs differing only in offered tools → the same pinned digest. A changed identity sentence → a new digest.
-- **Dimension 1.4** — guidance names no host product → Test `guffbolt_tool_specs_name_no_host_product` (unit, guffbolt, extended to guidance): a guidance line naming `fleet` fails the test.
+- **Dimension 1.1** — DONE. a run hears only about tools it holds → Test `a_run_is_told_only_about_the_tools_it_holds` (unit, `afr_agent`): one case per guidance entry. Each entry's sentence is present exactly when its tool is offered; an unjudged run hears no `task_start`.
+- **Dimension 1.2** — DONE. a child hears only about its own tools → Test `a_child_given_fewer_tools_is_told_about_fewer` (unit, `afr_agent`, the scripted model in `fixture/model.rs`): a child given `shell` alone. Its instructions carry no `memory_store` guidance, and the root's still do.
+- **Dimension 1.3** — DONE. a tool-set change keeps the summary → Test `a_tool_set_change_keeps_the_saved_summary` (unit, `afr_agent`): two runs differing only in offered tools → the same pinned digest. A changed identity sentence → a new digest.
+- **Dimension 1.4** — DONE. guidance names no host product → Test `guffbolt_tool_specs_name_no_host_product` (unit, guffbolt, extended to guidance): a guidance line naming `fleet` fails the test.
 
 ### §2 — The model is told who is speaking, and what is data
 
@@ -184,7 +186,7 @@ A history `Turn` (`af_wire/src/run/payload.rs:18-33`) gains both fields, so an e
 **Implementation default:** the line states the source and says the body is data to act on under standing guidance. Wording too strong makes a webhook-fed fleet refuse its own job, so §2 changes advice, not enforcement.
 
 - **Dimension 2.1** — a delivered turn names its source → Test `a_delivered_turn_is_told_its_source` (unit, `afr_agent`): a webhook, a schedule firing and another fleet's request each carry their line. A person's chat message carries none.
-- **Dimension 2.2** — harness text is tagged → Test `a_continue_reason_reaches_the_model_tagged_as_the_harness` (unit, guffbolt): a durable task's "continue" line → wrapped in the harness tag, never bare user text.
+- **Dimension 2.2** — DONE. harness text is tagged → Test `a_continue_reason_reaches_the_model_tagged_as_the_harness` (unit, guffbolt): a durable task's "continue" line → wrapped in the harness tag, never bare user text.
 - **Dimension 2.3** — an earlier turn renders the same bytes → Test `an_earlier_webhook_turn_renders_the_same_bytes_next_run` (unit, `afr_agent`): a webhook turn as the head, then as history → identical text both times.
 
 ### §3 — An environment block, fed by the run's facts
@@ -245,7 +247,7 @@ Three sentences join the identity inside the fixed text. The final answer is wha
 
 The sentences promise no Markdown, because what Slack and email render is unverified.
 
-- **Dimension 7.1** — the facts sit in the stable prefix → Test `the_harness_facts_sit_inside_the_fixed_text` (unit, `afr_agent`): each sentence is in `Prompt.fixed` exactly once. None appears in the per-run blocks.
+- **Dimension 7.1** — DONE. the facts sit in the stable prefix → Test `the_harness_facts_sit_inside_the_fixed_text` (unit, `afr_agent`): each sentence is in `Prompt.fixed` exactly once. None appears in the per-run blocks.
 
 ### §8 — guffbolt's two approved tool fixes
 
@@ -253,9 +255,9 @@ The sentences promise no Markdown, because what Slack and email render is unveri
 
 Neither fix changes a fleet today. `grep` is not in the runner's catalog (`afr_tools/src/catalog/mod.rs:138-177`), and nothing in `rustd/crates` wires `tool_search`; both serve guffbolt's standalone embedders until then.
 
-- **Dimension 8.1** — the default limit is 8 → Test `tool_search_answers_eight_when_no_limit_is_named` (unit, guffbolt): 12 deferred matches and no `limit` → 8.
-- **Dimension 8.2** — a long line is cut → Test `grep_cuts_a_long_line_at_500_characters` (unit, guffbolt): a 2,000-character matching line → 500 characters and the note.
-- **Dimension 8.3** — context is shown → Test `grep_shows_context_lines_around_a_match` (unit, guffbolt): `context: 1` → the line before and after each match. Absent → the match alone.
+- **Dimension 8.1** — DONE. the default limit is 8 → Test `tool_search_answers_eight_when_no_limit_is_named` (unit, guffbolt): 12 deferred matches and no `limit` → 8.
+- **Dimension 8.2** — DONE. a long line is cut → Test `grep_cuts_a_long_line_at_500_characters` (unit, guffbolt): a 2,000-character matching line → 500 characters and the note.
+- **Dimension 8.3** — DONE. context is shown → Test `grep_shows_context_lines_around_a_match` (unit, guffbolt): `context: 1` → the line before and after each match. Absent → the match alone.
 
 ### §9 — A person's message carries images
 
@@ -399,5 +401,6 @@ The first phrase has one production hit at `679002666`, `afr_agent/src/prompt/mo
 - **Consults** — the prompts research (Nov 26, 2026) read opencode at `44344bd22d`, Codex at `af719423` and pi at `db7971285`. Borrowed: guidance per held tool, ordered sources, a speaker mark and an environment block. Copied: nothing, so no licence notice is owed and no code names another harness.
 - **Restructure record** — §1 to §5 and §7 carry the research's items 1 to 7. §8 and §9 are §7 and §9 of the web search spec drafted on Nov 26, 2026, which the Pull Request adding this spec removes. Its §6 folds into §1 and §3, with the turn's `created_at` in place of a clock.
 - **Model reviews** — none yet.
+- **Initial implementation evidence, Nov 28.** The agent, runner tool and standalone guffbolt library suites passed 775 tests. Another 59 file-tool API cases passed. The suites exercised the root and narrowed child request, stable summary identity, source labels on real continuations and child task messages, eight default matches, Unicode line shortening, and grep context through one executor call.
 - **Opening decision, Nov 28.** The owner requested this workstream start once M259_001 Dimensions 1.7, 9.1, 9.3 and 9.4 were complete. All four passed on the web-tools branch. The independent prompt and tool changes can proceed there. The engine-dependent dimensions still need merged M258 and the browser capability evidence. [Web-tools PR](https://github.com/agentsfleet/agentsfleet/pull/874) · [Dashboard acceptance](https://github.com/agentsfleet/agentsfleet/actions/runs/46114949902/job/140886570326)
 - **Deferrals and transfers** — none. Each one needs an owner quote below, as `> Owner (<name>, <MMM DD, YYYY HH:MM>): "<quote>" — context: <item, why>`.
