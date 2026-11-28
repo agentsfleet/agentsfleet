@@ -186,7 +186,7 @@ async fn recorded_parallel_extracts_keep_the_requested_source_and_classify_page_
         requested_url: String,
         response: serde_json::Value,
     }
-    let recording = include_str!("responses/parallel_extract.json");
+    let recording = include_str!("fixtures/parallel_extract.json");
     let cases: Cases = serde_json::from_str(recording).expect("sanitized Parallel fixture");
     let mut server = Server::start(
         cases
