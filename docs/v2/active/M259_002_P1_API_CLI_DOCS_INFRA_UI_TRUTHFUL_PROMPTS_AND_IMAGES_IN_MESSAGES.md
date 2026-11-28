@@ -16,15 +16,15 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Date:** Nov 26, 2026
 
-**Status:** PENDING
+**Status:** IN_PROGRESS
 
 **Priority:** P1, every run is told about tools it may not hold, and a webhook body reads as the person's own message
 
 **Categories:** API, CLI, DOCS, INFRA, UI
 
-**Batch:** B2, after M259_001 merges
+**Batch:** B2, opened from M259_001 after Dimensions 1.7, 9.1, 9.3 and 9.4 passed.
 
-**Depends on:** M259_001, whose search, browser and request builder this spec describes and edits next. M258_001, whose engine `Capabilities` carry `EgressFacts` for a run's virtual machine (VM).
+**Depends on:** The starting branch includes M259_001 search and fetch. The browser and virtual-machine capability work in §§3 and 5 depends on the merged M258 engine and the M259_001 Firecracker spike.
 
 **Provenance:** LLM-drafted (Claude Opus 5.5, Nov 26, 2026) from the Nov 26 prompts research, its skeptic review and the pending M258_001. Each reference was re-read at `679002666`.
 
@@ -99,7 +99,7 @@ A **loop** is the root agent or one child it spawned. **Guidance** is the prompt
   2. M258_001's `EgressFacts` state outbound network, and M259_001's browser source states whether a run has a browser.
   3. Items 1 to 7 of the research ship on deterministic tests; items 8 to 10 wait for a measurement.
   4. Nothing is backward compatible, and each fleet's saved summary is ignored once when the fixed text changes.
-- **Implementer handshake:** recorded in the Pull Request Session Notes at PLAN, before any edit (SPEC-HANDSHAKE).
+- **Implementer handshake, Nov 28.** Build guidance from each loop's actual offered tools, preserve the fixed prompt digest across tool-set changes, and carry sender and image capabilities through their existing boundaries. Start with deterministic prompt and tool cases on the web-tools base. Report VM and browser capabilities only once their real sources land.
 
 ## Implementing agent — read these first
 
@@ -399,5 +399,5 @@ The first phrase has one production hit at `679002666`, `afr_agent/src/prompt/mo
 - **Consults** — the prompts research (Nov 26, 2026) read opencode at `44344bd22d`, Codex at `af719423` and pi at `db7971285`. Borrowed: guidance per held tool, ordered sources, a speaker mark and an environment block. Copied: nothing, so no licence notice is owed and no code names another harness.
 - **Restructure record** — §1 to §5 and §7 carry the research's items 1 to 7. §8 and §9 are §7 and §9 of the web search spec drafted on Nov 26, 2026, which the Pull Request adding this spec removes. Its §6 folds into §1 and §3, with the turn's `created_at` in place of a clock.
 - **Model reviews** — none yet.
-- **Open blockers** — the open owner decisions above and M259_001, before this spec leaves `pending/`.
+- **Opening decision, Nov 28.** The owner requested this workstream start once M259_001 Dimensions 1.7, 9.1, 9.3 and 9.4 were complete. All four passed on the web-tools branch. The independent prompt and tool changes can proceed there. The engine-dependent dimensions still need merged M258 and the browser capability evidence. [Web-tools PR](https://github.com/agentsfleet/agentsfleet/pull/874) · [Dashboard acceptance](https://github.com/agentsfleet/agentsfleet/actions/runs/46114949902/job/140886570326)
 - **Deferrals and transfers** — none. Each one needs an owner quote below, as `> Owner (<name>, <MMM DD, YYYY HH:MM>): "<quote>" — context: <item, why>`.
