@@ -80,7 +80,7 @@ test("native attachment preparation accepts a preview and shows its text receipt
   await page.goto(`${chatProbe}?visual=1`);
   await page.getByRole("button", {name: "Completed", exact: true}).click();
   const chooser = page.waitForEvent("filechooser");
-  await page.getByRole("button", {name: "Attach a preview file"}).click();
+  await page.getByRole("button", {name: "Attach an image or preview file"}).click();
   await (await chooser).setFiles({name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("demo")});
   await expect(page.getByText("notes.txt", {exact: true})).toBeVisible();
   await expect(page.getByRole("alert")).toHaveCount(0);
@@ -109,7 +109,7 @@ test("the fleet composer sends a picture with its message and rejects an oversiz
   const form = page.getByRole("form", {name: "Chat composer"});
   const attach = async (name: string, buffer: Buffer) => {
     const chooser = page.waitForEvent("filechooser");
-    await form.getByRole("button", {name: "Attach a preview file"}).click();
+    await form.getByRole("button", {name: "Attach an image or preview file"}).click();
     await (await chooser).setFiles({name, mimeType: "image/png", buffer});
   };
   await attach("too-large.png", Buffer.alloc(6 * 1024 * 1024));
@@ -142,7 +142,7 @@ test("a native upload submission stays visible and a refusal returns its draft",
   await page.getByRole("button", {name: "Completed", exact: true}).click();
   const replies = await page.locator('[data-role="assistant"]').count();
   const chooser = page.waitForEvent("filechooser");
-  await page.getByRole("button", {name: "Attach a preview file"}).click();
+  await page.getByRole("button", {name: "Attach an image or preview file"}).click();
   await (await chooser).setFiles({name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("demo")});
   const composer = page.getByRole("textbox", {name: "Message your fleet…"});
   await composer.fill("Review this preview");

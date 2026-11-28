@@ -135,24 +135,27 @@ async fn task_start_without_a_span_takes_the_whole_newest_message() {
         "target": {"kind": "api_only"},
         "statements": checks_green()
     });
-    let output = call(&*tool, &run, arguments.clone()).await;
+    let output = call(&*tool, &run, arguments).await;
     assert_eq!(output.error_code, None);
     let asked = verbs.asked();
-    let [Asked::Bindings(binding)] = asked.as_slice() else {
-        panic!("one task binding, got {asked:?}");
-    };
-    assert_eq!(binding.source_turn_id, SOURCE);
-    assert!(matches!(
-        binding.items.as_slice(),
-        [DurableTaskBindingItem::NewWork {
-            source_start: 0,
-            source_end: 9,
-            ..
-        }]
-    ));
+    assert!(
+        matches!(
+            asked.as_slice(),
+            [Asked::Bindings(binding)] if binding.source_turn_id == SOURCE
+                && matches!(
+                    binding.items.as_slice(),
+                    [DurableTaskBindingItem::NewWork { source_start: 0, source_end: 9, .. }]
+                )
+        ),
+        "one binding covering the whole message, got {asked:?}"
+    );
 
-    let mut outside = arguments;
-    outside["source_end"] = json!(10);
+    let outside = json!({
+        "title": "Fix café",
+        "target": {"kind": "api_only"},
+        "statements": checks_green(),
+        "source_end": 10,
+    });
     let refusal = call(&*tool, &run, outside).await;
     assert_eq!(
         refusal.error_code,

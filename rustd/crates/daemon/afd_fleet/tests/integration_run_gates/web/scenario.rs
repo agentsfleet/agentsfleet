@@ -21,11 +21,19 @@ pub(super) struct Scenario {
 }
 
 impl Scenario {
+    pub(super) fn new<'a>(
+        f: &'a Fixtures,
+        keys: &'a [&'a str],
+        replies: Vec<Reply>,
+    ) -> impl Future<Output = Self> + 'a {
+        Box::pin(Self::build(f, keys, replies))
+    }
+
     #[expect(
         clippy::disallowed_methods,
         reason = "the fake client connects only to the two local test endpoints with retry disabled"
     )]
-    pub(super) async fn new(f: &Fixtures, keys: &[&str], replies: Vec<Reply>) -> Self {
+    async fn build(f: &Fixtures, keys: &[&str], replies: Vec<Reply>) -> Self {
         let live = Live::issue(f).await;
         let run = live.run_id();
         let vendor = Vendor::listen(

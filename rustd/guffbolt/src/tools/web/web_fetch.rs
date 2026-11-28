@@ -72,6 +72,8 @@ impl Handler for WebFetch<'_> {
     const DESCRIPTION: &'static str = "Read one HTTPS page under the network policy and return text or Markdown. Use it for a \
         page you need to read. Use http_request for an API call or when a credential is \
         required.";
+    const GUIDANCE: &'static str = "When asked to open or read a search result, use web_fetch on \
+        its URL before answering. Cite the page you read.";
     const EXAMPLES: &'static [&'static str] =
         &[r#"{"url":"https://www.iana.org/help/example-domains"}"#];
     type Arguments = Fetch;

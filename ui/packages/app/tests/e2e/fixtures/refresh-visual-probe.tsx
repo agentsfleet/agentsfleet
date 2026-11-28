@@ -86,7 +86,8 @@ export function RefreshVisualFixture() {
           {archived ? null : <><FleetListSections /><FleetNetworkSection /></>}
         </>}>
           <div className="flex min-h-0 flex-1 flex-col">
-            <FleetThreadViewport archived={archived} modelLabel="MiniMax M3" turnsCount={messages.length} connectionStatus={CONNECTION_STATUS.LIVE}
+            <FleetThreadViewport archived={archived} modelLabel="MiniMax M3" turnsCount={messages.length}
+              connectionStatus={params.has("reconnecting") ? CONNECTION_STATUS.RECONNECTING : CONNECTION_STATUS.LIVE}
               pending={[]} onRetry={() => {}} onResend={() => {}} onDismiss={() => {}} onRestored={() => {}} onDraft={() => {}} />
           </div>
         </FleetConversationLayout>

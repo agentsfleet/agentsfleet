@@ -6,10 +6,10 @@ import { Button, cn } from "@agentsfleet/design-system";
 import { FileTextIcon, PaperclipIcon, XIcon } from "@phosphor-icons/react/ssr";
 
 /** Native attachment contexts own preparation, error state and removal. */
-export function AddUploadPreview({imageOnly = false}: {imageOnly?: boolean}) {
+export function AddUploadPreview({imageOnly}: {imageOnly: boolean}) {
   const supported = useAuiState(state => state.thread.capabilities.attachments);
   if (!supported) return null;
-  return <ComposerPrimitive.AddAttachment asChild><Button variant="ghost" size="icon-row" className="[&_svg]:size-4.5" aria-label={imageOnly ? "Attach an image" : "Attach a preview file"} title={imageOnly ? "Attach an image · up to 5 MiB" : "Attach an image or preview file"}>
+  return <ComposerPrimitive.AddAttachment asChild><Button variant="ghost" size="icon-row" className="[&_svg]:size-4.5" aria-label={imageOnly ? "Attach an image" : "Attach an image or preview file"} title={imageOnly ? "Attach an image · up to 5 MiB" : "Attach an image or preview file"}>
     <PaperclipIcon aria-hidden="true" />
   </Button></ComposerPrimitive.AddAttachment>;
 }

@@ -13,6 +13,8 @@ import { Effect, Exit } from "effect";
 import { runCli } from "../src/cli.ts";
 import keenHawk from "../../tests/fixtures/fleets/keen-hawk.json" with { type: "json" };
 import { steerEffectFromArgs } from "../src/commands/fleet/steer.ts";
+import { fleetCreateEffect } from "../src/commands/fleet/create.ts";
+import { messageImage } from "../src/commands/fleet/message-image.ts";
 import {
   KIND_CHUNK,
   KIND_TURN_COMPLETE,
@@ -84,6 +86,56 @@ test("fleet steer --image sends the file and a missing file exits 4", async () =
     await unlink(path).catch(() => undefined);
     await rmdir(directory);
   }
+});
+
+test("fleet create sends the image alongside the first message", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "agentsfleet-first-image-"));
+  const path = join(directory, "picture.png");
+  try {
+    await Bun.write(path, Buffer.from(keenHawk.image_png, "base64"));
+    const rec = makeRecorder();
+    const created = {fleet: {id: FLEET_ID, name: "keen-hawk"}, accepted: {turn_id: TURN_ID, disposition: "queued"}};
+    await Effect.runPromise(fleetCreateEffect("What colour?", {image: path})
+      .pipe(Effect.provide(makeLayer(rec, <T>() => created as T))));
+    expect(rec.requests[0]?.body).toMatchObject({
+      message: "What colour?", images: [{media_type: "image/png", data: keenHawk.image_png}],
+    });
+  } finally {
+    await unlink(path);
+    await rmdir(directory);
+  }
+});
+
+test("image input accepts the supported file signatures and bounds the read", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "agentsfleet-image-formats-"));
+  // A file extension cannot select the declared image type.
+  const path = join(directory, "picture.bin");
+  try {
+    for (const [bytes, media_type] of [
+      [Buffer.from("ffd8ff", "hex"), "image/jpeg"],
+      [Buffer.from("GIF89a"), "image/gif"],
+      [Buffer.from("RIFF\0\0\0\0WEBP"), "image/webp"],
+    ] as const) {
+      await Bun.write(path, bytes);
+      expect(await Effect.runPromise(messageImage(path))).toEqual({media_type, data: bytes.toString("base64")});
+    }
+    await Bun.write(path, "RIFF\0\0\0\0WAVE");
+    expect(Exit.isFailure(await Effect.runPromiseExit(messageImage(path)))).toBe(true);
+    await Bun.write(path, Buffer.concat([Buffer.from(keenHawk.image_png, "base64"), Buffer.alloc(5 * 1024 * 1024)]));
+    expect(Exit.isFailure(await Effect.runPromiseExit(messageImage(path)))).toBe(true);
+  } finally {
+    await unlink(path);
+    await rmdir(directory);
+  }
+});
+
+test("--image needs one message when steering in a terminal", async () => {
+  const rec = makeRecorder();
+  const exit = await Effect.runPromiseExit(steerEffectFromArgs(FLEET_ID, undefined, {forceTty: true, image: "picture.png"}, {
+    stdin: streamFrom([], true), stdout: nullOutput(), streamGet: eventStream([]),
+  }).pipe(Effect.provide(makeLayer(rec))));
+  expect(Exit.isFailure(exit)).toBe(true);
+  expect(rec.requests).toEqual([]);
 });
 
 // ── Unit: undefined fleet_id validation (lines 284-286) ──────────────────

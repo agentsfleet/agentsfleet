@@ -66,11 +66,12 @@ const noop = () => {};
 
 type Handlers = { onResend?: (id: string) => void; onDismiss?: (id: string) => void; onRestored?: (id: string, text: string) => void; turnStop?: TurnStop };
 
-function view(pending: PendingSend[], handlers: Handlers = {}) {
+function view(pending: PendingSend[], handlers: Handlers & {canResendImage?: (id: string) => boolean} = {}) {
   return (
     <SteerComposer
       pending={pending}
       onResend={handlers.onResend ?? noop}
+      canResendImage={handlers.canResendImage}
       onDismiss={handlers.onDismiss ?? noop}
       onRestored={handlers.onRestored ?? noop}
       onDraft={noop}
@@ -94,6 +95,14 @@ afterEach(() => {
 });
 
 describe("SteerComposer", () => {
+  it("shows an image refusal without restoring or resending the text alone after a reload", () => {
+    const image = entry({operationId: "image", hasImages: true, errorDetail: "Model Text-only cannot receive images"});
+    render(view([image], {canResendImage: () => false}));
+    expect(screen.getByText("Model Text-only cannot receive images")).toBeTruthy();
+    expect(screen.getByText("The attachment is unavailable in this tab.")).toBeTruthy();
+    expect(screen.queryByRole("button", {name: RESEND})).toBeNull();
+    expect(composer.setText).not.toHaveBeenCalled();
+  });
   it("renders an enabled composer that submits on Enter", () => {
     render(view([]));
     const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;

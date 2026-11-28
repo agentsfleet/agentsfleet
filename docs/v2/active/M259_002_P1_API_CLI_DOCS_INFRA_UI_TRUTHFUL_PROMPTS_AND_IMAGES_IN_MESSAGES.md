@@ -18,7 +18,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Status:** IN_PROGRESS
 
-**Progress:** 25 of 30 dimensions complete. The image message, model refusal, API bounds, dashboard and command-line paths passed their focused checks. Live image acceptance remains open. The browser dimensions depend on M258 and the M259_001 Firecracker spike. [Implementation PR](https://github.com/agentsfleet/agentsfleet/pull/874)
+**Progress:** 26 of 30 dimensions complete. The image message, model refusal, API bounds, dashboard and command-line paths passed. The hosted Messages model identified the attached image's colour. Dimensions 3.4 and 5.2–5.4 depend on M258 and the M259_001 Firecracker spike. [Implementation PR](https://github.com/agentsfleet/agentsfleet/pull/874) · [Hosted image evidence](https://github.com/agentsfleet/agentsfleet/actions/runs/46127438227/artifacts/15256736724)
 
 **Priority:** P1, every run is told about tools it may not hold, and a webhook body reads as the person's own message
 
@@ -273,7 +273,7 @@ A fleet whose model is on the Chat wire refuses the message, since Chat takes te
 - **Dimension 9.3** — DONE. The full HTTP harness rejects a 6 MiB PNG, TIFF and corrupt PNG with 400 `UZ-AGT-026` before admission. Test `a_message_image_past_the_wire_bounds_is_refused` in the tenant plane.
 - **Dimension 9.4** — DONE. Desktop and mobile Playwright check the first-message and existing-fleet composers, the 6 MiB refusal before sending, and a retry with the same attachment bytes and operation ID. The app's steer route forwards the attachment.
 - **Dimension 9.5** — DONE. `fleet-steer.integration.test.ts` checks that `--image picture.png` sends the original image in base64 and that a missing file exits 4 before making a request. `fleet create --image` uses the same file reader.
-- **Dimension 9.6** — the real path → Test `prime-keen-hawk.spec.ts` (e2e, `make acceptance`, fixture `keen-hawk`, a Messages-wire model): a person attaches a 64-pixel PNG filled red and asks its colour. The answer names red, and the turn holds the image.
+- **Dimension 9.6** — DONE. `prime-keen-hawk.spec.ts` passed on `3590ddf49` in 7.438 seconds in hosted acceptance. The Messages-wire model named red, the stored turn held the original PNG, and the question and answer survived a dashboard reload. The hosted dashboard suite reported 102 passed and seven failed. [Playwright evidence](https://github.com/agentsfleet/agentsfleet/actions/runs/46127438227/artifacts/15256736724)
 
 ## Interfaces
 

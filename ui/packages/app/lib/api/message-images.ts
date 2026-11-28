@@ -16,16 +16,16 @@ export function checkImage(file: File): void {
   if (file.size === 0 || file.size > IMAGE_BYTES_MAX) throw new Error("Each image must contain 1 byte to 5 MiB of data.");
 }
 
-export function prepareImage(attachment: PendingAttachment, signal?: AbortSignal): Promise<CompleteAttachment> {
+export function prepareImage(attachment: PendingAttachment, signal: AbortSignal): Promise<CompleteAttachment> {
   checkImage(attachment.file);
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     const stop = () => reader.abort();
-    signal?.throwIfAborted();
-    signal?.addEventListener("abort", stop, {once: true});
+    signal.throwIfAborted();
+    signal.addEventListener("abort", stop, {once: true});
     reader.onloadend = () => {
-      signal?.removeEventListener("abort", stop);
-      if (typeof reader.result !== "string" || signal?.aborted) {
+      signal.removeEventListener("abort", stop);
+      if (typeof reader.result !== "string") {
         reject(new Error("Unable to read the attached image."));
         return;
       }

@@ -23,7 +23,7 @@ test(proof(0), async ({page}) => {
     await page.goto(workspaceHref(workspace, `fleets/${fleet.id}`));
     const composer = page.getByRole("form", {name: "Chat composer"});
     const chooser = page.waitForEvent("filechooser");
-    await composer.getByRole("button", {name: "Attach a preview file"}).click();
+    await composer.getByRole("button", {name: "Attach an image or preview file"}).click();
     await (await chooser).setFiles({name: "picture.png", mimeType: "image/png", buffer: Buffer.from(image, "base64")});
     const question = entry(fixture, fixture.follow_ups, 0, "image question");
     await composer.getByRole("textbox").fill(question);

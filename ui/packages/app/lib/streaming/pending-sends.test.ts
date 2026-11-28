@@ -50,6 +50,16 @@ afterEach(() => {
 });
 
 describe("pending-sends ledger", () => {
+  it("persists the image refusal and attachment marker without any attachment bytes", () => {
+    const entry = {...send("image-op", "Describe the picture"), hasImages: true};
+    beginPendingSend(SCOPE, entry);
+    failPendingSend(SCOPE, "image-op", PENDING_SEND_STATE.REFUSED, "Model Text-only cannot receive images");
+    expect(getPendingSends(SCOPE)).toEqual([{
+      ...entry, state: PENDING_SEND_STATE.REFUSED, errorDetail: "Model Text-only cannot receive images",
+    }]);
+    expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "[]")).toEqual(getPendingSends(SCOPE));
+  });
+
   it("test_ledger_entry_lives_from_submit_to_ack", () => {
     beginPendingSend(SCOPE, send("op-1", "deploy"));
     expect(getPendingSends(SCOPE)).toEqual([

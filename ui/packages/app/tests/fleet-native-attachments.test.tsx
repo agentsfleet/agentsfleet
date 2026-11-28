@@ -2,6 +2,7 @@ import {mockStream, renderThread, postSteerMock} from "./fleet-thread/harness";
 import {act, fireEvent, screen, waitFor, within} from "@testing-library/react";
 import {afterEach, expect, it, vi} from "vitest";
 import {PREVIEW_FILE_COUNT} from "@/lib/api/upload-preview";
+import {TURN_ID} from "./helpers/fleet-fixtures";
 
 afterEach(() => vi.unstubAllGlobals());
 function uploadBoundary(reply: () => Promise<Response>) {
@@ -15,7 +16,7 @@ function uploadBoundary(reply: () => Promise<Response>) {
   return uploads;
 }
 async function choose(file: File) {
-  fireEvent.click(screen.getByRole("button", {name: "Attach a preview file"}));
+  fireEvent.click(screen.getByRole("button", {name: "Attach an image or preview file"}));
   const input = document.querySelector<HTMLInputElement>('input[type="file"]');
   if (!input) throw new Error("The native attachment picker must mount its file input");
   await act(async () => {fireEvent.change(input, {target: {files: [file]}});});
@@ -73,6 +74,26 @@ it("sends through native preparation and renders the returned receipt as a tempo
   expect(sources.getByText("notes.txt")).toBeTruthy();
   expect(screen.queryByRole("button", {name: "Remove attachment"})).toBeNull();
   expect(network).toHaveBeenCalledOnce(); expect(postSteerMock).not.toHaveBeenCalled();
+});
+
+it("sends the picture to the fleet and still shows the preview receipt for an attached document", async () => {
+  const network = uploadBoundary(async () => Response.json({preview: true, stored: false,
+    reply: "Upload preview accepted. The file was not read, stored, or analyzed."}));
+  postSteerMock.mockResolvedValue({ok: true, data: {
+    status: "accepted", turn_id: TURN_ID, replayed: false, disposition: "started", folded_into_turn_id: null,
+  }});
+  mockStream([]);
+  renderThread();
+  const picture = new File([new Uint8Array([137, 80, 78, 71])], "picture.png", {type: "image/png"});
+  await choose(picture);
+  expect(screen.getByRole<HTMLButtonElement>("button", {name: "Send"}).disabled).toBe(true);
+  expect(screen.getByText("Image")).toBeTruthy();
+  await choose(new File(["Notes"], "notes.txt"));
+  fireEvent.change(screen.getByRole("textbox"), {target: {value: "Describe the picture"}});
+  fireEvent.click(screen.getByRole("button", {name: "Send"}));
+  await waitFor(() => expect(postSteerMock.mock.calls[0]?.[5]).toEqual([{media_type: "image/png", data: "iVBORw=="}]));
+  expect(await screen.findByText(/Upload preview · Not saved to fleet history/)).toBeTruthy();
+  expect(network).toHaveBeenCalledOnce();
 });
 
 it("cancels a pending upload on unmount and exposes removal only in the native composer", async () => {

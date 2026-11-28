@@ -49,9 +49,10 @@ export function ChatComposerFrame({id, label, inputRef, disabled, children, tool
 
 export function ChatComposerInput({inputRef, placeholder, disabled, ...fieldProps}:
   Pick<Props, "inputRef" | "disabled"> & {placeholder: string} & ComponentProps<typeof Textarea>) {
+  // The chat frame leaves less room for a draft when the window is short.
   return (<ComposerPrimitive.Input asChild placeholder={placeholder} submitMode="enter" disabled={disabled}>
           <Textarea appearance="composer" {...fieldProps} ref={inputRef} aria-label={placeholder} rows={2}
-            className="field-sizing-content min-h-chat-input max-h-[min(12rem,30dvh)] flex-1 resize-none overflow-y-auto px-sm py-0" />
+            className="field-sizing-content min-h-chat-input max-h-[min(12rem,30dvh,30cqh)] flex-1 resize-none overflow-y-auto px-sm py-0" />
         </ComposerPrimitive.Input>);
 }
 
