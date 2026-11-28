@@ -13,7 +13,7 @@ test("the populated navigation lists fleet chats and keeps credits in the footer
   await expect(page.getByRole("link", {name: /tightening review/i})).toHaveCount(0);
   await expect(page.getByRole("button", {name: "Model proposal"})).toHaveCount(0);
   expect(await page.locator(".review-links button[data-view]").evaluateAll(buttons =>
-    buttons.slice(0, 3).map(button => button.textContent))).toEqual(["App loading", "New fleet", "Fleet handoff"]);
+    buttons.slice(0, 3).map(button => button.textContent))).toEqual(["App loading", "New fleet", "Conversation"]);
   const geometry = await nav.evaluate(rail => {
     const {right, bottom} = rail.getBoundingClientRect();
     const footer = rail.querySelector(".rail-bottom")!.getBoundingClientRect();
@@ -24,6 +24,33 @@ test("the populated navigation lists fleet chats and keeps credits in the footer
   expect(new Set(geometry.edges).size).toBe(1);
   expect(geometry.edges[0]).toBeLessThan(geometry.right);
   expect(geometry.footerBottom).toBeLessThan(geometry.bottom);
+});
+
+test("the Conversation tab covers every sample fleet chat", async ({page}) => {
+  await page.goto(review("empty"));
+  const tabs = page.locator(".review-links");
+  const conversation = tabs.getByRole("button", {name: "Conversation", exact: true});
+  await conversation.click();
+  await expect(page).toHaveURL(review("conversation"));
+  await expect(tabs.getByRole("button", {name: /^(Fleet handoff|Activity|Error|Wake-up|Web search)$/})).toHaveCount(0);
+
+  const nav = page.getByRole("navigation", {name: "Main navigation"});
+  const fleets = nav.getByRole("button", {name: "Your Fleets", exact: true});
+  for (const [view, fleet] of [
+    ["chief", "Chief of Staff"],
+    ["bob", "Bob"],
+    ["activity", "Launch review"],
+    ["failure", "Deploy monitor"],
+    ["scheduled", "Merge watch"],
+    ["curious-otter", "curious-otter"],
+    ["conversation", "Release watch"],
+  ] as const) {
+    if (await fleets.getAttribute("aria-expanded") === "false") await fleets.click();
+    await nav.getByRole("button", {name: fleet, exact: true}).click();
+    await expect(page).toHaveURL(review(view));
+    await expect(page.locator("#page-title")).toHaveText(fleet);
+    await expect(conversation).toHaveAttribute("aria-current", "page");
+  }
 });
 
 test("the public search conversation keeps the page read and the other search result in Sources", async ({page}) => {
