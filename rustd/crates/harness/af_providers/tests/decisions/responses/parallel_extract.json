@@ -83,5 +83,16 @@
     "The 429 belongs to the requested page. The vendor API answered HTTP 200 in all four cases.",
     "A repeat request for the successful page and the page-level 429 recorded the vendor response header names containing RateLimit or Rate-Limit and any Retry-After header. No account-level API throttle was induced.",
     "Text fields are replaced and excerpts reduced to one placeholder. Request and session identifiers are omitted."
-  ]
+  ],
+  "dynamic_fetch_observation": {
+    "observed_utc": "2026-11-28",
+    "requested_url": "https://httpbingo.org/uuid?example=m259-freshness",
+    "fixture_documentation": "https://httpbingo.org/",
+    "direct_samples": 3,
+    "extract_samples": 2,
+    "extract_request_start_gap_seconds": 20.7,
+    "direct_uuids_all_different": true,
+    "extracted_uuid_changed": false,
+    "notes": "The same URL was used for every request. Direct controls ran before, between, and after the two extracts. UUID values are omitted. This observation covers one fixture and interval."
+  }
 }

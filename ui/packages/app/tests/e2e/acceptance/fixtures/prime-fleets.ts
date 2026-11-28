@@ -18,6 +18,7 @@ const FIXTURE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 export const PRIME_FLEET = {
   morningRooster: "morning-rooster",
   carefulSquirrel: "careful-squirrel",
+  curiousOtter: "curious-otter",
   nightOwl: "night-owl",
   queenBee: "queen-bee",
   busyBee: "busy-bee",

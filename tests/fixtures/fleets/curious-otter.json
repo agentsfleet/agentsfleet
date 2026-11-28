@@ -1,0 +1,16 @@
+{
+  "name": "curious-otter",
+  "journey": "public-web",
+  "about": "Finds a primary source, reads it and cites the page that answers the person's question.",
+  "first_message": "You research public documentation. Acknowledge in one sentence and wait for a question before using any tools.",
+  "follow_ups": [
+    "Why can documentation use example.com? Call web_search once to find IANA's Example Domains documentation. Take the first search result and call web_fetch once with that exact URL. Use the page you read to answer in one sentence. Put its plain HTTPS URL alone on the final line as your only citation."
+  ],
+  "remembers": [],
+  "asks_for": [],
+  "wakes_on": [],
+  "steers": [],
+  "proves": [
+    "On a public fleet, the answer cites the first page it searched and read, the reloaded dashboard shows the sources, and the run reserves one search and one extract."
+  ]
+}
