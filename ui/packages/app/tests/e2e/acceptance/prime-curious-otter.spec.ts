@@ -16,7 +16,7 @@ const proof = proofs(fixture, 1);
 const ROOT = fileURLToPath(new URL("../../../../../../", import.meta.url));
 const JOURNEY_TIMEOUT_MS = 420_000;
 const RENDER_TIMEOUT_MS = 15_000;
-const ToolSources = z.array(z.object({url: z.url({protocol: /^https?$/})})).min(1);
+const ToolSources = z.array(z.object({url: z.url({protocol: /^https?$/}), title: z.string().nullish()})).min(1);
 const Reservation = z.object({run_id: z.uuidv7(), vendor: z.string(), operation: z.string(), call_count: z.number().int()});
 
 // Use the worktree's existing acceptance Compose service and its own database.
@@ -55,6 +55,17 @@ async function expectAnswerInChat(page: Page, question: string, firstPage: strin
   await expect(citation).toHaveAttribute("href", firstPage);
 }
 
+async function expectSources(page: Page, expected: ReadonlyMap<string, string>) {
+  const sources = page.getByRole("region", {name: "Sources", exact: true});
+  await expect(sources).toBeVisible({timeout: RENDER_TIMEOUT_MS});
+  await expect(sources.getByRole("link")).toHaveCount(expected.size, {timeout: RENDER_TIMEOUT_MS});
+  for (const [url, label] of expected) {
+    const link = sources.locator(`a[href=${JSON.stringify(url)}]`);
+    await expect(link).toBeVisible({timeout: RENDER_TIMEOUT_MS});
+    await expect(link).toHaveText(label);
+  }
+}
+
 test.describe(`prime fleet ${fixture.name}`, () => {
   test.setTimeout(JOURNEY_TIMEOUT_MS);
 
@@ -84,6 +95,11 @@ test.describe(`prime fleet ${fixture.name}`, () => {
       expect(fetch.arguments.url).toBe(top);
       expect(fetchSources[0]?.url).toBe(top);
       await expectAnswerInChat(page, question, top);
+      const expectedSources = new Map<string, string>();
+      for (const {url, title} of [...searchSources, ...fetchSources]) {
+        expectedSources.set(url, title?.trim() || expectedSources.get(url) || url);
+      }
+      await expectSources(page, expectedSources);
 
       const rows = reservations(workspace, fleet.id, turn.turn_id);
       expect(new Set(rows.map(row => row.run_id)).size).toBe(1);
@@ -93,13 +109,7 @@ test.describe(`prime fleet ${fixture.name}`, () => {
 
       await page.reload();
       await expectAnswerInChat(page, question, top);
-      const sources = page.getByRole("region", {name: "Sources", exact: true});
-      await expect(sources).toBeVisible({timeout: RENDER_TIMEOUT_MS});
-      const expectedLinks = new Set([...searchSources, ...fetchSources].map(source => source.url));
-      const links = sources.getByRole("link");
-      await expect(links).toHaveCount(expectedLinks.size, {timeout: RENDER_TIMEOUT_MS});
-      const urls = await links.evaluateAll(anchors => anchors.map(anchor => anchor.getAttribute("href")));
-      expect(new Set(urls)).toEqual(expectedLinks);
+      await expectSources(page, expectedSources);
     } finally {
       await purgeFixtureFleet(PRIME_PERSON, workspace, fleet.id);
     }

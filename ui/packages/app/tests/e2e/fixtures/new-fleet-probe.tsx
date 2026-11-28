@@ -14,7 +14,8 @@ import { FleetHeader } from "@/app/(dashboard)/w/[workspaceId]/fleets/[id]/compo
 import { FleetDetailSchema } from "@/lib/api/fleet-detail";
 import { buildRunSummary } from "@/lib/turns/run-summary";
 import { OWN_ACCOUNT } from "@/tests/helpers/workspace-fixtures";
-import { FLEET_DETAIL, MODEL, WORKSPACE } from "@/tests/helpers/fleet-fixtures";
+import { FLEET_DETAIL, FLEET_ID, MODEL, WORKSPACE } from "@/tests/helpers/fleet-fixtures";
+import { RESEARCH } from "./web-research-data";
 import { NEW_FLEET } from "./new-fleet-data";
 
 const NEW_PATH = `/w/${WORKSPACE}/fleets/new`;
@@ -28,8 +29,8 @@ const WORKSPACES = [{id: WORKSPACE, name: "Release workspace", created_at: "2026
  * probe server's: a create makes the scenario's fleet, and its thread read
  * answers that fleet's first message.
  */
-export function NewFleetFixture() {
-  const [path, setPath] = useState(NEW_PATH);
+export function NewFleetFixture({research = false}: {research?: boolean}) {
+  const [path, setPath] = useState(research ? `/w/${WORKSPACE}/fleets/${FLEET_ID}` : NEW_PATH);
   const router = useMemo(() => {
     const go = (href: string) => {history.replaceState(null, "", `${href}${location.search}`); setPath(href);};
     return {bfcacheId: "new-fleet", back() {}, forward() {}, refresh() {}, push: go, replace: go, async prefetch() {}};
@@ -37,14 +38,14 @@ export function NewFleetFixture() {
   const fleet = FLEET_PATH.exec(path)?.[1];
   return <AppRouterContext value={router}><PathnameContext value={path}><SearchParamsContext value={new URLSearchParams()}>
     <TooltipProvider><ShellFrame workspaces={WORKSPACES}>
-      {fleet && fleet !== "new" ? <FleetRoute key={fleet} fleetId={fleet} />
+      {fleet && fleet !== "new" ? <FleetRoute key={fleet} fleetId={fleet} research={research} />
         : <PageLayout fullHeight className="flex min-h-0 flex-1 flex-col"><NewFleetChat workspace={WORKSPACE} models={[{...MODEL, is_default: true}]} /></PageLayout>}
     </ShellFrame></TooltipProvider>
   </SearchParamsContext></PathnameContext></AppRouterContext>;
 }
 
 /** The fleet page: its thread read first, as the server renders it, then the live chat over it. */
-function FleetRoute({fleetId}: {fleetId: string}) {
+function FleetRoute({fleetId, research}: {fleetId: string; research: boolean}) {
   const [page, setPage] = useState<ThreadPage | null>(null);
   useEffect(() => {
     const owner = new AbortController();
@@ -53,7 +54,7 @@ function FleetRoute({fleetId}: {fleetId: string}) {
     return () => owner.abort();
   }, [fleetId]);
   if (!page) return <RouteLoading label="Loading fleet" />;
-  const fleet = FleetDetailSchema.parse({...FLEET_DETAIL, id: fleetId, name: NEW_FLEET.name, pending_approvals: 0});
+  const fleet = FleetDetailSchema.parse({...FLEET_DETAIL, id: fleetId, name: research ? RESEARCH.name : NEW_FLEET.name, ...(research ? {http_egress: "public"} : {}), pending_approvals: 0});
   return <div data-fleet-workspace className="flex h-full min-h-0 flex-1 flex-col overflow-clip">
     <FleetWorkspace account={OWN_ACCOUNT.account.tenant_id} workspace={WORKSPACE} fleet={fleet} models={[MODEL]} viewer={VIEWER}>
       <FleetHeader workspaceId={WORKSPACE} fleet={fleet} canGrant />

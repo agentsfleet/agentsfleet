@@ -5,10 +5,11 @@ import { promisify } from "node:util";
 import { test as base } from "@playwright/test";
 import { applicationCss } from "./fleet-output-browser-assets";
 import { summary, detail } from "@/tests/helpers/task-reads";
-import { FLEET_DETAIL, WORKSPACE } from "@/tests/helpers/fleet-fixtures";
+import { FLEET_DETAIL, FLEET_ID, WORKSPACE } from "@/tests/helpers/fleet-fixtures";
 import { SCHEDULE_TURN } from "@/tests/helpers/schedule-activity";
 import { visualDurableTaskDetail, visualDurableTaskPage } from "./refresh-visual-data";
 import { visualWakeup } from "./refresh-wakeup-data";
+import { RESEARCH, researchTurn } from "./web-research-data";
 import { NEW_FLEET, newFleetTurn } from "./new-fleet-data";
 
 const LIVE = `/live/v1/workspaces/${WORKSPACE}`;
@@ -40,6 +41,8 @@ export const test = base.extend<object, {chatProbe: string}>({
           created.set(NEW_FLEET.id, {name: NEW_FLEET.name, message});
           json({fleet: {...FLEET_DETAIL, id: NEW_FLEET.id, name: NEW_FLEET.name}, accepted: {turn_id: NEW_FLEET.turnId, disposition: "started"}, replayed}, replayed ? 200 : 201);
         });
+      } else if (url.pathname === FLEET_LIST && request.method === "GET" && source.searchParams.has("research")) {
+        json({items: [{...FLEET_DETAIL, id: FLEET_ID, name: RESEARCH.name, status: "active"}], total: null, next_cursor: null});
       } else if (url.pathname === FLEET_LIST && request.method === "GET" && source.searchParams.has("newFleet")) {
         json({items: [...created].map(([id, fleet]) => ({...FLEET_DETAIL, id, name: fleet.name})), total: null, next_cursor: null});
       } else if (url.pathname === FLEET_LIST && request.method === "GET" && source.searchParams.has("visual")) {
@@ -54,6 +57,8 @@ export const test = base.extend<object, {chatProbe: string}>({
       } else if (child?.[2] === "turns/stream") {
         response.writeHead(200, {"content-type": "text/event-stream", "cache-control": "no-cache"});
         response.write(HEARTBEAT);
+      } else if (child?.[2] === "messages" && source.searchParams.has("research")) {
+        json({items: [researchTurn(SCHEDULE_TURN, source.searchParams.has("plain"))], total: null, next_cursor: null});
       } else if (child?.[2] === "messages") {
         // The new fleet's thread: its first message, answered.
         const made = created.get(child[1] ?? "");
@@ -74,7 +79,7 @@ export const test = base.extend<object, {chatProbe: string}>({
           json(request.url.includes("?limit=") ? visualDurableTaskPage(scenario, started) : visualDurableTaskDetail(scenario, started));
           return;
         }
-        if (source.searchParams.has("newFleet")) {json({items: [], next_cursor: null}); return;}
+        if (source.searchParams.has("newFleet") || source.searchParams.has("research")) {json({items: [], next_cursor: null}); return;}
         const task = {...summary(undefined, "running"), title: "Validate the Linkwarden repair"};
         if (!url.searchParams.has("limit")) response.setHeader("etag", `"${"a".repeat(64)}"`);
         json(request.url.includes("?limit=") ? {items: [task], next_cursor: null} : detail(task));
