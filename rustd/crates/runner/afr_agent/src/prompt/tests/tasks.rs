@@ -5,7 +5,7 @@ use af_wire::durable_task::{DurableTaskInputCandidate, DurableTaskState};
 use af_wire::run::RunPayload;
 use afr_tools::catalog::{TASK_INPUT, TASK_START};
 
-use super::{after_fixed, prompt};
+use super::prompt;
 use crate::fixture::{decision_assignment, payload, unbounded};
 
 /// The fixture run, its policy naming the task tools, judged by a decision
@@ -31,11 +31,13 @@ fn a_run_offered_the_task_tools_is_told_the_message_and_the_unfinished_tasks() {
     let prompt = prompt(&run);
 
     assert_eq!(
-        after_fixed(&prompt),
-        "## Durable tasks\nThe person's newest message is turn event-1: task_start and \
-         task_input name it as source_turn_id, with source_start and source_end as UTF-8 byte \
-         offsets into it; 0 and 21 take all of it.\nUnfinished tasks:\n\
+        prompt.task_context.as_deref(),
+        Some(
+            "## Durable tasks\nThe current message is turn event-1. Use it as source_turn_id, \
+         with source_start and source_end as UTF-8 byte \
+         offsets into it. Offsets 0 and 21 take the whole message.\nUnfinished tasks:\n\
          - 0190d5c2-7e1a-7000-8000-00000000b0b2: Fix the null-cart error (waiting, generation 3)"
+        )
     );
 }
 
@@ -45,7 +47,10 @@ fn a_fleet_with_no_unfinished_task_is_told_so() {
     let prompt = prompt(&tasking(true));
 
     assert!(
-        after_fixed(&prompt).ends_with("\nThe fleet has no unfinished task."),
+        prompt
+            .task_context
+            .as_deref()
+            .is_some_and(|context| context.ends_with("\nThe fleet has no unfinished task.")),
         "{}",
         prompt.instructions
     );
@@ -57,5 +62,6 @@ fn a_fleet_with_no_unfinished_task_is_told_so() {
 fn a_run_without_a_decision_profile_is_told_nothing_about_tasks() {
     let prompt = prompt(&tasking(false));
 
+    assert!(prompt.task_context.is_none());
     assert_eq!(prompt.instructions, prompt.fixed);
 }

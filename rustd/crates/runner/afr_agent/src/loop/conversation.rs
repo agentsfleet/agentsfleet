@@ -128,7 +128,38 @@ impl guffbolt::Conversation for Harness<'_, '_> {
     }
 
     fn offered(&self) -> Vec<ToolSpec<'_>> {
-        self.router.specs()
+        let mut specs = self.router.specs();
+        if let Some(held) = &self.child_tools {
+            specs.retain(|spec| held.iter().any(|name| name == spec.name));
+        }
+        specs
+    }
+
+    fn instructions<'a>(&'a self, request: &Request<'a>) -> std::borrow::Cow<'a, str> {
+        let mut instructions = std::borrow::Cow::Borrowed(request.instructions);
+        let mut lines = request
+            .tools
+            .iter()
+            .filter_map(|spec| self.router.guidance_for(spec.name))
+            .peekable();
+        if lines.peek().is_some() {
+            let text = instructions.to_mut();
+            text.push_str("\n\n## Tool guidance");
+            for line in lines {
+                text.push('\n');
+                text.push_str(line);
+            }
+        }
+        if request
+            .tools
+            .iter()
+            .any(|spec| afr_tools::catalog::is_task_tool(spec.name))
+            && let Some(context) = self.shared.task_context.as_deref()
+        {
+            instructions.to_mut().push_str("\n\n");
+            instructions.to_mut().push_str(context);
+        }
+        instructions
     }
 
     /// What the window's estimate measured is what is sent.

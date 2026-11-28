@@ -98,7 +98,7 @@ mod window;
 
 pub use self::chat::{Chat, ChatFailure};
 pub use self::conversation::Conversation;
-pub use self::drive::{ANSWER_JOIN, DriveState, Input, Mark, drive};
+pub use self::drive::{ANSWER_JOIN, DriveState, HARNESS_TAG, Input, Mark, drive};
 pub use self::extension::{Answer, Budget, Extension, Plain};
 pub use self::observe::{CallEnd, CallOutcome, Observe, StepEnd, StepOutcome, Unobserved};
 pub use self::step::{Ending, Listen, Step, Waiting};

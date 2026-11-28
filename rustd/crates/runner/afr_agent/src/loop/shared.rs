@@ -113,6 +113,8 @@ pub(crate) struct Shared<'run> {
     pub(crate) registry: Agents,
     /// The system prompt every loop of the run opens with.
     pub(crate) instructions: String,
+    /// Source information rendered only for loops that can steer a task.
+    pub(crate) task_context: Option<String>,
     /// The fixed text the system prompt opens with: all a compaction's
     /// pinned digest covers, so pinned memory or access changing between
     /// runs keeps the thread's saved summary readable.
@@ -191,6 +193,7 @@ impl<'run> Shared<'run> {
             meter: run.meter,
             registry,
             instructions: prompt.instructions,
+            task_context: prompt.task_context,
             fixed: prompt.fixed,
             started,
         }

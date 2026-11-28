@@ -17,13 +17,21 @@ use crate::extension::{Answer, Budget, Extension};
 use crate::observe::{Observe as _, StepEnd, StepOutcome};
 use crate::step::{Ending, Step, Waiting};
 use crate::window::{Fitted, Window};
-use guffbolt_ai::Message;
 use guffbolt_ai::Model as _;
+use guffbolt_ai::{Message, Request};
 
 use self::mark::take_input;
 
 /// What joins two answering steps' text in one [`Ending::Answered`].
 pub const ANSWER_JOIN: &str = "\n\n";
+
+/// Source line on a continuation or the first task delivered to a child.
+pub const HARNESS_TAG: &str = "[Source: harness]";
+
+/// The harness supplies these messages in the user role.
+pub(crate) fn harness_text(body: &str) -> String {
+    format!("{HARNESS_TAG}\n{body}")
+}
 
 /// Input reached the conversation before a model call.
 const EVENT_INPUT_TAKEN: &str = "loop_input_taken";
@@ -208,7 +216,11 @@ async fn sample<C: Conversation + ?Sized>(
     let started = Instant::now();
     let offered = conversation.offered();
     let request = conversation.request(&window, &offered);
-    let stream = conversation.model().stream(request);
+    let instructions = conversation.instructions(&request);
+    let stream = conversation.model().stream(Request {
+        instructions: &instructions,
+        ..request
+    });
     let reading = Step::read(stream, observer).instrument(span.clone());
     let read = tokio::select! {
         biased;
@@ -287,7 +299,9 @@ where
         Answer::Continue(why) => {
             remember(conversation, step, Vec::new());
             state.completed();
-            conversation.transcript().push(Message::User(why));
+            conversation
+                .transcript()
+                .push(Message::User(harness_text(&why)));
             return Next::Again;
         }
     }

@@ -160,8 +160,9 @@ fn guffbolt_tool_specs_name_no_host_product() {
         .flat_map(|tool| {
             let spec = tool.spec();
             model_text(spec)
-                .iter()
-                .flat_map(|text| host_words(text))
+                .into_iter()
+                .chain(std::iter::once(tool.guidance().to_owned()))
+                .flat_map(|text| host_words(&text))
                 .map(|word| format!("{}: {word}", spec.name))
                 .collect::<Vec<_>>()
         })

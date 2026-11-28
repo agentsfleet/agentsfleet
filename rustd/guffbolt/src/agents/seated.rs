@@ -83,6 +83,10 @@ impl<C: Conversation> Conversation for Seated<'_, C> {
         self.inner.request(window, tools)
     }
 
+    fn instructions<'a>(&'a self, request: &Request<'a>) -> std::borrow::Cow<'a, str> {
+        self.inner.instructions(request)
+    }
+
     /// Runs `call` through the embedder when the child holds its tool; a
     /// call to any other reads the harness's refusal, as a call to a tool
     /// nobody holds does. The step it sits at is noted first, so a later

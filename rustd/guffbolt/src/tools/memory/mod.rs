@@ -171,6 +171,8 @@ backed! {
 impl Handler for MemoryStoreTool<'_> {
     const NAME: &'static str = "memory_store";
     const DESCRIPTION: &'static str = "Remember a fact for later runs under a stable key.";
+    const GUIDANCE: &'static str = "Use memory_store with category core for standing guidance only \
+        when the person's newest message asks you to remember it. Store other facts under another category.";
     type Arguments = Store;
 
     async fn run(&self, arguments: Store, _context: Context<'_>) -> ToolOutput {

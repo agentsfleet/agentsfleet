@@ -480,6 +480,8 @@ Each event takes `&self`, and `guffbolt` waits on none of them. `call_started` r
 
 A tool implements two traits. `Describe` gives the model its name, description and parameters' JSON Schema. `Tool<Cx>` runs one call with the context `Cx` your loop lends it.
 
+A tool can also contribute instructions through `Describe::guidance`, or `Handler::GUIDANCE` for a typed handler. `Chat` appends these instructions in the order it offers the tools. An embedder that builds its own prompt can implement `Conversation::instructions` and look up each requested tool with `Tools::guidance_for`. A child request carries its narrowed list.
+
 `Tools` holds one loop's tools, offers them in order and dispatches a call by name. `Tools::hold` keeps a tool callable without offering it.
 
 A tool answers a `ToolOutput`: the text the model reads, an exit code, an `ErrorCode`, an `Image` and a question for the person. A failed call is a result too, as [When a tool fails](#when-a-tool-fails) shows.
@@ -983,6 +985,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             text: "pub struct Chat<".to_owned(),
             literal: true,
             ignore_case: false,
+            context: 0,
+            line_chars: None,
         }),
         limit: 10,
     };

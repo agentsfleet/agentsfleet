@@ -168,9 +168,10 @@ async fn test_every_request_keys_the_cache_by_the_fleet() {
     drive(&engine, &run, &CancellationToken::new()).await;
 
     let sent = script.sent();
-    let child = sent.iter().filter(|request| {
-        matches!(request.messages.first(), Some(Message::User(text)) if text.starts_with(DELEGATED))
-    });
+    let kickoff = format!("{}\n{DELEGATED}", guffbolt::HARNESS_TAG);
+    let child = sent.iter().filter(
+        |request| matches!(request.messages.first(), Some(Message::User(text)) if text == &kickoff),
+    );
     assert_eq!(
         (sent.len(), child.count()),
         (4, 1),

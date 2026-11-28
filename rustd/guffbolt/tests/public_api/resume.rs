@@ -112,7 +112,7 @@ async fn saved_mid_run() -> DriveState {
             .map(|child| (child.status.clone(), child.transcript.clone())),
         Some((
             Status::Done("one".to_owned()),
-            vec![user("count"), said("one")]
+            vec![user("[Source: harness]\ncount"), said("one")]
         )),
         "the saved state carries the child's status and transcript"
     );
@@ -169,7 +169,11 @@ async fn a_state_saved_mid_run_resumes_with_its_children_restored() {
             .sent_by(&agent(1))
             .first()
             .map(|sent| sent.messages.clone()),
-        Some(vec![user("count"), said("one"), user("again")]),
+        Some(vec![
+            user("[Source: harness]\ncount"),
+            said("one"),
+            user("again")
+        ]),
         "the restored child goes on from its saved transcript"
     );
     assert_eq!(

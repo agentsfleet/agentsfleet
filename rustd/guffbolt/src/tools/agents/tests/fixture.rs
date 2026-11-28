@@ -12,7 +12,7 @@ use futures_util::stream::{self, BoxStream};
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
-use crate::agents::{Agents, Raise, Seat, TOOLS};
+use crate::agents::{Agents, Raise, SPAWN_AGENT, Seat, TOOLS};
 use crate::conversation::Conversation;
 use crate::drive::{DriveState, Input};
 use crate::extension::Extension;
@@ -64,6 +64,7 @@ impl fmt::Display for Exhausted {
 #[derive(Debug, Clone)]
 pub(super) struct Sent {
     pub(super) key: String,
+    pub(super) instructions: String,
     pub(super) messages: Vec<Message>,
     pub(super) tools: Vec<String>,
 }
@@ -121,6 +122,7 @@ impl Model for Puppet {
             let mut sent = lock(&self.sent);
             sent.push(Sent {
                 key: key.clone(),
+                instructions: request.instructions.to_owned(),
                 messages: request.messages.to_vec(),
                 tools: request
                     .tools
@@ -237,6 +239,14 @@ impl Conversation for Chat<'_, '_> {
             cache_key: &self.key,
             max_output_tokens: window.max_output_tokens,
             single_attempt: false,
+        }
+    }
+
+    fn instructions<'a>(&'a self, request: &Request<'a>) -> std::borrow::Cow<'a, str> {
+        if request.tools.iter().any(|spec| spec.name == SPAWN_AGENT) {
+            "You can delegate this turn.".into()
+        } else {
+            "Handle this turn yourself.".into()
         }
     }
 

@@ -70,7 +70,16 @@ async fn a_child_holds_only_the_tools_named_and_none_of_the_seven_at_the_depth_c
         results(&transcript).first().map(String::as_str),
         Some("[child_tool_not_held] teleport is not one of this run's tools")
     );
+    let root = family.puppet.sent_by(ROOT);
+    assert_eq!(
+        root.first().map(|sent| sent.instructions.as_str()),
+        Some("You can delegate this turn.")
+    );
     let child = family.puppet.sent_by(&agent(1));
+    assert_eq!(
+        child.first().map(|sent| sent.instructions.as_str()),
+        Some("Handle this turn yourself.")
+    );
     assert_eq!(
         child.first().map(|sent| sent.tools.clone()),
         Some(Vec::new()),

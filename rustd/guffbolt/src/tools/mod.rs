@@ -133,6 +133,8 @@ pub trait Handler: Send + Sync + fmt::Debug {
     const NAME: &'static str;
     /// What the tool does, as the model reads it.
     const DESCRIPTION: &'static str;
+    /// Guidance for a model request that offers this tool.
+    const GUIDANCE: &'static str = "";
     /// What one call carries.
     type Arguments: DeserializeOwned + JsonSchema + Send;
 
@@ -176,6 +178,10 @@ impl<H: Handler> Typed<H> {
 impl<H: Handler> Describe for Typed<H> {
     fn spec(&self) -> ToolSpec<'_> {
         self.schema.spec(H::NAME)
+    }
+
+    fn guidance(&self) -> &str {
+        H::GUIDANCE
     }
 }
 

@@ -41,7 +41,11 @@ async fn followup_task_runs_an_idle_child_again_over_its_transcript() {
     let turns = family.script.sent_by(&agent(1));
     assert_eq!(
         turns.get(1).map(|sent| sent.messages.clone()),
-        Some(vec![user("count to one"), said("one"), user("now to two")]),
+        Some(vec![
+            user("[Source: harness]\ncount to one"),
+            said("one"),
+            user("now to two")
+        ]),
         "its second turn holds its first"
     );
     assert_eq!(

@@ -26,6 +26,11 @@ pub trait Describe: Send + Sync + fmt::Debug {
     /// The tool, as the model is offered it.
     fn spec(&self) -> ToolSpec<'_>;
 
+    /// Instructions this tool contributes while it is offered to the model.
+    fn guidance(&self) -> &str {
+        ""
+    }
+
     /// The name the model calls it by.
     fn name(&self) -> &str {
         self.spec().name
@@ -50,6 +55,10 @@ pub trait Tool<Cx>: Describe {
 impl<T: Describe + ?Sized> Describe for Box<T> {
     fn spec(&self) -> ToolSpec<'_> {
         (**self).spec()
+    }
+
+    fn guidance(&self) -> &str {
+        (**self).guidance()
     }
 
     fn name(&self) -> &str {
@@ -107,6 +116,15 @@ impl<T: Describe + ?Sized> Tools<T> {
     /// The specs offered, in order.
     pub fn specs(&self) -> impl Iterator<Item = ToolSpec<'_>> {
         self.offered.iter().map(|tool| tool.spec())
+    }
+
+    /// The named tool's nonempty guidance, for a request that offers it.
+    /// This also finds a deferred tool once it appears in the request.
+    #[must_use]
+    pub fn guidance_for(&self, name: &str) -> Option<&str> {
+        self.find(name)
+            .map(Describe::guidance)
+            .filter(|text| !text.is_empty())
     }
 
     /// The specs held unoffered, in the order they were held: what a

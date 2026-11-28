@@ -51,6 +51,11 @@ impl<'s, 'run> Router<'s, 'run> {
         self.tools.hold(tool);
     }
 
+    /// The prompt line contributed by a tool the model was offered.
+    pub(crate) fn guidance_for(&self, name: &str) -> Option<&str> {
+        self.tools.guidance_for(name)
+    }
+
     /// The functions the model is offered, in order.
     pub(crate) fn specs(&self) -> Vec<ToolSpec<'_>> {
         self.tools.specs().collect()
@@ -114,6 +119,10 @@ impl<'s> Routed<'s> {
 }
 
 impl Describe for Routed<'_> {
+    fn guidance(&self) -> &str {
+        self.handler.guidance()
+    }
+
     fn spec(&self) -> ToolSpec<'_> {
         self.handler.spec()
     }
