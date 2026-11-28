@@ -1,4 +1,5 @@
 import {expect, test} from "@playwright/test";
+import keenHawk from "../../../../../tests/fixtures/fleets/keen-hawk.json";
 
 const review = (view: string) => new URL(`../../../../../docs/ux.html#${view}`, import.meta.url).href;
 
@@ -105,6 +106,25 @@ test("the reference opens a fleet chat from its first message", async ({page}) =
   await expect(page.getByRole("region", {name: "Remembers"})).toContainText("Nothing pinned yet");
   await expect(page.getByRole("switch", {name: "Allow all"})).not.toBeChecked();
   await expect(page.getByRole("switch", {name: "Packages"})).not.toBeChecked();
+});
+
+test("the reference keeps an attached image beside the first message", async ({page}) => {
+  await page.emulateMedia({reducedMotion: "reduce"});
+  await page.goto(review("empty"));
+  await expect(page.locator("#file-input")).toHaveAttribute("accept", "image/png,image/jpeg,image/gif,image/webp");
+  const [chooser] = await Promise.all([
+    page.waitForEvent("filechooser"),
+    page.getByRole("button", {name: "Attach an image", exact: true}).click(),
+  ]);
+  await chooser.setFiles({name: "picture.png", mimeType: "image/png", buffer: Buffer.from(keenHawk.image_png, "base64")});
+  await expect(page.getByRole("button", {name: "Remove picture.png"})).toBeVisible();
+  await page.locator("#message").fill("Describe the attached picture.");
+  await page.getByRole("button", {name: "Send message", exact: true}).click();
+  await expect(page).toHaveURL(/#fleet-1$/);
+  const chat = page.getByRole("region", {name: "Fleet conversation"});
+  await expect(chat.getByText("picture.png", {exact: true})).toBeVisible();
+  await expect(chat.getByText("Describe the attached picture.", {exact: true})).toBeVisible();
+  await expect(page.getByRole("button", {name: "Attach an image or preview file"})).toBeVisible();
 });
 
 test("the reference keeps a refused first message and its model for Resend", async ({page}) => {

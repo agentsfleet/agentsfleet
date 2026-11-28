@@ -18,7 +18,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Status:** IN_PROGRESS
 
-**Progress:** 30 of 43 dimensions complete. Live extraction (1.7) and redirect approval and denial (9.3–9.4) passed. The latest hosted dashboard search succeeded but the model skipped the requested read, so 9.1 needs another live pass. Dimensions 5.3, 6.1, 7.1–7.5, 8.1–8.4 and 9.2 depend on merged M258 and the Firecracker browser work. [Product PR](https://github.com/agentsfleet/agentsfleet/pull/874) · [Dashboard acceptance](https://github.com/agentsfleet/agentsfleet/actions/runs/46127438227/job/140925056953)
+**Progress:** 31 of 43 dimensions complete. Live extraction (1.7), dashboard search and page read (9.1), and redirect approval and denial (9.3–9.4) passed. Dimensions 5.3, 6.1, 7.1–7.5, 8.1–8.4 and 9.2 depend on merged M258 and the Firecracker browser work. [Product PR](https://github.com/agentsfleet/agentsfleet/pull/874) · [Dashboard acceptance](https://github.com/agentsfleet/agentsfleet/actions/runs/46129180070/artifacts/15257104912)
 
 **Priority:** P1, 13 of the 21 catalogue models offer no search, and every browser call is refused
 
@@ -330,7 +330,7 @@ Use CDP request interception before navigation on each target. Apply shared egre
 
 ### §9 — The real path, end to end
 
-- **Dimension 9.1** — Live recheck pending. `prime-curious-otter.spec.ts` verifies that a public fleet searches, reads the requested result and cites it across reload. The run reserves one `search` and one `extract`. It passed on `009798a20`. On `3590ddf49` the model answered after searching and skipped the requested page read. The tool guidance now tells the model to read the result when the person asks it to open the page. [Latest hosted run](https://github.com/agentsfleet/agentsfleet/actions/runs/46127438227/artifacts/15256736724)
+- **Dimension 9.1** — DONE. `prime-curious-otter.spec.ts` passed on `96ce588de` in 23.552 seconds. The public fleet searched, read the requested result and cited it, and its citations and Sources survived a dashboard reload. The answering run reserved one `search` and one `extract`. On the preceding `3590ddf49` run, the model answered after searching and skipped the requested page read. The updated tool guidance asks the model to read a result when the person asks it to open the page. [Latest hosted evidence](https://github.com/agentsfleet/agentsfleet/actions/runs/46129180070/artifacts/15257104912)
 - **Dimension 9.2** — open, act, look → Test `prime-nosy-magpie.spec.ts` (e2e, `make acceptance`, fixture `nosy-magpie`, a Messages-wire model): the fleet opens the lane's test page `[?]`. It clicks a link by its reference and reports the new title, and its screenshot reaches the model.
 - **Dimension 9.3** — DONE. `approving_a_redirected_host_finishes_the_original_read` (af_e2e): a scripted model follows the retry instruction: zero contacts before Approve, one after the resumed fetch, and the final answer contains the page sentinel. A second script declines to retry: the continuation arrives, the destination sees zero requests, and the UI never reports a successful read.
 - **Dimension 9.4** — DONE. `denying_a_redirected_host_contacts_neither_it_nor_a_vendor` (af_e2e): zero destination DNS lookups, connections, vendor requests and reservations. The grant is revoked and the resumed agent explains the denial.
