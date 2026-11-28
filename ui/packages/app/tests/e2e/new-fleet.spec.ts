@@ -1,5 +1,6 @@
 import { expect } from "@playwright/test";
 import { test } from "./fixtures/chat-probe";
+import keenHawk from "../../../../../tests/fixtures/fleets/keen-hawk.json";
 import { NEW_FLEET } from "./fixtures/new-fleet-data";
 import { FLEET_DETAIL, FLEET_ID, MODEL, WORKSPACE } from "@/tests/helpers/fleet-fixtures";
 
@@ -48,6 +49,25 @@ test("a first message opens the fleet's chat", async ({page, chatProbe, isMobile
   expect(creates).toHaveLength(1);
   expect(forbidden).toEqual([]);
   expect(errors).toEqual([]);
+});
+
+test("a picture can accompany the first message of a new fleet", async ({page, chatProbe}) => {
+  const bytes = Buffer.from(keenHawk.image_png, "base64");
+  await page.goto(`${chatProbe}?newFleet=1`);
+  const form = page.getByRole("form", {name: "New fleet composer"});
+  const chooser = page.waitForEvent("filechooser");
+  await form.getByRole("button", {name: "Attach an image", exact: true}).click();
+  await (await chooser).setFiles({name: "picture.png", mimeType: "image/png", buffer: bytes});
+  await form.getByRole("textbox").fill(MESSAGE);
+  const [response] = await Promise.all([
+    page.waitForResponse(reply => reply.request().method() === "POST" && new URL(reply.url()).pathname === CREATE_PATH),
+    form.getByRole("button", {name: "Send", exact: true}).click(),
+  ]);
+  expect(response.status()).toBe(201);
+  expect(response.request().postDataJSON()).toMatchObject({
+    message: MESSAGE, images: [{media_type: "image/png", data: bytes.toString("base64")}],
+  });
+  await expect(page.getByRole("log", {name: "Chat"}).getByText(MESSAGE, {exact: true})).toBeVisible();
 });
 
 test("a rename refreshes the fleet label and sidebar, and saved memories preserve an unsent message", async ({page, chatProbe, isMobile}) => {

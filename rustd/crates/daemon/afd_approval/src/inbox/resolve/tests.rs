@@ -55,6 +55,8 @@ fn an_access_answer_names_what_the_person_decided() -> Result<(), Box<dyn std::e
         turn_id: Some(turn.clone()),
         gate_type: KIND_INTEGRATION_GRANT.to_owned(),
         continuation_turn_id: None,
+        approved_host: None,
+        refused_tool: None,
     };
     for (continues, message) in [
         (Continues::Access { approved: true }, "approved"),
@@ -66,6 +68,32 @@ fn an_access_answer_names_what_the_person_decided() -> Result<(), Box<dyn std::e
             asked_turn_id: Cow::Borrowed(turn.as_str()),
         });
         assert_eq!(continues.body(&resolved, &turn), expected);
+    }
+    let host = super::Resolved {
+        approved_host: Some("support.vendor.example".into()),
+        refused_tool: Some("web_fetch".into()),
+        ..resolved
+    };
+    for (approved, expected) in [
+        (
+            true,
+            "Access to support.vendor.example approved. Retry web_fetch under the current network policy.",
+        ),
+        (
+            false,
+            "Access to support.vendor.example denied. Explain why web_fetch could not proceed.",
+        ),
+    ] {
+        let body = Continues::Access { approved }.body(&host, &turn);
+        assert_eq!(
+            body.get("asked_turn_id")
+                .and_then(serde_json::Value::as_str),
+            Some(turn.as_str())
+        );
+        assert_eq!(
+            body.get("message").and_then(serde_json::Value::as_str),
+            Some(expected)
+        );
     }
     Ok(())
 }

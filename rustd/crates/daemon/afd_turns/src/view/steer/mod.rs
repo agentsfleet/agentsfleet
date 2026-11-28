@@ -179,9 +179,27 @@ impl Steer {
         request_json: &str,
         operation_id: Option<&str>,
     ) -> Result<Steered> {
+        self.append_with_model(fleet, workspace, actor, request_json, operation_id, None)
+            .await
+    }
+
+    /// Appends a message, checking a new image turn's model before commit.
+    ///
+    /// # Errors
+    /// A failed admission, unsupported image input or a failed model lookup.
+    pub async fn append_with_model(
+        &self,
+        fleet: &Uuid7,
+        workspace: &Uuid7,
+        actor: &str,
+        request_json: &str,
+        operation_id: Option<&str>,
+        model: Option<&dyn crate::ImageModelLookup>,
+    ) -> Result<Steered> {
         let key = operation_id.map(|operation| scoped_key(fleet.as_str(), operation));
         let turn = steer_turn(fleet, workspace, actor, request_json, key.as_deref());
-        let admitted = match self.turns.admit_runnable(turn).await {
+        let active = Some(afd_fleet_lifecycle::FleetStatus::Active);
+        let admitted = match self.turns.admit_under(turn, active, model).await {
             Ok(admitted) => admitted,
             Err(refused) if refused.is_over_capacity() => {
                 // The insert never ran, so no live-run facts came back.

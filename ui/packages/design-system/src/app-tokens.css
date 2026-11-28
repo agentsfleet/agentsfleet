@@ -51,6 +51,7 @@
   --text-subtle: #a3abb7;
   --text-dim: #a3abb7;
   --activity-agent: #c4b4e7;
+  --activity-caption: #858b95;
   --chat-loading-base: var(--text-dim);
   --chat-loading-sweep: var(--text);
   --pulse: #c1f0d6;
@@ -101,6 +102,7 @@
   --text-subtle: #5e6876;
   --text-dim: #5e6876;
   --activity-agent: #6a4e8b;
+  --activity-caption: #66707b;
   --chat-loading-base: var(--text-dim);
   --chat-loading-sweep: var(--text);
   --pulse: #24593d;

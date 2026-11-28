@@ -24,7 +24,7 @@ import { fleetModelUseEffect, fleetNetworkUseEffect, NETWORK_MODES } from "../..
 import { approvalsCommand, grantsCommand } from "./access.command.ts";
 import { scheduleCommand } from "./schedule.command.ts";
 import { memoryCommand } from "./memory.command.ts";
-import { actorFlag, cursorFlag, fleetFlag, fleetIdArgument, fleetIdOptionalArgument, fleetIdOrNameArgument, fleetModelFlag, fleetNameFlag, listLimitFlag, messageArgument, modelRefArgument, opt, optNum, sinceFlag, startingAfterFlag, triggerIdArgument, VERB, workspaceFlag } from "./flags.ts";
+import { actorFlag, cursorFlag, fleetFlag, fleetIdArgument, fleetIdOptionalArgument, fleetIdOrNameArgument, fleetImageFlag, fleetModelFlag, fleetNameFlag, listLimitFlag, messageArgument, modelRefArgument, opt, optNum, sinceFlag, startingAfterFlag, triggerIdArgument, VERB, workspaceFlag } from "./flags.ts";
 
 // The verb that picks a setting, as `models use` picks the tenant's provider.
 const USE = "use" as const;
@@ -33,10 +33,11 @@ const createCommand = Command.make(VERB.create, {
   message: messageArgument,
   name: fleetNameFlag,
   model: fleetModelFlag,
+  image: fleetImageFlag,
 }).pipe(
   Command.withDescription("Start a fleet by sending its first message"),
-  guardedHandler(({ message, name, model }) =>
-    fleetCreateEffect(opt(message), { name: opt(name), model: opt(model) }),
+  guardedHandler(({ message, name, model, image }) =>
+    fleetCreateEffect(opt(message), { name: opt(name), model: opt(model), image: opt(image) }),
   ),
 );
 
@@ -116,6 +117,7 @@ const steerCommand = Command.make("steer", {
   // An id or `@name`; the handler looks a name up before the stream opens.
   fleetId: fleetIdOrNameArgument,
   message: messageArgument,
+  image: fleetImageFlag,
   // Hidden, because it exists for the tests and for a terminal the runtime
   // misreports — not for anyone to type on purpose.
   [OPT_TTY]: Flag.Boolean(OPT_TTY).pipe(
@@ -128,6 +130,7 @@ const steerCommand = Command.make("steer", {
   guardedHandler((config) =>
     steerEffectFromArgs(config.fleetId, opt(config.message), {
       forceTty: config[OPT_TTY],
+      image: opt(config.image),
     }),
   ),
 );

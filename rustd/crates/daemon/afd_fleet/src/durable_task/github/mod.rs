@@ -32,8 +32,13 @@ impl Github {
         scope: &super::DurableTaskScope,
         installation: u64,
     ) -> Result<()> {
-        if !afd_gate::policy::approved::hold_approved_on(connection, &scope.fleet_id, "github")
-            .await?
+        if !afd_gate::policy::approved::hold_approved_on(
+            connection,
+            &scope.fleet_id,
+            "github",
+            afd_api_wire::grant::grant_type::INTEGRATION,
+        )
+        .await?
             || !crate::run::Runs::hold_install_on(
                 connection,
                 &scope.workspace_id,

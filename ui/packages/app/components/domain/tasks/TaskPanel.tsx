@@ -61,7 +61,7 @@ function CurrentWork() {
     <WorkChanges turns={turns} repositories={view.changeRepositories} />
     <WorkOutputs previews={resources.previews} details={read.details} expectedDetails={read.references.length} hideEmpty={turns.length > 0} />
     <RunResources rows={resources.rows} />
-    <WorkSources sources={sources} files={files} />
+    <WorkSources sources={sources} files={files} turns={turns} />
     </> : null}
   </section></Section>;
 }

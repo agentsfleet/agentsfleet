@@ -48,8 +48,9 @@ fn a_run_must_name_its_fleet_history_resume_hold_waiting_inputs_and_owner() {
 #[test]
 fn test_run_history_round_trips() {
     let turns = serde_json::json!([
-        {"sequence": 1, "message": "m1", "answer": "a1"},
-        {"sequence": 2, "message": "m2", "calls": [{"call_id": "4:1", "tool": "shell",
+        {"sequence": 1, "actor": "steer:fixture", "event_type": "chat", "message": "m1",
+            "images": [{"media_type": "image/png", "data": "iVBORw=="}], "answer": "a1"},
+        {"sequence": 2, "actor": "machine", "event_type": "chat", "message": "m2", "calls": [{"call_id": "4:1", "tool": "shell",
             "arguments": {"command": "ls"}, "output": "a.txt", "status": "succeeded"}],
             "answer": "a2"},
     ]);

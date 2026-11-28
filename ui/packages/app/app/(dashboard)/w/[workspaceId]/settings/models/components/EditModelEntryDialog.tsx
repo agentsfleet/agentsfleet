@@ -202,6 +202,7 @@ function EditForm({
               placeholder="Enter replacement key"
               spellCheck={false}
               autoComplete="off"
+              data-1p-ignore=""
               className="font-mono"
             />
             <p className="text-xs text-muted-foreground">

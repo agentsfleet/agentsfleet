@@ -161,3 +161,40 @@ fn should_allow_a_credential_free_post_to_an_unlisted_host_with_public_http_egre
         Some(Refusal::HostNotAllowed)
     );
 }
+
+#[test]
+fn the_dns_root_label_preserves_host_approval_credentials_and_origin_rules() -> crate::Result<()> {
+    let mut policy = policy();
+    for origin in &mut policy.http_origin_policies {
+        origin.host = format!("{}.", origin.host).into();
+    }
+    let guard = EgressPolicy::new(&policy);
+    let github = [("Authorization", "Bearer ${secrets.github.token}")];
+    let grafana = [("Authorization", "Bearer ${secrets.grafana.token}")];
+    for host in ["api.github.com", "API.GITHUB.COM."] {
+        let url = format!("https://{host}/repos/acme/widgets/pulls");
+        let allowed = guard.allow(draft("GET", &url, &github, None))?;
+        assert_eq!(allowed.url.host_str(), Some("api.github.com"));
+        let denied = guard.allow(draft("GET", &url, &grafana, None)).err();
+        assert_eq!(
+            denied.as_ref().and_then(crate::Error::refusal),
+            Some(Refusal::CredentialHostNotAllowed)
+        );
+        let outside = format!("https://{host}/repos/acme/other/pulls");
+        let denied = guard.allow(draft("GET", &outside, &[], None)).err();
+        assert_eq!(
+            denied.as_ref().and_then(crate::Error::refusal),
+            Some(Refusal::RequestPolicyNotAllowed)
+        );
+    }
+    for host in ["demo-grafana.internal", "demo-grafana.internal."] {
+        let allowed = guard.allow(draft(
+            "GET",
+            &format!("https://{host}/dashboard"),
+            &grafana,
+            None,
+        ))?;
+        assert_eq!(allowed.url.host_str(), Some("demo-grafana.internal"));
+    }
+    Ok(())
+}

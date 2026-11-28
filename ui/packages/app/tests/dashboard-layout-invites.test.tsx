@@ -1,6 +1,6 @@
 import React, { type ReactElement, type ReactNode } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@agentsfleet/design-system";
 
 // The layout's reads each stand in for a network call; what is under test is
@@ -30,8 +30,6 @@ vi.mock("@/components/layout/ShellFrame", () => ({
 import { ShellFrame } from "@/components/layout/ShellFrame";
 import DashboardLayout from "@/app/(dashboard)/layout";
 import { loadWaitingInvites } from "@/app/(dashboard)/invites/load";
-import { useModelLabels } from "@/components/domain/models/ModelLabels";
-import { modelLabel } from "@/lib/model-labels";
 
 const WAITING = [{ id: "inv_1", account: { tenant_id: "t_john", owner_name: "John" }, expires_at: "1970-01-01T00:00:00.001Z" }];
 
@@ -41,37 +39,16 @@ function shellProps(tree: ReactNode): { waitingInvites?: unknown } {
   return shellProps((tree.props as { children?: ReactNode }).children);
 }
 
-// Labels are not what most cases test; a reset mock would answer undefined.
-beforeEach(() => { modelLabelsCached.mockResolvedValue({}); });
-
 afterEach(() => {
   cleanup();
   vi.resetAllMocks();
 });
 
-function ModelName({ id }: { id: string }) {
-  return <output>{modelLabel(useModelLabels(), id)}</output>;
-}
-
-describe("dashboard layout model labels", () => {
-
-  it("should hand every screen the server's labels in its first render", async () => {
-    listWaitingInvitesCached.mockResolvedValue([]);
-    modelLabelsCached.mockResolvedValue({ "gpt-x": "GPT X" });
-    const tree = await DashboardLayout({children: <><ModelName id="gpt-x" /><ModelName id="retired-model" /></>});
-    await act(async () => {render(tree);});
-    expect(screen.getByText("GPT X")).toBeTruthy();
-    expect(screen.getByText("retired-model")).toBeTruthy();
-    expect(modelLabelsCached).toHaveBeenCalledExactlyOnceWith(TOKEN);
-  });
-
-  it("should show recorded identifiers when the label read fails", async () => {
-    listWaitingInvitesCached.mockResolvedValue([]);
-    modelLabelsCached.mockRejectedValue(new Error("catalogue down"));
-    const tree = await DashboardLayout({children: <ModelName id="gpt-x" />});
-    await act(async () => {render(tree);});
-    expect(screen.getByText("gpt-x")).toBeTruthy();
-  });
+it("renders a signed-in dashboard route without reading the model label catalogue", async () => {
+  listWaitingInvitesCached.mockResolvedValue([]);
+  render(await DashboardLayout({children: <h1>Fleets</h1>}));
+  expect(screen.getByRole("heading", {name: "Fleets"})).toBeTruthy();
+  expect(modelLabelsCached).not.toHaveBeenCalled();
 });
 
 describe("dashboard layout invites", () => {

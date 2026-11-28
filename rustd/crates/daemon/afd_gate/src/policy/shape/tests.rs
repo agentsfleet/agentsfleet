@@ -23,7 +23,7 @@ fn allow<'a>(policy: &'a af_wire::policy::NetworkPolicy<'_>) -> Vec<&'a str> {
 
 #[test]
 fn a_fleet_with_nothing_approved_reaches_no_named_host() {
-    let policy = network(Network::default(), &Map::new(), false);
+    let policy = network(Network::default(), &Map::new(), false, []);
 
     assert_eq!(allow(&policy), [] as [&str; 0]);
     assert_eq!(policy.http_egress, HttpEgress::Restricted);
@@ -36,7 +36,7 @@ fn each_approved_secret_adds_its_own_host_and_github_adds_the_api() {
         "sentry": {"token": "s", "host": "sentry.io"},
         "grafana": {"token": "g", "host": "grafana.example.com"},
     }));
-    let policy = network(Network::default(), &held, true);
+    let policy = network(Network::default(), &held, true, []);
 
     assert_eq!(
         allow(&policy),
@@ -52,7 +52,7 @@ fn a_secret_without_a_readable_host_adds_nothing() {
         "null": {"token": "z", "host": null},
     }));
     assert_eq!(
-        allow(&network(Network::default(), &held, false)),
+        allow(&network(Network::default(), &held, false, [])),
         [] as [&str; 0]
     );
 }
@@ -64,7 +64,7 @@ fn two_secrets_on_one_host_name_it_once() {
         "pushover-team": {"token": "q", "host": "API.Pushover.net"},
     }));
     assert_eq!(
-        allow(&network(Network::default(), &held, false)),
+        allow(&network(Network::default(), &held, false, [])),
         ["api.pushover.net"]
     );
 }
@@ -78,6 +78,7 @@ fn a_person_opens_the_network_with_the_two_toggles() {
         },
         &Map::new(),
         false,
+        [],
     );
 
     assert_eq!(policy.http_egress, HttpEgress::Public);
@@ -107,4 +108,17 @@ fn a_read_scope_names_no_base_and_says_so_as_empty() -> Outcome {
     assert_eq!(carried.access, RepositoryAccess::Read);
     assert_eq!(carried.base_branch, "");
     Ok(())
+}
+
+#[test]
+fn a_host_approval_keeps_restricted_mode_and_deduplicates_the_credential_host() {
+    let secrets = statics(json!({"vendor":{"host":"Docs.Example"}}));
+    let policy = network(
+        Network::default(),
+        &secrets,
+        false,
+        ["docs.example", "support.example"],
+    );
+    assert_eq!(allow(&policy), ["Docs.Example", "support.example"]);
+    assert_eq!(policy.http_egress, HttpEgress::Restricted);
 }

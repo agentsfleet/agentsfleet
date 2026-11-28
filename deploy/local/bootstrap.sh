@@ -56,6 +56,8 @@ acceptance_daemon_environment() (
   trap 'rm -f "$pending"' EXIT
   # local-dev loads this after the machine environment, preserving the selected key.
   printf 'source %q\n' "$LOCAL_DEV_ENV_FILE" >"$pending"
+  # local-dev re-sources the machine environment before reading this file.
+  printf '%s\n' 'unset PARALLEL_API_KEY EXA_API_KEY' >>"$pending"
   printf 'AGENTSFLEET_RUNNER_STREAM_LISTEN_ADDR=%q\n' "127.0.0.1:$LOCAL_ACCEPTANCE_RUNNER_STREAM_PORT" >>"$pending"
   printf 'AGENTSFLEET_RUNNER_STREAM_TLS_CERT_FILE=%q\n' "$LOCAL_ACCEPTANCE_STATE/runner-stream/server-chain.pem" >>"$pending"
   printf 'AGENTSFLEET_RUNNER_STREAM_TLS_KEY_FILE=%q\n' "$LOCAL_ACCEPTANCE_STATE/runner-stream/server.key" >>"$pending"
@@ -67,5 +69,7 @@ acceptance_platform() (
   export NEXT_PUBLIC_API_URL="$DEV_URL" LOCAL_ACCEPTANCE_API="$DEV_URL" LOCAL_ACCEPTANCE_NAMESPACE="$DEV_ID"
   LOCAL_DEV_ENV_FILE="${LOCAL_ACCEPTANCE_BOOTSTRAP_ENV_FILE:-$LOCAL_DEV_ENV_FILE}" \
   ANTHROPIC_API_KEY="${model_bootstrap_key:-${ANTHROPIC_API_KEY:-}}" \
+  PARALLEL_API_KEY="${parallel_bootstrap_key:-${PARALLEL_API_KEY:-}}" \
+  EXA_API_KEY="${exa_bootstrap_key:-${EXA_API_KEY:-}}" \
   TYPESAFE_API_KEY="${decision_bootstrap_key:-${TYPESAFE_API_KEY:-}}" bun "$DEV_ROOT/deploy/local/bootstrap.ts"
 )

@@ -188,6 +188,8 @@ impl Me {
 /// What a child's conversation is built from as one of its turns starts.
 #[derive(Debug)]
 pub struct Seat {
+    /// Names the child is allowed to offer, used when fitting its own prompt.
+    pub tools: Vec<String>,
     /// The child's id, which every call about it names.
     pub id: u64,
     /// How many loops it is inside: one more than its parent.

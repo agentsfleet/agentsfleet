@@ -162,6 +162,19 @@ WITH scope AS MATERIALIZED (
   RETURNING l.id, l.fleet_id, l.turn_id, l.fencing_token, l.workspace_id,
             m.run_expires_at, m.thread_expires_at, m.hold_authorized,
             (SELECT checked_at FROM instant) AS checked_at
+), saved_trace AS (
+  -- Only a report whose citations exceed the frame takes this branch. Call
+  -- numbers are validated and fenced before this statement receives them.
+  SELECT CASE WHEN ($33::jsonb -> 'sources_in_items') = 'true'::jsonb THEN
+    jsonb_build_object('calls', COALESCE((
+      SELECT jsonb_agg(CASE WHEN i.sources IS NULL THEN c.data
+               ELSE c.data || jsonb_build_object('sources', i.sources) END ORDER BY c.ordinal)
+      FROM jsonb_array_elements($33::jsonb -> 'calls') WITH ORDINALITY c(data, ordinal)
+      LEFT JOIN thread.items i ON i.run_id = m.id AND i.fencing_token = m.fencing_token
+        AND i.sequence = split_part(c.data ->> 'call_id', ':', 2)::bigint
+        AND i.tool = (c.data ->> 'name') AND i.status = (c.data ->> 'status')
+    ), '[]'::jsonb))
+  ELSE $33::jsonb END AS tool_calls FROM moved m
 ), settled AS (
   -- Settles the turn and, while its event is still open, closes it with the run's answer:
   -- one update, since one statement may change a row once. An event already closed keeps
@@ -174,7 +187,7 @@ WITH scope AS MATERIALIZED (
       wall_ms = CASE WHEN a.status = $34 THEN $30 ELSE a.wall_ms END,
       failure_reason = CASE WHEN a.status = $34 THEN $31 ELSE a.failure_reason END,
       failure_detail = CASE WHEN a.status = $34 THEN $32 ELSE a.failure_detail END,
-      tool_calls = CASE WHEN a.status = $34 THEN $33::jsonb ELSE a.tool_calls END
+      tool_calls = CASE WHEN a.status = $34 THEN (SELECT tool_calls FROM saved_trace) ELSE a.tool_calls END
   FROM moved m
   WHERE a.id = m.turn_id AND a.thread_id = m.fleet_id
     AND a.run_fence = m.fencing_token AND a.settled_at IS NULL

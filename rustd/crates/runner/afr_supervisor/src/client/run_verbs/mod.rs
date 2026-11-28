@@ -25,6 +25,7 @@ use super::{Body, ControlPlane, Verb, run_path};
 use crate::error::Result;
 
 mod access;
+mod web;
 
 impl ControlPlane {
     /// Sends one schedules call for the fleet `run_id` runs, fenced by

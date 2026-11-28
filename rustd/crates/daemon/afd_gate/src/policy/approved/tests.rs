@@ -82,3 +82,20 @@ fn an_unreadable_stored_scope_fails_the_run_until_asked_again() -> Outcome {
     }
     Ok(())
 }
+
+#[test]
+fn host_grants_never_resolve_credentials_or_repository_scope() -> Outcome {
+    let granted: Approved = [
+        grant("docs.example", grant_type::HOST, None),
+        grant(CREDENTIAL_GITHUB, grant_type::HOST, Some(READ_SCOPE)),
+    ]
+    .into_iter()
+    .collect();
+    assert_eq!(granted.names(), [] as [&str; 0]);
+    assert_eq!(granted.repository_binding()?, None);
+    assert_eq!(
+        granted.hosts().collect::<Vec<_>>(),
+        ["docs.example", CREDENTIAL_GITHUB]
+    );
+    Ok(())
+}

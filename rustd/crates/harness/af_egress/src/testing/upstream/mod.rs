@@ -27,6 +27,8 @@ use rcgen::{BasicConstraints, CertificateParams, CertifiedIssuer, IsCa, KeyPair,
 use rustls::pki_types::{PrivateKeyDer, PrivatePkcs8KeyDer};
 use tokio_rustls::TlsAcceptor;
 
+mod observed;
+pub use self::observed::Lookups;
 mod route;
 pub use self::route::{Handler, Reply, Route, Seen};
 
@@ -43,6 +45,7 @@ const CUT_AFTER: std::time::Duration = std::time::Duration::from_millis(200);
 #[derive(Debug)]
 pub struct Upstream {
     address: SocketAddr,
+    accepted: Arc<std::sync::atomic::AtomicUsize>,
     root: reqwest::Certificate,
     hosts: Vec<&'static str>,
     /// Locked so `&Upstream` is `Sync` and a suite may hold it across `.await`.
@@ -69,6 +72,8 @@ impl Upstream {
         let routes = Arc::new(routes);
         let stop = tokio_util::sync::CancellationToken::new();
         let stopped = stop.clone();
+        let accepted = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let accepts = Arc::clone(&accepted);
         let task = tokio::spawn(async move {
             let mut connections = tokio::task::JoinSet::new();
             loop {
@@ -80,6 +85,7 @@ impl Upstream {
                     },
                     _joined = connections.join_next(), if !connections.is_empty() => continue,
                 };
+                accepts.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 let (acceptor, routes, sent) =
                     (acceptor.clone(), Arc::clone(&routes), sent.clone());
                 connections.spawn(async move {
@@ -98,6 +104,7 @@ impl Upstream {
         });
         Self {
             address,
+            accepted,
             root,
             hosts,
             seen: Mutex::new(seen),

@@ -163,7 +163,7 @@ pub(crate) fn results(messages: &[Message]) -> Vec<String> {
         .iter()
         .filter_map(|message| match message {
             Message::ToolResult { output, .. } => Some(output.clone()),
-            Message::User(_) | Message::Assistant { .. } => None,
+            Message::User(_) | Message::UserImages { .. } | Message::Assistant { .. } => None,
         })
         .collect()
 }

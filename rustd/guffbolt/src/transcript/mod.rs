@@ -85,7 +85,9 @@ impl Transcript {
     /// Adds input `text`, joined onto a user message already waiting, so no
     /// provider sees two in a row.
     pub fn join(&mut self, text: String) {
-        if let Some(Message::User(waiting)) = self.messages.last_mut() {
+        if let Some(Message::User(waiting) | Message::UserImages { text: waiting, .. }) =
+            self.messages.last_mut()
+        {
             waiting.push_str(INPUT_JOIN);
             waiting.push_str(&text);
         } else {

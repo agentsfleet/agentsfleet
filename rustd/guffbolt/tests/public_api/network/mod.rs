@@ -36,6 +36,7 @@ mod http_request;
 mod local_outbound;
 mod mcp_http;
 mod web_fetch;
+mod web_search;
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)

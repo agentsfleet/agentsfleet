@@ -251,6 +251,12 @@ pub const FLEET_TRIGGER_EXISTS: ErrorCode = ErrorCode::declare("UZ-AGT-024");
 /// stored.
 pub const FLEET_TRIGGER_SECRET_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-AGT-025");
 
+/// A chat attachment has an unsupported format or exceeds its wire bounds (400).
+pub const MESSAGE_IMAGE_INVALID: ErrorCode = ErrorCode::declare("UZ-AGT-026");
+
+/// The fleet's selected model cannot receive image messages (409).
+pub const MESSAGE_IMAGE_UNSUPPORTED: ErrorCode = ErrorCode::declare("UZ-AGT-027");
+
 /// A fleet asked to steer itself.
 ///
 /// A 409 with `current_state: "self"`: the sender is the target, so the work

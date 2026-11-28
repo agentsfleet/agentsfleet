@@ -30,12 +30,15 @@ A tripped gate archives the fleet.
 - get_tenant_billing_report: GET /v1/tenants/me/billing/reports/current
 - get_model_library:      GET /v1/models    # paged; ?limit=&starting_after=&q=&provider= — ETag/If-None-Match
 - list_tenant_model_entries: GET /v1/tenants/me/models   # paged; the tenant's own model registry
+- runner_web_search: POST /v1/runners/me/runs/{run_id}/searches   # held public fleet run; one fenced search with a tool call number
+- runner_web_extract: POST /v1/runners/me/runs/{run_id}/extracts   # held public fleet run; one fenced HTTPS page read with a tool call number
 
 Every list above is a bounded keyset page: read `next_cursor` and follow it.
 A client that reads only the first page silently loses everything past it.
 
 ## Authentication
 Bearer token: Authorization: Bearer <api_key>
+The two runner web operations require the assigned runner's bearer token (RunnerBearerAuth). The platform supplies the web vendor credentials.
 The QStash schedule ingress uses QStash delivery signatures instead of a bearer token.
 
 ## Execution model

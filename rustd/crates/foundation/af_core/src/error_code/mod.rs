@@ -137,6 +137,7 @@ mod integration;
 mod invite;
 mod request;
 mod setup;
+mod web;
 
 pub use self::auth::*;
 pub use self::durable_task::*;
@@ -145,6 +146,7 @@ pub use self::integration::*;
 pub use self::invite::*;
 pub use self::request::*;
 pub use self::setup::*;
+pub use self::web::*;
 
 /// Every code this crate declares, in declaration order.
 ///
@@ -266,6 +268,8 @@ pub const REGISTRY: &[ErrorCode] = &[
     FLEET_PROVIDER_NOT_CONNECTED,
     FLEET_TRIGGER_EXISTS,
     FLEET_TRIGGER_SECRET_NOT_FOUND,
+    MESSAGE_IMAGE_INVALID,
+    MESSAGE_IMAGE_UNSUPPORTED,
     MEM_AGENTSFLEET_NOT_FOUND,
     MEM_UNAVAILABLE,
     MEM_ENTRY_NOT_FOUND,
@@ -311,4 +315,14 @@ pub const REGISTRY: &[ErrorCode] = &[
     SETUP_MODEL,
     SETUP_CURSOR,
     SETUP_GONE,
+    WEB_NETWORK_RESTRICTED,
+    WEB_VENDOR_UNCONFIGURED,
+    WEB_VENDORS_COOLING,
+    WEB_VENDORS_FAILED,
+    WEB_INVALID_URL,
+    WEB_RESERVATION_UNAVAILABLE,
+    WEB_PAGE_UNAVAILABLE,
+    WEB_EXTRACT_INVALID_RESPONSE,
+    WEB_EXTRACT_UNAVAILABLE,
+    WEB_DEADLINE_EXCEEDED,
 ];

@@ -1,4 +1,4 @@
-//! A run asking for one secret or integration: `POST L/access {name, scope?}`.
+//! A run requesting access to a host, a workspace secret, or an integration.
 //!
 //! The run must be live and hold its fleet at the fence it presents. The name
 //! is a workspace vault entry; its stored shape decides the grant's kind, as
@@ -85,8 +85,20 @@ impl RunService {
         let standing = self
             .standing(runner_id, run_id, request.fencing_token)
             .await?;
-        let name = request.name.as_ref();
-        let asked = self.asked(&standing, name, request.scope.as_ref()).await?;
+        let (name, asked) = match (&request.host, &request.name) {
+            (Some(host), None) => (
+                host.as_str(),
+                Asked {
+                    kind: GrantKind::Host,
+                    scope: None,
+                },
+            ),
+            (None, Some(name)) => (
+                name.as_ref(),
+                self.asked(&standing, name, request.scope.as_ref()).await?,
+            ),
+            _ => return Err(rejected("provide one credential name or one host")),
+        };
         let requested = self
             .grants
             .request(
@@ -96,6 +108,7 @@ impl RunService {
                     name,
                     kind: asked.kind,
                     scope: asked.scope.as_deref(),
+                    redirect: request.evidence.as_ref(),
                     turn: &standing.turn_id,
                 },
                 now,

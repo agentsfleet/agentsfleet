@@ -184,7 +184,6 @@ impl Conversation for Chat {
             instructions: "",
             messages: &window.messages,
             tools,
-            hosted: &[],
             cache_key: KEY,
             max_output_tokens: window.max_output_tokens,
             single_attempt: false,

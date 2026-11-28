@@ -10,7 +10,6 @@ use serde_json::json;
 #[tokio::test]
 async fn anthropic_server_tools_and_connectors_refuse_before_network() {
     for params in [
-        json!({"tools":[{"type":"web_search_20250305","name":"web_search"}]}),
         json!({"tools":[{"type":"web_fetch_20250910","name":"web_fetch"}]}),
         json!({"tools":[{"type":"code_execution_20250825","name":"code_execution"}]}),
         json!({"tools":[{"type":"tool_search_tool_regex_20251119","name":"tool_search_tool_regex"}]}),

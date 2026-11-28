@@ -7,7 +7,7 @@ mod model;
 mod tool;
 
 pub use self::message::{Call, Message, Replay};
-pub use self::model::{Chunk, End, Hosted, Model, Request, TextKind, Usage};
+pub use self::model::{Chunk, End, Model, Request, TextKind, Usage};
 pub use self::tool::{Image, ImageKind, ToolSpec};
 
 #[cfg(test)]

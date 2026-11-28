@@ -147,10 +147,13 @@ backed! {
 
 impl Handler for ApplyPatch<'_> {
     const NAME: &'static str = "apply_patch";
-    const DESCRIPTION: &'static str = "Edit files in the working directory with one patch in \
-        apply_patch's grammar: add, update and delete hunks, each path relative to the \
-        working directory. Every hunk is checked before any file changes; the answer lists each \
-        file and ends with each file's lines added and removed.";
+    const DESCRIPTION: &'static str = "Edit files using add, update or delete hunks in one patch. Paths are relative to the \
+        working directory. Every hunk is checked before changes are written. The answer lists \
+        the files and line counts. Prefer file_edit for a single exact replacement or file_write \
+        to create or replace a whole file.";
+    const EXAMPLES: &'static [&'static str] = &[
+        r#"{"patch":"*** Begin Patch\n*** Add File: notes.md\n+Ready for review.\n*** End Patch"}"#,
+    ];
     type Arguments = Patch;
 
     async fn run(&self, arguments: Patch, _context: Context<'_>) -> ToolOutput {
@@ -329,3 +332,13 @@ fn summary(planned: &[Planned<'_>]) -> String {
 #[cfg(test)]
 #[path = "apply_patch_chunk_tests.rs"]
 mod chunk_tests;
+
+#[cfg(test)]
+#[test]
+fn the_offered_patch_example_has_valid_hunks() -> Result<(), serde_json::Error> {
+    for input in ApplyPatch::EXAMPLES {
+        let arguments: Patch = serde_json::from_str(input)?;
+        assert!(grammar::parse_patch(&arguments.patch).is_ok_and(|hunks| !hunks.is_empty()));
+    }
+    Ok(())
+}

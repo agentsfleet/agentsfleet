@@ -76,6 +76,10 @@ pub enum RunnerRoute {
     Trigger,
     /// The held fleet asking a person for a secret or an integration.
     Access,
+    /// Platform vendor searches for the held run.
+    Searches,
+    /// Platform vendor page reads for the held run.
+    Extracts,
     /// A line said to the event's thread before the answer.
     Messages,
     /// Work the held fleet puts on another fleet in its workspace.
@@ -116,6 +120,8 @@ impl RunnerRoute {
         Self::Triggers,
         Self::Trigger,
         Self::Access,
+        Self::Searches,
+        Self::Extracts,
         Self::Messages,
         Self::Steers,
         Self::Fleets,
@@ -162,6 +168,8 @@ impl RunnerRoute {
             | Self::DurableTaskCheckpointUploads
             | Self::DurableTaskCheckpointAuthorizations
             | Self::Messages
+            | Self::Searches
+            | Self::Extracts
             | Self::Access
             | Self::Steers => &[Verb::Post],
         }
@@ -201,6 +209,8 @@ impl RunnerRoute {
             Self::ScheduleRuns => paths::RUN_SCHEDULE_RUNS,
             Self::Triggers => paths::RUN_TRIGGERS,
             Self::Trigger => paths::RUN_TRIGGER,
+            Self::Searches => paths::RUN_SEARCHES,
+            Self::Extracts => paths::RUN_EXTRACTS,
             Self::Access => paths::RUN_ACCESS,
             Self::Messages => paths::RUN_MESSAGES,
             Self::Steers => paths::RUN_STEERS,

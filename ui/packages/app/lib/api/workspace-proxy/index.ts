@@ -22,7 +22,7 @@ export async function proxyWorkspace(request: Request, context: Context): Promis
       if (request.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() !== JSON_MEDIA_TYPE) {
         return proxyProblem(415, PROXY_DETAIL.mediaType);
       }
-      const bounded = await boundedBody(request, signal);
+      const bounded = await boundedBody(request, signal, route.bodyLimit);
       if (bounded === null) return proxyProblem(413, PROXY_DETAIL.bodyLimit);
       body = bounded;
     }

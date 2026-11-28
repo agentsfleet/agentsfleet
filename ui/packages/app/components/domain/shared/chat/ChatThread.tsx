@@ -24,7 +24,7 @@ export function ChatThread({children, footer, label, testId, centered = false}: 
   const [jumps, setJumps] = useState(0);
   useOpenAtLatest(viewport, log, jumps);
   return <ThreadPrimitive.Root asChild data-testid={testId}>
-    <Section aria-label={label} className={cn("relative flex min-h-0 flex-1 flex-col overflow-clip bg-background",
+    <Section aria-label={label} className={cn("relative flex min-h-0 flex-1 flex-col overflow-clip bg-background [container-type:size]",
       centered && "[--max-w-chat:var(--max-w-new-fleet)] [--chat-input-height:var(--new-fleet-input-height)] summary:[--chat-inset:var(--sp-3xl)]")}>
       <ThreadPrimitive.Viewport ref={viewport} turnAnchor="top" autoScroll={false} scrollToBottomOnInitialize={false}
         role="presentation" className={cn("fleet-thread-viewport flex min-h-0 flex-1 flex-col overflow-y-auto", summary &&

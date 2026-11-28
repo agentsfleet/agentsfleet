@@ -420,7 +420,7 @@ The runner starts each sandbox's executor with these sizes and holds its own end
 |---|---|---|
 | `egress.connect_timeout_seconds` | 10 | Web fetches fail to connect to slow sites |
 | `egress.request_timeout_seconds` | 30 | Web fetches time out on slow sites |
-| `egress.max_redirects` | 3 | Sites need longer redirect chains |
+| `egress.max_redirects` | 20 | Lower the redirect ceiling for this runner |
 | `egress.max_secret_mask_mib` | 10 | Redirected downloads carrying many signed URLs are refused because the matcher that masks their secrets ran out of room |
 | `telemetry.max_spans_per_run` | 256 | Long runs lose trace detail, or export too much |
 

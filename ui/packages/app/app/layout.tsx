@@ -18,9 +18,8 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   // `*FallbackRedirectUrl` (not force) sends a completed sign-in/sign-up to the
-  // dashboard root, which resolves the default workspace and redirects to its
-  // New fleet page. Fallback (not force) so a legitimate Clerk-internal `redirect_url`
-  // (email verification, SSO hops) is still honored.
+  // dashboard root, which opens its first fleet or the new composer. A
+  // destination retained from a deep link or an SSO handshake takes priority.
   return (
     <AuthProvider
       appearance={AUTH_APPEARANCE}

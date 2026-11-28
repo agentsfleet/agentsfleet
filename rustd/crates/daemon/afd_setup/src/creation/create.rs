@@ -70,11 +70,21 @@ impl Creations {
         if let Some(name) = &request.name {
             FleetName::parse(name)?;
         }
+        let digest = if request.images.is_empty() {
+            replay::digest(&(&request.message, &request.model_ref, &request.name))?
+        } else {
+            replay::digest(&(
+                &request.message,
+                &request.model_ref,
+                &request.name,
+                &request.images,
+            ))?
+        };
         let create = Create {
             access,
             request,
             operation: Uuid7::parse(&request.operation_id)?,
-            digest: replay::digest(&(&request.message, &request.model_ref, &request.name))?,
+            digest,
             now,
         };
         // A derived name meets a taken one only when the random tail of two
@@ -96,7 +106,11 @@ impl Creations {
             .clone()
             .unwrap_or_else(|| derived_name(&id));
         let key = turn_key(&id, &create.operation);
-        let payload = serde_json::json!({ "message": create.request.message }).to_string();
+        let payload = if create.request.images.is_empty() {
+            serde_json::json!({ "message": create.request.message })
+        } else {
+            serde_json::json!({ "message": create.request.message, "images": create.request.images })
+        }.to_string();
         let actor = afd_turns::view::steer_actor(create.access.subject);
         // Read before the transaction opens: the ledger's ceiling sample may
         // take a connection of its own.
@@ -127,8 +141,13 @@ impl Creations {
                 .await
                 .map(|created| Attempt::Done(Box::new(created)));
         }
-        let model =
-            model::resolve(&mut tx, &person.owner, create.request.model_ref.as_deref()).await?;
+        let model = model::resolve(
+            &mut tx,
+            &person.owner,
+            create.request.model_ref.as_deref(),
+            !create.request.images.is_empty(),
+        )
+        .await?;
         let reserved = replay::reserve(
             &mut tx,
             replay::Reservation {

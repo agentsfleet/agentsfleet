@@ -87,6 +87,17 @@ impl Schema {
         self
     }
 
+    /// Append example arguments to the description sent to the model.
+    #[must_use]
+    pub fn with_examples(mut self, examples: &[&str]) -> Self {
+        for example in examples {
+            let description = self.description.to_mut();
+            description.push_str("\nExample arguments\n");
+            description.push_str(example);
+        }
+        self
+    }
+
     /// The same schema, its argument `name` described to the model as
     /// `description`; unchanged when it takes no argument of that name.
     #[must_use]

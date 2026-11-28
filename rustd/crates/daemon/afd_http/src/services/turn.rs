@@ -233,7 +233,15 @@ impl FleetSteering for Steer {
         request_json: &str,
         operation_id: Option<&str>,
     ) -> impl Future<Output = EventResult<Steered>> + Send {
-        Self::append(self, fleet, workspace, actor, request_json, operation_id)
+        Self::append_with_model(
+            self,
+            fleet,
+            workspace,
+            actor,
+            request_json,
+            operation_id,
+            Some(&ImageModels),
+        )
     }
 
     fn append_from_fleet(
@@ -246,5 +254,34 @@ impl FleetSteering for Steer {
 
     fn announce(&self, fleet: &str, frame: &TailFrame<'_>) -> impl Future<Output = ()> + Send {
         Self::announce(self, fleet, frame)
+    }
+}
+
+struct ImageModels;
+
+impl afd_turns::ImageModelLookup for ImageModels {
+    fn refusing_model<'a>(
+        &self,
+        connection: &'a mut sqlx::PgConnection,
+        tenant: &'a Uuid7,
+        reference: &'a str,
+    ) -> std::pin::Pin<Box<dyn Future<Output = afd_turns::Result<Option<String>>> + Send + 'a>>
+    {
+        Box::pin(async move {
+            let model = afd_credential::provider::runtime_model(connection, tenant, reference)
+                .await
+                .map_err(|source| {
+                    let code = source.code();
+                    let unavailable = source.is_datastore_unavailable();
+                    afd_turns::Error::image_model_lookup(source, code, unavailable)
+                })?;
+            Ok(match model {
+                Some(model) if model.inference.api != af_wire::inference::InferenceApi::Chat => {
+                    None
+                }
+                Some(model) => Some(model.model),
+                None => Some(reference.to_owned()),
+            })
+        })
     }
 }

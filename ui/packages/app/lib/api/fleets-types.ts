@@ -1,3 +1,5 @@
+import type { MessageImage } from "./message-images";
+
 // Every fleet status the API can return. Dependency-free on purpose: client components read these
 // without pulling the transport.
 
@@ -20,6 +22,7 @@ export type FleetStatus = typeof AGENTSFLEET_STATUS[keyof typeof AGENTSFLEET_STA
 export type SteerRequest = {
   message: string;
   operation_id: string;
+  images?: readonly MessageImage[];
 };
 
 // The 202 a steer is answered with. Mirrors `af_wire::turn::SteerAccepted`:

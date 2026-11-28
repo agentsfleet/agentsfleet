@@ -142,7 +142,7 @@ async fn ordered<C: Conversation + ?Sized>(
     lent: Lent<'_>,
 ) -> ToolOutput {
     let mut output = work.await;
-    let Some(order) = output.order.take() else {
+    let Some(order) = output.take_order() else {
         return output;
     };
     let tools: Vec<String> = if order.spawns() {

@@ -24,7 +24,7 @@ fn results(messages: &[Message]) -> Vec<&str> {
         .iter()
         .filter_map(|message| match message {
             Message::ToolResult { output, .. } => Some(output.as_str()),
-            Message::User(_) | Message::Assistant { .. } => None,
+            Message::User(_) | Message::UserImages { .. } | Message::Assistant { .. } => None,
         })
         .collect()
 }

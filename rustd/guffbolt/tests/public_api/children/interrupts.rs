@@ -277,7 +277,7 @@ async fn a_followup_beside_an_interrupt_runs_its_own_turn() {
     let second = family.script.sent_by(&agent(1));
     assert_eq!(
         second.get(1).and_then(|sent| sent.messages.last().cloned()),
-        Some(user("spin\n\ngo on")),
+        Some(user("[Source: harness]\nspin\n\ngo on")),
         "the follow-up's turn read it, joined to the task it never answered"
     );
 }

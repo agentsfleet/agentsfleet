@@ -105,6 +105,7 @@ pub(crate) struct TriggerAdd;
 
 #[async_trait::async_trait]
 impl Handler for TriggerAdd {
+    const GUIDANCE: &'static str = "Use trigger_add when the person's newest message asks to start this fleet from a webhook, GitHub or Slack event.";
     const ENTRY: &'static Entry = &TRIGGER_ADD;
     const DESCRIPTION: &'static str = "Call this tool only when the person's newest message \
         asks for this fleet to wake on something outside it. Do not call it for a question, a \

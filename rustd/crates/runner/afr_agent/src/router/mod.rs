@@ -7,20 +7,15 @@
 //! is a tool error the model reads, never a failed run, so the next turn
 //! still runs (`docs/architecture/runner_execution.md` §"Tool catalog").
 
-use std::future::ready;
-
 use guffbolt::{CallRef, Describe, Tool, ToolFuture, ToolOutput, ToolSpec, Tools};
 use tokio::time::Instant;
 
 use afr_executor::{ExecutorSource, Outcome};
 use afr_telemetry::labels::SandboxWait;
 use afr_telemetry::record;
-use afr_tools::{Run, RunTool, Runtime, Selection, ToolContext, ToolErrorCode};
+use afr_tools::{Run, RunTool, Runtime, ToolContext, ToolErrorCode};
 
 use crate::harness::Harness;
-
-/// What a call to a provider-hosted tool the provider did not run reads back.
-const HOSTED_ELSEWHERE: &str = "runs at the model provider, and this provider offers none";
 
 /// What a loop lends one call: the loop itself, and where the call sits in
 /// its conversation.
@@ -38,19 +33,12 @@ pub(crate) type LoopTool<'s, 'run> = dyn for<'call> Tool<Lent<'call, 's, 'run>> 
 /// Routes one loop's tool calls.
 pub(crate) struct Router<'s, 'run> {
     tools: Tools<LoopTool<'s, 'run>>,
-    /// What the loop was offered, for the provider-hosted names it holds no
-    /// tool for.
-    selection: &'s Selection<'run>,
 }
 
 impl<'s, 'run> Router<'s, 'run> {
-    /// A router over `tools`, the loop's own, and the hosted entries
-    /// `selection` offers.
-    pub(crate) const fn new(
-        tools: Tools<LoopTool<'s, 'run>>,
-        selection: &'s Selection<'run>,
-    ) -> Self {
-        Self { tools, selection }
+    /// A router over this loop’s tools.
+    pub(crate) const fn new(tools: Tools<LoopTool<'s, 'run>>) -> Self {
+        Self { tools }
     }
 
     /// Offers `tool` after the loop's others.
@@ -63,23 +51,23 @@ impl<'s, 'run> Router<'s, 'run> {
         self.tools.hold(tool);
     }
 
+    /// The prompt line contributed by a tool the model was offered.
+    pub(crate) fn guidance_for(&self, name: &str) -> Option<&'static str> {
+        self.tools.guidance_for(name)
+    }
+
     /// The functions the model is offered, in order.
     pub(crate) fn specs(&self) -> Vec<ToolSpec<'_>> {
         self.tools.specs().collect()
     }
 
-    /// Runs one call to `name` with `arguments`, lending it `lent`. A
-    /// provider-hosted name reached here because the provider ran no such
-    /// tool, and is refused as the provider's.
+    /// Runs one call to `name` with `arguments`, lending it `lent`.
     pub(crate) fn dispatch<'a>(
         &'a self,
         name: &'a str,
         arguments: &'a serde_json::Value,
         lent: Lent<'a, 's, 'run>,
     ) -> ToolFuture<'a> {
-        if self.selection.hosts(name) {
-            return Box::pin(ready(hosted_elsewhere(name)));
-        }
         self.tools.dispatch(name, arguments, lent)
     }
 }
@@ -116,7 +104,6 @@ impl<'s> Routed<'s> {
                 Ok(executor) => Some(executor),
                 Err(why) => return failed(ToolErrorCode::SandboxUnavailable, name, why.reason()),
             },
-            Runtime::Provider => return hosted_elsewhere(name),
         };
         self.handler
             .call(
@@ -132,6 +119,10 @@ impl<'s> Routed<'s> {
 }
 
 impl Describe for Routed<'_> {
+    fn guidance(&self) -> &'static str {
+        self.handler.guidance()
+    }
+
     fn spec(&self) -> ToolSpec<'_> {
         self.handler.spec()
     }
@@ -165,11 +156,6 @@ async fn sandbox(executor: &dyn ExecutorSource) -> Outcome<'_> {
     };
     record::sandbox_wait(waited, started.elapsed());
     outcome
-}
-
-/// A call to a tool the provider hosts, which this provider did not run.
-fn hosted_elsewhere(name: &str) -> ToolOutput {
-    failed(ToolErrorCode::HostedToolUnavailable, name, HOSTED_ELSEWHERE)
 }
 
 fn failed(code: ToolErrorCode, name: &str, reason: &str) -> ToolOutput {

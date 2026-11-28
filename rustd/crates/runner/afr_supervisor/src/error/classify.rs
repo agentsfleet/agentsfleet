@@ -5,6 +5,25 @@ use crate::client::Verb;
 use af_core::error_code::{self, ErrorCode};
 
 impl Error {
+    /// Only a typed response on this extract may permit a local fallback.
+    pub(crate) const fn local_read_permitted(&self) -> bool {
+        matches!(
+            self.kind(),
+            ErrorKind::Unavailable {
+                local_read_permitted: true,
+                ..
+            }
+        )
+    }
+
+    /// Preserve web problems once even when they arrived with a 5xx.
+    pub(crate) const fn web_problem_code(&self) -> Option<ErrorCode> {
+        match self.kind() {
+            ErrorKind::Unavailable { code, .. } | ErrorKind::Refused { code, .. } => *code,
+            _ => None,
+        }
+    }
+
     /// Whether retrying the same call could succeed.
     #[must_use]
     pub fn is_retryable(&self) -> bool {

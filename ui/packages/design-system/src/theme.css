@@ -108,6 +108,7 @@
   --color-info: var(--info);
   --color-evidence: var(--evidence);
   --color-activity-agent: var(--activity-agent);
+  --color-activity-caption: var(--activity-caption);
 
   /* The pulse — exposed for the WakePulse primitive and focus rings.
    * Avoid using `bg-pulse` in component chrome; it dilutes the currency. */

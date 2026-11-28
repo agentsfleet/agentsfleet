@@ -110,6 +110,30 @@
       "path": "/v1/tenants/me/billing/reports/current",
       "description": "Read complete-period settled totals, spending groups and daily spend for the caller tenant.",
       "actionClass": "safe"
+    },
+    {
+      "operationId": "runner_web_search",
+      "method": "POST",
+      "path": "/v1/runners/me/runs/{run_id}/searches",
+      "description": "The runner holding a public fleet's run sends its query once. The platform calls Parallel Fast first and can use Exa as fallback. The body carries fencing_token, call_number and query.",
+      "security": [
+        {
+          "RunnerBearerAuth": []
+        }
+      ],
+      "actionClass": "sensitive"
+    },
+    {
+      "operationId": "runner_web_extract",
+      "method": "POST",
+      "path": "/v1/runners/me/runs/{run_id}/extracts",
+      "description": "The runner holding a public fleet's run requests one HTTPS page from the platform reader. The body carries fencing_token, call_number and url. Only a temporary reader problem with explicit permission allows one policy-checked local read.",
+      "security": [
+        {
+          "RunnerBearerAuth": []
+        }
+      ],
+      "actionClass": "sensitive"
     }
   ],
   "authentication": {
@@ -135,7 +159,9 @@
       "create_fleet",
       "patch_fleet",
       "post_fleet_message",
-      "receive_source_webhook"
+      "receive_source_webhook",
+      "runner_web_search",
+      "runner_web_extract"
     ],
     "critical": [
       "delete_fleet"

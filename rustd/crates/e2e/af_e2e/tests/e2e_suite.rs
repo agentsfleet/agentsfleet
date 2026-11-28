@@ -54,6 +54,7 @@ use af_providers::testing::scripted as fake_model;
 mod integration_cluster_outcomes;
 #[path = "integration_fleet_list_name.rs"]
 mod integration_fleet_list_name;
+mod integration_message_images;
 #[path = "integration_runner_access.rs"]
 mod integration_runner_access;
 #[path = "integration_runner_activity/mod.rs"]
@@ -98,6 +99,8 @@ mod integration_runner_steers_refusals;
 mod integration_runner_stream;
 #[path = "integration_runner_triggers.rs"]
 mod integration_runner_triggers;
+#[path = "integration_runner_web.rs"]
+mod integration_runner_web;
 #[path = "integration_rust_runner.rs"]
 mod integration_rust_runner;
 #[path = "integration_rust_runner_definitions.rs"]

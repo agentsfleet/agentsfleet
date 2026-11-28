@@ -11,7 +11,7 @@ SELECT f.id AS fleet_id,
 FROM fleet.triggers t
 JOIN fleet.fleets f ON f.id = t.fleet_id AND f.workspace_id = t.workspace_id
 LEFT JOIN connector.integration_grants g
-       ON g.fleet_id = f.id AND g.service = $6 AND g.status = $7
+       ON g.fleet_id = f.id AND g.service = $6 AND g.status = $7 AND g.grant_type = $8
 WHERE t.workspace_id = $1
   AND f.status = ANY($2::text[])
   AND t.trigger_type = $3

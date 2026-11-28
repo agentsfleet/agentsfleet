@@ -60,6 +60,8 @@ export type SavedToolTrace = {
   calls: SavedToolCall[];
 };
 
+export type WebSource = { url: string; title?: string };
+
 export type SavedToolCall = {
   /** Fenced, `{fence}:{n}` — the id the full-call read takes. */
   call_id: string;
@@ -74,6 +76,7 @@ export type SavedToolCall = {
   /** An edit's files and the lines each gained and lost, as the runner's
    * file tool counted them; absent for any other call. */
   changes?: { path: string; added: number; removed: number }[];
+  sources?: WebSource[];
 };
 
 
@@ -223,6 +226,7 @@ export type ActivityLiveFrame = (
       output_tail?: string;
       output_line_count?: number;
       exit_code?: number;
+      sources?: WebSource[];
     }
 
   // The terminal row as the turns list serves it, less the two scope columns

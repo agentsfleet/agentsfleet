@@ -2,6 +2,12 @@
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ErrorKind {
+    #[error("{reason}")]
+    Web {
+        reason: crate::run::web::Failure,
+        #[source]
+        source: Option<Box<dyn std::error::Error + Send + Sync>>,
+    },
     #[error("a saved usage count cannot be represented as a nonnegative metric")]
     UsageCount {
         #[source]

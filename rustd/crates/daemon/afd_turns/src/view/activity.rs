@@ -131,6 +131,8 @@ pub async fn record_access_on(
         .bind(sqlx::types::Json(FleetActivity::AccessSaved {
             service: service.into(),
         }))
+        .bind(afd_api_wire::grant::grant_type::SECRET)
+        .bind(afd_api_wire::grant::grant_type::INTEGRATION)
         .fetch_all(connection)
         .await?;
     Ok(Announcement { fleets })

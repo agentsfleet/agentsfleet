@@ -21,9 +21,10 @@ use std::borrow::Cow;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use af_core::clock::{saturating_millis, saturating_millis_signed};
-use af_wire::activity::{ActivityFrame, ToolCallCompleted, ToolCallStarted};
+use af_wire::activity::{ActivityFrame, ActivityRequest, ToolCallCompleted, ToolCallStarted};
+use af_wire::protocol::{MESSAGE_BYTES_MAX, Up};
 use af_wire::tool_detail::ToolCallRecord;
-use af_wire::tool_trace::{ToolCallStatus, ToolTrace};
+use af_wire::tool_trace::{ToolCallStatus, ToolTrace, encoded_len};
 use afr_telemetry::labels::{Tool, ToolOutcome};
 use afr_telemetry::record;
 use afr_tools::{CallNumbers, ToolErrorCode};
@@ -53,6 +54,7 @@ pub(crate) struct Ledger<'run> {
     turn_id: &'run str,
     sink: &'run dyn EventSink,
     scrub: &'run Scrub,
+    minted: Option<&'run af_egress::MintedMask>,
     /// Where an open call's number is told to the run's effects, which key
     /// their items by it; none in a suite that drives no effect.
     numbers: Option<&'run CallNumbers>,
@@ -84,12 +86,18 @@ impl<'run> Ledger<'run> {
             sink,
             scrub,
             numbers: None,
+            minted: None,
             book: Mutex::default(),
         }
     }
 
     /// The same ledger, telling `numbers` each open call's number.
-    pub(crate) const fn numbering(mut self, numbers: &'run CallNumbers) -> Self {
+    pub(crate) const fn numbering(
+        mut self,
+        numbers: &'run CallNumbers,
+        minted: &'run af_egress::MintedMask,
+    ) -> Self {
+        self.minted = Some(minted);
         self.numbers = Some(numbers);
         self
     }
@@ -107,7 +115,8 @@ impl<'run> Ledger<'run> {
             numbers.open(&call.id, number);
         }
         let id = number.to_string();
-        let shown = self.scrub.clean_json(call.arguments.clone());
+        let disclosure = sources::Disclosure::new(self.scrub, self.minted);
+        let shown = sources::arguments(call, &disclosure);
         let bounded = bounded_arguments(&shown);
         // The frame's field is JSON by its wire definition, so a debug-form
         // fallback would break it; a JSON value always encodes, so there is
@@ -156,17 +165,20 @@ impl<'run> Ledger<'run> {
         };
         let Some(output) = end.output else {
             let outcome = Outcome::interrupted(end.duration);
-            self.end(&mut self.book(), ended, bounded, outcome);
+            self.end(&mut self.book(), ended, bounded, outcome, None);
             return;
         };
         spans::failed(end.span, output.error_code);
         if output.error_code == Some(ToolErrorCode::OutOfMemory.into()) {
             record::out_of_memory();
         }
-        let text = self.scrub.clean(std::mem::take(&mut output.text));
+        let disclosure = sources::Disclosure::new(self.scrub, self.minted);
+        let sources = sources::returned(end.call, output, &disclosure, status);
+        let text = disclosure.clean(std::mem::take(&mut output.text));
         let mut outcome = Outcome::ended(status, &text, output.exit_code, end.duration);
         let kind = changes::kind(ended.name);
         let changed = changes::changed(self.run_id, kind, status, &text);
+        outcome.sources = sources;
         outcome.changes.clone_from(&changed);
         let item = Item {
             turn_id: self.turn(end.mark),
@@ -175,10 +187,10 @@ impl<'run> Ledger<'run> {
             status: changes::item_status(status),
             changes: changed,
         };
-        let full = record(number, shown, &text, item);
+        let mut full = record(number, shown, &text, item);
         output.text = text.into_inner();
         let mut book = self.book();
-        self.end(&mut book, ended, bounded, outcome);
+        self.end(&mut book, ended, bounded, outcome, Some(&mut full));
         book.records.push(full);
     }
 
@@ -202,7 +214,8 @@ impl<'run> Ledger<'run> {
         book: &mut Book,
         ended: Ended<'_>,
         bounded: Map<String, Value>,
-        outcome: Outcome,
+        mut outcome: Outcome,
+        full: Option<&mut ToolCallRecord<'_>>,
     ) {
         let run_id = self.run_id;
         let call_id = ended.id.as_str();
@@ -212,19 +225,49 @@ impl<'run> Ledger<'run> {
         let event = EVENT_CALL_COMPLETED;
         tracing::debug!(run_id, call_id, tool, ?status, duration_ms, event);
         record::tool_call(Tool::of(tool), tool_outcome(status), outcome.elapsed);
-        self.sink
-            .emit(ActivityFrame::ToolCallCompleted(ToolCallCompleted {
-                name: Cow::Owned(tool.to_owned()),
-                ms: saturating_millis_signed(outcome.elapsed),
-                call_id: Cow::Owned(ended.id),
-                status: outcome.status,
-                output_head: outcome.head.clone().map(Cow::Owned),
-                output_tail: outcome.tail.clone().map(Cow::Owned),
-                output_line_count: outcome.line_count,
-                exit_code: outcome.exit_code,
-                changes: outcome.changes.clone(),
-            }));
+        let mut done = ToolCallCompleted {
+            name: Cow::Owned(tool.to_owned()),
+            ms: saturating_millis_signed(outcome.elapsed),
+            call_id: Cow::Owned(ended.id),
+            status: outcome.status,
+            output_head: outcome.head.clone().map(Cow::Owned),
+            output_tail: outcome.tail.clone().map(Cow::Owned),
+            output_line_count: outcome.line_count,
+            exit_code: outcome.exit_code,
+            sources: Vec::new(),
+            changes: outcome.changes.clone(),
+        };
+        let mut candidates = std::mem::take(&mut outcome.sources);
+        // A fetch path can be corroborated only while both saved views retain
+        // the requested URL. An oversized arguments object can lose it.
+        if tool == afr_tools::catalog::WEB_FETCH.name()
+            && (!bounded.contains_key("url")
+                || full
+                    .as_ref()
+                    .is_some_and(|record| record.truncated_arguments))
+        {
+            candidates.clear();
+        }
         book.trace.push(ended.number, tool, bounded, outcome);
+        if !candidates.is_empty()
+            && let Some(full) = full
+        {
+            let progress = Up::Progress {
+                run_id: Cow::Borrowed(run_id),
+                request: ActivityRequest {
+                    frames: vec![ActivityFrame::ToolCallCompleted(done.clone())],
+                },
+            };
+            let item_size = encoded_len(full).saturating_add(crate::records::post_envelope_bytes());
+            let room = MESSAGE_BYTES_MAX.saturating_sub(item_size.max(encoded_len(&progress)));
+            sources::fit(&mut candidates, room.min(book.trace.source_room()));
+            if !candidates.is_empty() {
+                book.trace.cite_last(&candidates);
+                full.sources.clone_from(&candidates);
+                done.sources = candidates;
+            }
+        }
+        self.sink.emit(ActivityFrame::ToolCallCompleted(done));
     }
 
     /// The run's known trace, including zero calls, and every record.
@@ -277,9 +320,12 @@ const fn tool_outcome(status: ToolCallStatus) -> ToolOutcome {
 }
 
 mod changes;
+mod sources;
 
 #[cfg(test)]
 mod item_tests;
+#[cfg(test)]
+mod source_tests;
 #[cfg(test)]
 mod test_calls;
 #[cfg(test)]

@@ -7,11 +7,11 @@ use af_observability::metrics::label::fleet::IncomingTurnOutcome;
 use af_observability::producers::fleet::turn as metrics;
 use afd_db::Precondition;
 use afd_fleet_lifecycle::FleetStatus;
-use jiff::Timestamp;
+use sqlx::Connection as _;
 
 use crate::error::{Error, Result, query};
 use crate::stage::insert::Gates;
-use crate::{Admitted, IncomingTurn, Key, Repeated, Reply, Turns};
+use crate::{Admitted, ImageModelLookup, IncomingTurn, Key, Repeated, Reply, Turns};
 
 /// What a failed guarded intake records against.
 const CONTEXT_GUARDED: &str = "admit one message behind a guard";
@@ -74,7 +74,7 @@ impl Turns {
     /// recorded — plus a fleet outside the caller's workspace. A lost wake
     /// notification leaves the committed turn available to every poll.
     pub async fn admit(&self, turn: IncomingTurn<'_>) -> Result<Admitted> {
-        self.admit_under(turn, None).await
+        self.admit_under(turn, None, None).await
     }
 
     /// [`Turns::admit`] for a fleet that must be runnable: a new key on a
@@ -84,13 +84,15 @@ impl Turns {
     /// # Errors
     /// As [`Turns::admit`], and `NotRunnable` with the fleet's status.
     pub async fn admit_runnable(&self, turn: IncomingTurn<'_>) -> Result<Admitted> {
-        self.admit_under(turn, Some(FleetStatus::Active)).await
+        self.admit_under(turn, Some(FleetStatus::Active), None)
+            .await
     }
 
-    async fn admit_under(
+    pub(crate) async fn admit_under(
         &self,
         turn: IncomingTurn<'_>,
         runnable: Option<FleetStatus>,
+        model: Option<&dyn ImageModelLookup>,
     ) -> Result<Admitted> {
         let now = clock::now();
         let row_id = self.entropy.uuid7(now)?;
@@ -104,8 +106,12 @@ impl Turns {
             Key::Unrepeatable => row_id.as_str(),
         };
         let digest = turn.payload_digest();
+        let gates = Gates {
+            estimate: self.deployment_estimate(now).await,
+            runnable,
+        };
         let ledger = self
-            .commit(&row_id, &turn, key, &digest, now, runnable)
+            .commit(&row_id, &turn, key, &digest, gates, model)
             .await
             .inspect_err(|refused| count_refusal(refused, &turn))?;
         Ok(self.answered(ledger, &turn, &digest).await)
@@ -205,21 +211,29 @@ impl Turns {
         turn: &IncomingTurn<'_>,
         key: &str,
         digest: &str,
-        now: Timestamp,
-        runnable: Option<FleetStatus>,
+        gates: Gates,
+        model: Option<&dyn ImageModelLookup>,
     ) -> Result<Ledger> {
-        let estimate = self.deployment_estimate(now).await;
         let mut connection = self.database.acquire().await?;
-        let ledger = self
-            .insert_on(
-                &mut connection,
-                row_id,
-                turn,
-                key,
-                digest,
-                Gates { estimate, runnable },
-            )
-            .await?;
+        let ledger = if let Some(model) = model.filter(|_| crate::image_input::has_images(turn)) {
+            let mut tx = connection
+                .begin()
+                .await
+                .map_err(query("stage an image message"))?;
+            let ledger = self
+                .insert_on(&mut tx, row_id, turn, key, digest, gates)
+                .await?;
+            if ledger.inserted {
+                crate::image_input::check(&mut tx, turn, model).await?;
+            }
+            tx.commit()
+                .await
+                .map_err(query("commit an image message"))?;
+            ledger
+        } else {
+            self.insert_on(&mut connection, row_id, turn, key, digest, gates)
+                .await?
+        };
         if ledger.inserted {
             self.ceiling.admitted();
         }
@@ -236,7 +250,10 @@ fn count_refusal(refused: &Error, turn: &IncomingTurn<'_>) {
     // A missing or archived fleet is the caller's answer, not an intake
     // failure: the ledger's own statement now refuses both, where the route
     // once did before the ledger saw them.
-    if refused.is_fleet_absent() || refused.not_runnable().is_some() {
+    if refused.is_fleet_absent()
+        || refused.not_runnable().is_some()
+        || refused.image_model().is_some()
+    {
         return;
     }
     let (outcome, event) = if refused.is_over_capacity() {

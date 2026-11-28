@@ -6,10 +6,6 @@ use super::ToolErrorCode;
 fn should_spell_each_error_code_as_the_thread_reads_it() {
     let spelled = [
         (ToolErrorCode::NotOffered, "tool_not_offered"),
-        (
-            ToolErrorCode::HostedToolUnavailable,
-            "hosted_tool_unavailable",
-        ),
         (ToolErrorCode::SandboxUnavailable, "sandbox_unavailable"),
         (ToolErrorCode::InvalidArguments, "invalid_arguments"),
         (ToolErrorCode::MemoryFull, "memory_full"),

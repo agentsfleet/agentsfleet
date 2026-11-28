@@ -149,6 +149,20 @@ describe("the creation owner", () => {
   const appended = (text: string): AppendMessage => ({createdAt: new Date("2026-11-25T10:00:00Z"), role: "user", parentId: null, sourceId: null,
     content: [{type: "text", text}], attachments: [], runConfig: {}, metadata: {custom: {}}});
 
+  it("keeps the image bytes and operation after an unconfirmed first message", async () => {
+    answers.push(() => response({}, 502));
+    const {result} = renderHook(() => useFleetCreation(WORKSPACE, MODEL.ref));
+    const image: AppendMessage = {...appended(MESSAGE), attachments: [{
+      id: "picture", name: "picture.png", type: "image", contentType: "image/png",
+      status: {type: "complete"}, content: [{type: "image", image: "data:image/png;base64,iVBORw=="}],
+    }]};
+    await act(async () => {await result.current.onNew(image);});
+    expect(result.current.pending[0]).toMatchObject({hasImages: true, state: "unknown"});
+    await act(async () => {result.current.resend(result.current.pending[0]!.operationId);});
+    expect(posts[0]).toMatchObject({message: MESSAGE, images: [{media_type: "image/png", data: "iVBORw=="}]});
+    expect(posts[1]).toEqual(posts[0]);
+  });
+
   it("sends nothing for an empty message, and ignores a Resend or Dismiss for another operation", async () => {
     answers.push(REFUSED);
     const {result} = renderHook(() => useFleetCreation(WORKSPACE, null));

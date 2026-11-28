@@ -178,10 +178,12 @@ impl<'p> EgressPolicy<'p> {
         if placeholder::mentions(&resolved) {
             return Err(raise::placement_not_allowed(IN_URL));
         }
-        let url = Url::parse(&resolved).map_err(raise::invalid_url)?;
+        let url = Url::parse(&resolved)
+            .and_then(allowlist::canonical_url)
+            .map_err(raise::invalid_url)?;
         let host_kept = host.is_none_or(|host| {
             url.host_str()
-                .is_some_and(|parsed| parsed.eq_ignore_ascii_case(host))
+                .is_some_and(|parsed| allowlist::names_host(host, parsed))
         });
         if url.scheme() != HTTPS {
             Err(raise::https_required())
@@ -196,6 +198,16 @@ impl<'p> EgressPolicy<'p> {
     /// as the sandbox's kernel set reads it ([`allowlist_host`]). An entry no
     /// host can be read from names none.
     fn listed(self, url: &Url, host: &str) -> Result<()> {
+        (self.is_public() || self.names(url, host))
+            .then_some(())
+            .ok_or_else(|| raise::host_not_allowed(host))
+    }
+
+    pub(crate) fn is_public(self) -> bool {
+        self.network.http_egress == HttpEgress::Public
+    }
+
+    fn names(self, url: &Url, host: &str) -> bool {
         let wanted = url.host().map(|named| allowlist::spelled(&named));
         let named = wanted.is_some_and(|wanted| {
             self.network
@@ -204,12 +216,18 @@ impl<'p> EgressPolicy<'p> {
                 .filter_map(|entry| allowlist_host(entry))
                 .any(|allowed| allowed == wanted)
         });
-        let public = self.network.http_egress == HttpEgress::Public;
         let package =
             self.network.package_manager_domains && PACKAGE_MANAGER_DOMAINS.contains(&host);
-        (public || package || named)
-            .then_some(())
-            .ok_or_else(|| raise::host_not_allowed(host))
+        package || named
+    }
+
+    pub(crate) fn fetch_locally(self, text: &str) -> Result<bool> {
+        let url = self.locate(text, Placement::Nowhere)?;
+        let host = url.host_str().unwrap_or_default();
+        reachable(&url, host)?;
+        self.listed(&url, host)?;
+        self.allows_origin(&Method::GET, &url, None)?;
+        Ok(self.names(&url, host))
     }
 
     /// Whether `secret` may be sent to `host`: a minted one where the host's
@@ -229,7 +247,7 @@ impl<'p> EgressPolicy<'p> {
                     .ok_or_else(|| self.unknown(secret))?;
                 self.statics
                     .host(secret.name)
-                    .is_some_and(|bound| bound.eq_ignore_ascii_case(host))
+                    .is_some_and(|bound| allowlist::names_host(bound, host))
             }
         };
         sent_here
@@ -240,7 +258,7 @@ impl<'p> EgressPolicy<'p> {
     fn origin(self, host: &str) -> Option<&'p HttpOriginPolicy<'p>> {
         self.origins
             .iter()
-            .find(|origin| origin.host.eq_ignore_ascii_case(host))
+            .find(|origin| allowlist::names_host(&origin.host, host))
     }
 
     /// Whether the host's origin rules allow the request: a host with no

@@ -3,6 +3,24 @@ import { expect } from "@playwright/test";
 import { DURABLE_TASK_IDS, detail, summary } from "@/tests/helpers/task-reads";
 import { test } from "./fixtures/chat-probe";
 
+test("Send stays in the conversation with a tall draft while reconnecting", async ({page, chatProbe}) => {
+  await page.setViewportSize({width: 1280, height: 360});
+  await page.goto(`${chatProbe}?visual=1&state=activity&reconnecting=1`);
+  await expect(page.getByRole("button", {name: "Reconnecting…"})).toBeVisible();
+  const composer = page.getByRole("form", {name: "Chat composer"});
+  const input = composer.getByRole("textbox");
+  const draft = Array.from({length: 30}, (_, line) => `draft line ${line + 1}`).join("\n");
+  await input.fill(draft);
+  await expect(input).toHaveValue(draft);
+  const root = page.getByTestId("fleet-thread-root");
+  const send = composer.getByRole("button", {name: "Send", exact: true});
+  const frame = await root.boundingBox();
+  const button = await send.boundingBox();
+  expect(frame).not.toBeNull();
+  expect(button).not.toBeNull();
+  expect(button!.y + button!.height).toBeLessThanOrEqual(frame!.y + frame!.height + 1);
+});
+
 test("work stays in a sidebar while the ordinary chat composer preserves its draft", async ({page, chatProbe}, info) => {
   const work = [summary(), summary(DURABLE_TASK_IDS[1], "running"), summary(DURABLE_TASK_IDS[2], "ready")];
   await page.route("**/live/v1/workspaces/workspace/fleets/linkwarden/durable_tasks**", async route => {

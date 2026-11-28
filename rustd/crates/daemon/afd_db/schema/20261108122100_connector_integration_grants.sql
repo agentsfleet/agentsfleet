@@ -1,6 +1,6 @@
--- One grant per (fleet, service): the fleet asks for a workspace secret or a connected
+-- One grant per (fleet, grant type, service): the fleet asks for a workspace secret or a connected
 -- integration by name, and a person approves it once. A deny is stored as revoked, and a later
--- request moves the row back to pending. `grant_type` (`secret` or `integration`, spelled by
+-- request moves the row back to pending. `grant_type` (`secret`, `integration` or `host`, spelled by
 -- `afd_api_wire::grant::grant_type`) says which channel the credential reaches a run through;
 -- the run's policy build and the token mint read it. `scope` is the approved GitHub scope,
 -- `requested_scope` a wider one waiting on a person, both in
@@ -19,7 +19,7 @@ CREATE TABLE connector.integration_grants (
     revoked_at        TIMESTAMPTZ(3),
     created_at        TIMESTAMPTZ(3) NOT NULL,
     updated_at        TIMESTAMPTZ(3) NOT NULL,
-    CONSTRAINT uq_integration_grants_fleet_id_service UNIQUE (fleet_id, service)
+    CONSTRAINT uq_integration_grants_fleet_kind_service UNIQUE (fleet_id, grant_type, service)
 );
 
 GRANT SELECT, INSERT, UPDATE ON connector.integration_grants TO api_runtime;

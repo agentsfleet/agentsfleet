@@ -98,18 +98,17 @@ mod window;
 
 pub use self::chat::{Chat, ChatFailure};
 pub use self::conversation::Conversation;
-pub use self::drive::{ANSWER_JOIN, DriveState, Input, Mark, drive};
+pub use self::drive::{ANSWER_JOIN, DriveState, HARNESS_TAG, Input, Mark, drive};
 pub use self::extension::{Answer, Budget, Extension, Plain};
 pub use self::observe::{CallEnd, CallOutcome, Observe, StepEnd, StepOutcome, Unobserved};
 pub use self::step::{Ending, Listen, Step, Waiting};
-pub use self::tool::{Describe, ErrorCode, Tool, ToolFuture, ToolOutput, Tools};
+pub use self::tool::{Describe, ErrorCode, Source, Tool, ToolFuture, ToolOutput, Tools};
 pub use self::transcript::{CallRef, Transcript};
 pub use self::window::{Fitted, Window};
 /// The provider side's types, under guffbolt's own paths: guffbolt-ai owns
 /// them, so a provider crate implements [`Model`] without the loop.
 pub use guffbolt_ai::{
-    Call, Chunk, End, Hosted, Image, ImageKind, Message, Model, Replay, Request, TextKind,
-    ToolSpec, Usage,
+    Call, Chunk, End, Image, ImageKind, Message, Model, Replay, Request, TextKind, ToolSpec, Usage,
 };
 
 /// The README's examples, compiled and run as doctests by the unit lane, so

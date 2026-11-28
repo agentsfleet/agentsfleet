@@ -84,13 +84,11 @@ fn guffbolt_reexports_every_seam_type() {
             image: Some(image),
         },
     ];
-    let hosted: guffbolt::Hosted = guffbolt_ai::Hosted::WebSearch;
     let request: guffbolt::Request<'_> = guffbolt_ai::Request {
         model: "model",
         instructions: "Answer.",
         messages: &messages,
         tools: &[spec],
-        hosted: &[hosted],
         cache_key: CONVERSATION,
         max_output_tokens: None,
         single_attempt: false,
@@ -112,10 +110,6 @@ fn guffbolt_reexports_every_seam_type() {
     ];
 
     assert_eq!(request.tools.first().map(|tool| tool.name), Some("read"));
-    assert_eq!(
-        request.hosted.first().map(|tool| tool.name()),
-        Some("web_search")
-    );
     assert_eq!(request.messages.len(), 2);
     assert_eq!(kind.media_type(), "image/png");
     assert_eq!(usage.total(), 5);

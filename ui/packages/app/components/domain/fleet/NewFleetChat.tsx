@@ -2,7 +2,7 @@
 
 import type { ThreadMessage } from "@assistant-ui/react";
 import type { WorkspaceModel } from "@/lib/api/workspace-models";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AssistantRuntimeProvider, ThreadPrimitive, useExternalStoreRuntime } from "@assistant-ui/react";
 import { GitPullRequestIcon, TerminalWindowIcon, UsersIcon } from "@phosphor-icons/react/ssr";
 import { Alert, BrandMark, Button, PageTitle } from "@agentsfleet/design-system";
@@ -12,6 +12,7 @@ import { ChatThread } from "../shared/chat/ChatThread";
 import { SteerComposer } from "../conversation/composer/SteerComposer";
 import { FleetModelContext, type FleetModelChoice } from "../models/FleetModelContext";
 import { useFleetCreation } from "./useFleetCreation";
+import { PreviewAttachmentAdapter } from "@/lib/api/preview-attachment-adapter";
 
 const STARTERS: readonly {title: string; prompt: string}[] = starters;
 const NO_MESSAGES: readonly ThreadMessage[] = [];
@@ -26,8 +27,10 @@ export function NewFleetChat({workspace, models}: {workspace: string; models: re
     models, selected: model, label: model === null ? "Choose model" : runtimeModelLabel(models, model),
     changing: false, error: null, select: setModelOverride,
   }), [models, model]);
-  const adapter = useMemo(() => ({messages: NO_MESSAGES, isRunning: creation.creating, onNew: creation.onNew}),
-    [creation.creating, creation.onNew]);
+  const attachments = useMemo(() => new PreviewAttachmentAdapter(workspace, null, null), [workspace]);
+  useEffect(() => {attachments.connect(); return () => attachments.dispose();}, [attachments]);
+  const adapter = useMemo(() => ({messages: NO_MESSAGES, isRunning: creation.creating, onNew: creation.onNew, adapters: {attachments}}),
+    [creation.creating, creation.onNew, attachments]);
   const runtime = useExternalStoreRuntime(adapter);
   // The marker gives New fleet the fleet chat's edge-to-edge canvas (`app/globals.css`).
   return <AssistantRuntimeProvider runtime={runtime}><FleetModelContext value={choice}><div data-fleet-workspace className="flex min-h-0 flex-1 flex-col">

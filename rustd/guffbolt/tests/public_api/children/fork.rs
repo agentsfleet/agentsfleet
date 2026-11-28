@@ -58,20 +58,32 @@ async fn fork_turns_none_all_and_a_number_start_from_that_much_history() {
             .first()
             .map(|sent| sent.messages.clone())
     };
-    assert_eq!(first(1), Some(vec![user("alone")]), "none: the task alone");
+    assert_eq!(
+        first(1),
+        Some(vec![user("[Source: harness]\nalone")]),
+        "none: the task alone"
+    );
     assert_eq!(
         first(2),
-        Some(vec![user("first"), said("1"), user("second\n\neverything")]),
+        Some(vec![
+            user("first"),
+            said("1"),
+            user("second\n\n[Source: harness]\neverything")
+        ]),
         "all: every turn, the task joined to the last input"
     );
     assert_eq!(
         first(3),
-        Some(vec![user("second\n\nlast one")]),
+        Some(vec![user("second\n\n[Source: harness]\nlast one")]),
         "1: the last turn"
     );
     assert_eq!(
         first(4),
-        Some(vec![user("first"), said("1"), user("second\n\ndefault")]),
+        Some(vec![
+            user("first"),
+            said("1"),
+            user("second\n\n[Source: harness]\ndefault")
+        ]),
         "absent is all"
     );
 }

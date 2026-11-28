@@ -19,7 +19,7 @@ use af_secrets::Clean;
 /// guessed: the request the supervisor seals a lone record in, empty, at the
 /// largest fencing token, so a record that fits here fits whichever run
 /// posts it.
-fn post_envelope_bytes() -> usize {
+pub(crate) fn post_envelope_bytes() -> usize {
     encoded_len(&ToolCallRecordsRequest {
         fencing_token: u64::MAX,
         calls: Vec::new(),
@@ -50,11 +50,10 @@ pub(crate) fn record(
     item: Item,
 ) -> ToolCallRecord<'static> {
     let room = MESSAGE_BYTES_MAX.saturating_sub(post_envelope_bytes());
-    let (arguments, truncated_arguments) = match arguments.into_inner() {
-        Value::Object(fields) if encoded_len(&fields) <= room => (fields, false),
-        Value::Object(_) => (Map::new(), true),
+    let arguments = match arguments.into_inner() {
+        Value::Object(fields) => fields,
         Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) | Value::Array(_) => {
-            (Map::new(), false)
+            Map::new()
         }
     };
     let Item {
@@ -67,7 +66,7 @@ pub(crate) fn record(
     let mut record = ToolCallRecord {
         call_number: number,
         arguments,
-        truncated_arguments,
+        truncated_arguments: false,
         output: Cow::Owned(String::new()),
         output_line_count: u64::try_from(output.lines().count()).unwrap_or(u64::MAX),
         truncated: false,
@@ -76,7 +75,12 @@ pub(crate) fn record(
         tool: Cow::Owned(tool),
         status,
         changes,
+        sources: Vec::new(),
     };
+    if !record.arguments.is_empty() && encoded_len(&record) > room {
+        record.arguments.clear();
+        record.truncated_arguments = true;
+    }
     let mut keep = output.len();
     loop {
         record.output = Cow::Owned(output.get(..keep).unwrap_or_default().to_owned());

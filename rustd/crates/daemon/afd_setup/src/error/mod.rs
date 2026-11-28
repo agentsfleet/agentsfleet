@@ -36,6 +36,16 @@ const DETAIL_ARCHIVED: &str =
 const CURRENT_ARCHIVED: &str = afd_fleet_lifecycle::FleetStatus::Archived.as_str();
 
 impl Error {
+    /// The selected model when the first message's images were refused.
+    #[must_use]
+    pub fn image_model(&self) -> Option<&str> {
+        if let ErrorKind::ImageModel { model } = self.kind() {
+            Some(model)
+        } else {
+            None
+        }
+    }
+
     /// Stable registry classification; foreign failures retain their own codes.
     #[must_use]
     pub fn code(&self) -> ErrorCode {
@@ -49,6 +59,7 @@ impl Error {
             ErrorKind::Replay => error_code::SETUP_REPLAY,
             ErrorKind::Gone => error_code::SETUP_GONE,
             ErrorKind::Model => error_code::SETUP_MODEL,
+            ErrorKind::ImageModel { .. } => error_code::MESSAGE_IMAGE_UNSUPPORTED,
             ErrorKind::Cursor => error_code::SETUP_CURSOR,
             ErrorKind::Validation { .. } | ErrorKind::Name { .. } | ErrorKind::Invalid { .. } => {
                 error_code::INVALID_REQUEST
@@ -85,6 +96,7 @@ impl Error {
             | ErrorKind::Replay
             | ErrorKind::Gone
             | ErrorKind::Model
+            | ErrorKind::ImageModel { .. }
             | ErrorKind::TurnWrite { .. }
             | ErrorKind::Approval { .. }
             | ErrorKind::Cursor

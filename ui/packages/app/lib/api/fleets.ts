@@ -2,6 +2,7 @@ import { request, requestWithEtag } from "./client";
 import type { SteerAccepted, SteerRequest } from "./fleets-types";
 import { FleetDetailSchema, FleetListSchema } from "./fleet-detail";
 import { matchesResourceEtag } from "./etag";
+import { workspacePath } from "../workspace-routes";
 import { QUERY_STARTING_AFTER } from "./paging";
 import { fleetPath, fleetsPath } from "./fleet-paths";
 import type {
@@ -31,6 +32,12 @@ export async function listFleets(
   const qs = params.toString();
   const path = qs ? `${fleetsPath(workspaceId)}?${qs}` : fleetsPath(workspaceId);
   return FleetListSchema.parse(await request<unknown>(path, { method: "GET" }, token));
+}
+
+/** Both entry routes open the first fleet in the daemon's order, or the composer. */
+export async function defaultFleetPath(workspaceId: string, token: string): Promise<string> {
+  const { items } = await listFleets(workspaceId, token, { limit: 1 });
+  return workspacePath(workspaceId, items[0] ? `fleets/${items[0].id}` : "fleets/new");
 }
 
 export async function getFleet(

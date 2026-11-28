@@ -43,6 +43,8 @@ pub mod status {
 /// The spellings `connector.integration_grants.grant_type` stores: which channel the
 /// approved credential reaches a run through.
 pub mod grant_type {
+    /// A DNS host the fleet can access through its web tools.
+    pub const HOST: &str = "host";
     /// A workspace vault entry the run's tools address by field.
     pub const SECRET: &str = "secret";
     /// A connected integration whose token is minted per run, such as GitHub.
@@ -55,7 +57,7 @@ pub mod grant_type {
 pub struct Grant<'a> {
     /// The grant's own row id — what a revoke addresses it by.
     pub id: Cow<'a, str>,
-    /// `secret` or `integration`, from [`grant_type`].
+    /// `secret`, `integration` or `host`, from [`grant_type`].
     pub kind: Cow<'a, str>,
     /// The vault key or integration the fleet asked for.
     pub name: Cow<'a, str>,
@@ -74,8 +76,8 @@ pub struct Grant<'a> {
 
 /// `GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/integration-grants`.
 //
-// Unpaged: a fleet holds at most one grant per name, so the workspace's vault
-// and connected integrations bound the list.
+// Each entry is identified by its grant ID. A host and a credential
+// can share a name while having independent approvals.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct GrantsResponse<'a> {

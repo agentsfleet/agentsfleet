@@ -5,7 +5,8 @@ import { SteerComposer } from "./SteerComposer";
 import { PENDING_SEND_STATE, type PendingSend } from "../delivery/useFleetPendingSends";
 
 const { composer, aui } = vi.hoisted(() => {
-  const state: {text: string; isEmpty: boolean; quote?: {text: string}} = { text: "", isEmpty: true };
+  const state: {text: string; isEmpty: boolean; quote?: {text: string}; attachments: Array<{type: string}>} =
+    { text: "", isEmpty: true, attachments: [] };
   const setText = vi.fn((text: string) => {
     state.text = text;
     state.isEmpty = text.length === 0;
@@ -65,11 +66,12 @@ const noop = () => {};
 
 type Handlers = { onResend?: (id: string) => void; onDismiss?: (id: string) => void; onRestored?: (id: string, text: string) => void; turnStop?: TurnStop };
 
-function view(pending: PendingSend[], handlers: Handlers = {}) {
+function view(pending: PendingSend[], handlers: Handlers & {canResendImage?: (id: string) => boolean} = {}) {
   return (
     <SteerComposer
       pending={pending}
       onResend={handlers.onResend ?? noop}
+      canResendImage={handlers.canResendImage}
       onDismiss={handlers.onDismiss ?? noop}
       onRestored={handlers.onRestored ?? noop}
       onDraft={noop}
@@ -93,6 +95,14 @@ afterEach(() => {
 });
 
 describe("SteerComposer", () => {
+  it("shows an image refusal without restoring or resending the text alone after a reload", () => {
+    const image = entry({operationId: "image", hasImages: true, errorDetail: "Model Text-only cannot receive images"});
+    render(view([image], {canResendImage: () => false}));
+    expect(screen.getByText("Model Text-only cannot receive images")).toBeTruthy();
+    expect(screen.getByText("The attachment is unavailable in this tab.")).toBeTruthy();
+    expect(screen.queryByRole("button", {name: RESEND})).toBeNull();
+    expect(composer.setText).not.toHaveBeenCalled();
+  });
   it("renders an enabled composer that submits on Enter", () => {
     render(view([]));
     const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
@@ -201,7 +211,7 @@ describe("SteerComposer", () => {
     expect(composer.setText).toHaveBeenCalledExactlyOnceWith("deploy the canary");
   });
 
-  it("creates a fleet from the first message: its own placeholder and label, an inline mention, and no upload", () => {
+  it("creates a fleet from the first message with its own placeholder, label and inline mention", () => {
     render(<SteerComposer creating pending={[]} onResend={noop} onDismiss={noop} onRestored={noop} onDraft={noop} />);
     expect(screen.getByRole("textbox").getAttribute("placeholder")).toBe("What would you like your fleet to do?");
     expect(screen.getByLabelText("New fleet composer")).toBeTruthy();

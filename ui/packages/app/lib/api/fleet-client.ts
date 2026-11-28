@@ -16,7 +16,9 @@ export const PINNED_CATEGORY = "core";
 // The memory list's accepted page ceiling (`GET F/memories`).
 const MEMORY_PAGE_LIMIT = 100;
 
-export type CreateFleet = {message: string; operation_id: string; model_ref?: string};
+import type { MessageImage } from "./message-images";
+
+export type CreateFleet = {message: string; operation_id: string; model_ref?: string; images?: readonly MessageImage[]};
 export type CreatedFleet = {fleetId: string; turnId: string; replayed: boolean};
 export type FleetChange = {name: string} | {model_ref: string} | {http_egress: HttpEgress} | {package_domains: boolean};
 export type PinnedMemory = z.infer<typeof MemoryEntrySchema>;

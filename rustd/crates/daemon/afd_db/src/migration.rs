@@ -176,6 +176,7 @@ pub static MIGRATIONS: &[Migration] = &[
     migration!("20261122090700_runner_checkpoint_pins.sql"),
     migration!("20261122090800_thread_replay_receipts.sql"),
     migration!("20261124191105_fleet_triggers.sql"),
+    migration!("20261127164600_thread_run_web_calls.sql"),
 ];
 
 /// Derives the version from the filename during constant evaluation: its UTC

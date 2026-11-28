@@ -38,6 +38,7 @@ export interface ApprovalGate {
   readonly fleet_id?: string | null;
   readonly fleet_name?: string | null;
   readonly gate_type?: string | null;
+  readonly evidence?: { readonly kind?: string } | null;
   readonly tool_name?: string | null;
   readonly status?: string | null;
   readonly proposed_action?: string | null;
@@ -122,6 +123,9 @@ const GATE_ID_REQUIRED = "<gate_id> is required" as const;
 export const APPROVALS_LIST_HINT =
   "Decide one with: agentsfleet fleet approvals approve <gate_id>" as const;
 
+const isHostRequest = (gate: ApprovalGate): boolean =>
+  gate.gate_type === "integration_grant" && gate.evidence?.kind === "host";
+
 const cell = (value: string | null | undefined): string =>
   value && value.length > 0 ? value : EMPTY_CELL;
 
@@ -167,7 +171,7 @@ export const approvalsListEffectFromArgs = (
       gates.map((g) => ({
         gate: cell(g.gate_id),
         fleet: cell(g.fleet_name ?? g.fleet_id),
-        kind: cell(g.gate_type),
+        kind: isHostRequest(g) ? "host" : cell(g.gate_type),
         status: cell(g.status),
         action: cell(g.proposed_action ?? g.tool_name),
         [AGE_KEY]: g.created_at,
@@ -208,12 +212,12 @@ export const approvalsShowEffectFromArgs = (
     yield* output.printKeyValue({
       gate_id: cell(gate.gate_id),
       fleet: cell(gate.fleet_name ?? gate.fleet_id),
-      kind: cell(gate.gate_type),
+      kind: isHostRequest(gate) ? "host" : cell(gate.gate_type),
       status: cell(gate.status),
       proposed: cell(gate.proposed_action),
       blast_radius: cell(gate.blast_radius),
       created_at: instantCell(gate.created_at),
-      expires_at: instantCell(gate.expires_at),
+      [isHostRequest(gate) ? "respond_by" : "expires_at"]: instantCell(gate.expires_at),
       resolved_by: cell(gate.resolved_by_name || gate.resolved_by),
     });
   });

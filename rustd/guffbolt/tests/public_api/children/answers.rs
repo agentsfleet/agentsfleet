@@ -47,7 +47,7 @@ async fn a_spawned_child_answers_and_wait_agent_reads_its_answer() {
     let child = family.script.sent_by(&agent(1));
     assert_eq!(
         child.first().map(|sent| sent.messages.clone()),
-        Some(vec![user("check the build")]),
+        Some(vec![user("[Source: harness]\ncheck the build")]),
         "the child reads its task alone"
     );
     assert_eq!(

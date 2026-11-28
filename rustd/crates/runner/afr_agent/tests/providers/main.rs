@@ -1,6 +1,6 @@
 //! The three provider wires against a fake provider on a real socket, driven
 //! by the real loop: a tool turn each, bounded retry, the key kept to its one
-//! header, `web_search` as a hosted spec, and a stream cut before its turn
+//! header, `web_search` as a function, and a stream cut before its turn
 //! ended, opened again within the same bound. How a turn ends is `ends`; which
 //! host it reaches is `hosts`; one turn read below the loop is `turns`; an
 //! image a tool read riding the next turn is `images`.
@@ -24,6 +24,7 @@ mod logging;
 mod native;
 mod privacy;
 mod retries;
+mod search;
 mod turns;
 
 use std::sync::Arc;
@@ -35,7 +36,7 @@ use af_wire::report::FailureClass;
 use af_wire::tool_trace::ToolCallStatus;
 use afr_agent::ResultOutcome;
 use afr_tools::Catalog;
-use afr_tools::catalog::{BROWSER, PUBLISHED, UPDATE_PLAN, WEB_SEARCH};
+use afr_tools::catalog::{BROWSER, PUBLISHED, UPDATE_PLAN};
 use serde_json::json;
 
 use self::support::wires::{CACHED_TOKENS, PROMPT_TOKENS, Wire};
@@ -47,8 +48,6 @@ const ANSWER: &str = "It is 4.";
 const CALL_ID: &str = "call-1";
 /// The wait the fake's 429 asks for, as the header spells it.
 const RETRY_AFTER: &str = "1";
-/// What a refused hosted call reads back, as the router spells it.
-const HOSTED_REFUSAL: &str = "[hosted_tool_unavailable]";
 /// Sends per turn, the first included: the transport's retry and a cut
 /// turn's reopening share the bound.
 const ATTEMPTS: usize = 3;
@@ -166,54 +165,10 @@ async fn a_fault_is_retried_three_sends_and_then_ends_naming_its_status() {
     assert_eq!(fake.seen().len(), 3, "the ceiling is three sends");
 }
 
-#[tokio::test]
-async fn test_web_search_is_a_hosted_spec() {
-    for wire in [Wire::Messages, Wire::Responses] {
-        let mut fake = Fake::serve(vec![wire.answer(ANSWER)]).await;
-        let held = payload(&wire.provider(), &[WEB_SEARCH.name()], "search");
-
-        let (output, _frames) = run(&engine(&fake), &held).await;
-
-        assert_eq!(output.result.content, ANSWER, "{wire:?}");
-        let offered = wire.offered(&fake.seen()[0].body);
-        let spec = offered
-            .iter()
-            .find(|tool| tool.starts_with(WEB_SEARCH.name()));
-        assert!(spec.is_some(), "{wire:?}: {offered:?}");
-    }
-    let wire = Wire::Chat;
-    let mut fake = Fake::serve(vec![
-        wire.call(CALL_ID, WEB_SEARCH.name(), &json!({"query": "x"})),
-        wire.answer(ANSWER),
-    ])
-    .await;
-    let held = payload(&wire.provider(), &[WEB_SEARCH.name()], "search");
-
-    let (output, _frames) = run(&engine(&fake), &held).await;
-
-    let seen = fake.seen();
-    assert!(
-        wire.offered(&seen[0].body).is_empty(),
-        "chat has no hosted spec"
-    );
-    // rig renders an undeclared tool's exchange as conversation text. The
-    // refusal still reaches the model, without advertising a hosted tool.
-    assert!(
-        seen[1].body.to_string().contains(HOSTED_REFUSAL),
-        "{:?}",
-        seen[1].body
-    );
-    assert_eq!(
-        output.trace.unwrap().calls[0].status,
-        ToolCallStatus::Failed
-    );
-}
-
 /// Anthropic's Messages API refuses a whole request when one function tool's
 /// `input_schema` names no type (`tools.N.custom.input_schema.type: Field
 /// required`). A tool that takes untyped arguments generates `{}`, so every
-/// offered function tool must name the object type. A hosted spec carries no
-/// schema.
+/// offered function tool must name the object type.
 #[tokio::test]
 async fn every_published_tool_is_offered_to_messages_as_an_object_schema() {
     let mut fake = Fake::serve(vec![Wire::Messages.answer(ANSWER)]).await;

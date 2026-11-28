@@ -51,6 +51,13 @@ function message(text: string): AppendMessage {
   };
 }
 
+function pictureMessage(): AppendMessage {
+  return {...message(DEPLOY), attachments: [{
+    id: "picture", type: "image", name: "picture.png", contentType: "image/png",
+    status: {type: "complete"}, content: [{type: "image", image: "data:image/png;base64,iVBORw=="}],
+  }]};
+}
+
 function delivery(appendOptimistic: (text: string, actor: string) => string = () => OPTIMISTIC_ROW) {
   const writers: PendingSendWriters = {
     begin: vi.fn(),
@@ -76,6 +83,44 @@ function delivery(appendOptimistic: (text: string, actor: string) => string = ()
 function sentId(call: number): string {
   return postSteer.mock.calls[call - 1]?.[3] as string;
 }
+
+it("retries the original attachment and clears its in-memory copy after acceptance", async () => {
+  postSteer.mockResolvedValueOnce({ok: false, status: 409, error: "Choose an image-capable model",
+    errorCode: ERROR_CODE.MESSAGE_IMAGE_UNSUPPORTED}).mockResolvedValueOnce(ACCEPTED);
+  const {ctx, hook} = delivery();
+  await act(async () => {await hook.result.current.onNew(pictureMessage());});
+  const operation = sentId(1);
+  expect(hook.result.current.canResendImage(operation)).toBe(true);
+  expect(ctx.writers.fail).toHaveBeenCalledWith(operation, PENDING_SEND_STATE.REFUSED, "Choose an image-capable model");
+  vi.mocked(ctx.writers.find).mockReturnValue({
+    operationId: operation, text: DEPLOY, hasImages: true, submittedAtMs: 0, state: PENDING_SEND_STATE.REFUSED,
+  });
+  await act(async () => {hook.result.current.resend(operation);});
+  expect(postSteer.mock.calls[1]?.[3]).toBe(operation);
+  expect(postSteer.mock.calls[1]?.[5]).toEqual([{media_type: "image/png", data: "iVBORw=="}]);
+  expect(hook.result.current.canResendImage(operation)).toBe(false);
+});
+
+it("does not resend text when an image operation was restored without its attachment", () => {
+  const {ctx, hook} = delivery();
+  const operation = "restored-image-operation";
+  vi.mocked(ctx.writers.find).mockReturnValue({
+    operationId: operation, text: DEPLOY, hasImages: true, submittedAtMs: 0, state: PENDING_SEND_STATE.UNKNOWN,
+  });
+  expect(hook.result.current.canResendImage(operation)).toBe(false);
+  act(() => {hook.result.current.resend(operation);});
+  expect(postSteer).not.toHaveBeenCalled();
+  act(() => {hook.result.current.dismiss(operation);});
+  expect(ctx.writers.dismiss).toHaveBeenCalledWith(operation);
+});
+
+it("keeps the original operation when the returned text is sent unchanged", async () => {
+  postSteer.mockResolvedValueOnce({ok: false, error: "Connection dropped"}).mockResolvedValueOnce(ACCEPTED);
+  const {hook} = delivery();
+  await act(async () => {await expect(hook.result.current.onNew(message(DEPLOY))).rejects.toThrow();});
+  await act(async () => {await hook.result.current.onNew(message(DEPLOY));});
+  expect(sentId(2)).toBe(sentId(1));
+});
 
 function signalOf(call: number): AbortSignal {
   return postSteer.mock.calls[call - 1]?.[4] as AbortSignal;

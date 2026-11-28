@@ -4214,8 +4214,8 @@
         "tags": [
           "Integration Grants"
         ],
-        "summary": "Ask a person for a secret or an integration",
-        "description": "Asks a person to approve `name` for the assigned fleet: a workspace secret or a connected integration. `github` names its `scope`. A request the fleet's approved grant already covers answers 200 with no card. Any other raises a card carrying the run's turn and answers 201; the run then ends waiting for the person's answer. A card already open for the name answers 200. A name the workspace lacks answers `UZ-AGT-022`, an integration it has not connected `UZ-AGT-023`.",
+        "summary": "Ask a person for a host, secret or integration",
+        "description": "Asks a person to approve `name` for the assigned fleet: a workspace secret or a connected integration. An alternative `host` asks for a DNS hostname for web access. `github` names its `scope`. A request the fleet's approved grant already covers answers 200 with no card. Any other raises a card carrying the run's turn and answers 201; the run then ends waiting for the person's answer. A card already open for the name answers 200. A name the workspace lacks answers `UZ-AGT-022`, an integration it has not connected `UZ-AGT-023`.",
         "operationId": "runner_request_access",
         "parameters": [
           {
@@ -6961,6 +6961,154 @@
         ]
       }
     },
+    "/v1/runners/me/runs/{run_id}/extracts": {
+      "post": {
+        "tags": [
+          "Runners"
+        ],
+        "summary": "Read a page for a public fleet",
+        "description": "Submit once. A temporary reader failure permits one local read only if the problem explicitly carries local_read_permitted: true.",
+        "operationId": "runner_web_extract",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "description": "Run identifier (version 7 universally unique identifier, or UUID).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtractRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Page content as Markdown",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtractResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not have permission for this action",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource was not found or is not accessible to you",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the resource's current state",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The request body exceeds this endpoint's size limit",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "A request or capacity limit has been reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An internal server error occurred",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Page unavailable, reader unavailable, or invalid reader response",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "RunnerBearerAuth": []
+          }
+        ]
+      }
+    },
     "/v1/runners/me/runs/{run_id}/fleets": {
       "get": {
         "tags": [
@@ -8396,6 +8544,154 @@
         ]
       }
     },
+    "/v1/runners/me/runs/{run_id}/searches": {
+      "post": {
+        "tags": [
+          "Runners"
+        ],
+        "summary": "Search the web for a public fleet",
+        "description": "Submit this request once. Each vendor dispatch reserves a physical attempt. A lost response leaves the outcome unknown. HTTP 503 includes Retry-After when all vendors are cooling down.",
+        "operationId": "runner_web_search",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "description": "Run identifier (version 7 universally unique identifier, or UUID).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Results from the first working vendor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not have permission for this action",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource was not found or is not accessible to you",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the resource's current state",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The request body exceeds this endpoint's size limit",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "A request or capacity limit has been reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An internal server error occurred",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Search vendors failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "RunnerBearerAuth": []
+          }
+        ]
+      }
+    },
     "/v1/runners/me/runs/{run_id}/steers": {
       "post": {
         "tags": [
@@ -8947,7 +9243,7 @@
             "schema": {
               "type": "string"
             },
-            "example": "agentsfleet.runner.v6"
+            "example": "agentsfleet.runner.v7"
           },
           {
             "name": "agentsfleet-runner-kind",
@@ -13256,7 +13552,7 @@
           "Fleets"
         ],
         "summary": "Start a fleet with its first message",
-        "description": "Creates an active fleet, its thread and its first turn in one transaction. The fleet runs on `model_ref`, or on the workspace's selected model when it is omitted. It is named `name`, or `fleet-` and the last 12 hex digits of its id. Its answer arrives on `GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/turns/stream`. Retry with the same `operation_id` and body to receive the same fleet with `replayed: true`. The same key with another body answers 409 `UZ-SETUP-005`. A key whose fleet was deleted answers 410 `UZ-SETUP-013`.",
+        "description": "Creates an active fleet, its thread and its first turn in one transaction. The fleet runs on `model_ref`, or on the workspace's selected model when it is omitted. It is named `name`, or `fleet-` and the last 12 hex digits of its id. Its answer arrives on `GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/turns/stream`. Retry with the same `operation_id` and body to receive the same fleet with `replayed: true`. The same key with another body answers 409 `UZ-SETUP-005`. A key whose fleet was deleted answers 410 `UZ-SETUP-013`. Invalid images return 400 `UZ-AGT-026`. A text-only model returns 409 `UZ-AGT-027`.",
         "operationId": "create_fleet",
         "parameters": [
           {
@@ -15139,7 +15435,7 @@
           "Fleets"
         ],
         "summary": "Post a chat message to a fleet",
-        "description": "Sends a message and returns its event identifier. Reuse `operation_id` with the same message and sender to retry without another run or charge. This remains safe after stopping or pausing the fleet.\n\nReusing it with different text or sender returns 409 `UZ-AGT-016`. Each person is one sender; workspace API keys share one sender. Without `operation_id`, every request creates a new message.",
+        "description": "Sends a message and returns its event identifier. Reuse `operation_id` with the same message and sender to retry without another run or charge. This remains safe after stopping or pausing the fleet.\n\nReusing it with different text or sender returns 409 `UZ-AGT-016`. Each person is one sender; workspace API keys share one sender. Without `operation_id`, every request creates a new message. An image message keeps its own turn when a run is active. Invalid images return 400 `UZ-AGT-026`. A text-only model returns 409 `UZ-AGT-027`.",
         "operationId": "post_fleet_message",
         "parameters": [
           {
@@ -18101,39 +18397,116 @@
           }
         }
       },
+      "AccessOutcome": {
+        "type": "string",
+        "description": "Which run owns the decision card, or whether the grant already covers this request.",
+        "enum": [
+          "raised",
+          "pending",
+          "covered"
+        ]
+      },
       "AccessRequest": {
-        "type": "object",
-        "description": "`POST /v1/runners/me/runs/{run_id}/access` request.",
-        "required": [
-          "fencing_token",
-          "name"
-        ],
-        "properties": {
-          "fencing_token": {
-            "type": "integer",
-            "format": "int64",
-            "description": "The run's fencing token; a holder the fleet has superseded is refused.",
-            "minimum": 0
-          },
-          "name": {
-            "type": "string",
-            "description": "The workspace vault key or connected integration, such as `sentry` or\n`github`.",
-            "minLength": 1
-          },
-          "scope": {
-            "type": [
-              "object",
-              "null"
+        "allOf": [
+          {
+            "type": "object",
+            "description": "`POST /v1/runners/me/runs/{run_id}/access` request.",
+            "required": [
+              "fencing_token"
             ],
-            "description": "The GitHub scope, `{repositories, access, base?}`; required for\n`github` and refused for any other name. The daemon reads it through\n`af_fleet_runtime::config::RepositoryBinding::parse`."
+            "properties": {
+              "evidence": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/RedirectEvidence",
+                    "description": "Redirect evidence recorded by the runner, present only for a matching host."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "fencing_token": {
+                "type": "integer",
+                "format": "int64",
+                "description": "The run's fencing token; a holder the fleet has superseded is refused.",
+                "minimum": 0
+              },
+              "host": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/Hostname",
+                    "description": "A host grant, mutually exclusive with a credential name."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "name": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The workspace vault key or connected integration, such as `sentry` or\n`github`."
+              },
+              "scope": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "description": "The GitHub scope, `{repositories, access, base?}`; required for\n`github` and refused for any other name. The daemon reads it through\n`af_fleet_runtime::config::RepositoryBinding::parse`."
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "oneOf": [
+              {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "evidence": {
+                    "type": "null"
+                  },
+                  "host": {
+                    "type": "null"
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "host"
+                ],
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "null"
+                  },
+                  "scope": {
+                    "type": "null"
+                  }
+                }
+              }
+            ]
           }
-        },
-        "additionalProperties": false
+        ],
+        "description": "Provide one credential name or one host. Only host requests accept redirect evidence, and its to_host must match the requested host."
       },
       "AccessRequested": {
         "type": "object",
         "description": "What an access request did.",
         "required": [
+          "state",
           "grant_id"
         ],
         "properties": {
@@ -18142,11 +18515,15 @@
               "string",
               "null"
             ],
-            "description": "The card a person answers; absent when the approved grant already\ncovers the request, so the run continues holding it."
+            "description": "The card when observed. A concurrent pending request may not yet see its ID.\nRunners use `state` to decide whether this turn waits or continues."
           },
           "grant_id": {
             "type": "string",
             "description": "The fleet's grant for the name."
+          },
+          "state": {
+            "$ref": "#/components/schemas/AccessOutcome",
+            "description": "What took place independent of whether the transaction saw the card ID."
           }
         }
       },
@@ -20377,6 +20754,13 @@
           "operation_id"
         ],
         "properties": {
+          "images": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MessageImage"
+            },
+            "description": "Images accompanying the first message."
+          },
           "message": {
             "type": "string",
             "description": "What to say to the new fleet: 1 to 1,048,576 characters, with no NUL\ncharacter, counted on the decoded text."
@@ -23566,6 +23950,66 @@
           }
         }
       },
+      "ExtractRequest": {
+        "type": "object",
+        "description": "Read a single public page through a vendor.",
+        "required": [
+          "fencing_token",
+          "call_number",
+          "url"
+        ],
+        "properties": {
+          "call_number": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The model's one-based tool call number.",
+            "minimum": 1
+          },
+          "fencing_token": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The current holder's fence.",
+            "minimum": 0
+          },
+          "url": {
+            "type": "string",
+            "description": "The page's HTTPS URL. The daemon checks destination policy before dispatch.",
+            "maxLength": 1048576,
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExtractResponse": {
+        "type": "object",
+        "description": "One extracted page and its requested URL.",
+        "required": [
+          "vendor",
+          "url",
+          "content"
+        ],
+        "properties": {
+          "content": {
+            "type": "string",
+            "description": "Full Markdown content returned by the reader."
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Page title, when known."
+          },
+          "url": {
+            "type": "string",
+            "description": "The requested page; vendors may follow redirects internally."
+          },
+          "vendor": {
+            "type": "string",
+            "description": "The vendor that read the page."
+          }
+        }
+      },
       "FannedOut": {
         "type": "object",
         "description": "Result of a provider delivery, including how many matching fleets received a turn.",
@@ -24250,7 +24694,7 @@
           },
           "kind": {
             "type": "string",
-            "description": "`secret` or `integration`, from [`grant_type`]."
+            "description": "`secret`, `integration` or `host`, from [`grant_type`]."
           },
           "name": {
             "type": "string",
@@ -24328,6 +24772,10 @@
           }
         },
         "additionalProperties": false
+      },
+      "Hostname": {
+        "type": "string",
+        "description": "A DNS hostname for a web-host grant, canonicalized before any lookup or recording."
       },
       "HttpEgress": {
         "type": "string",
@@ -24908,6 +25356,25 @@
             "description": "Other fleets' shared entries, key matches first."
           }
         }
+      },
+      "MessageImage": {
+        "type": "object",
+        "description": "An image attached to a person or API client's message.",
+        "required": [
+          "media_type",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "string",
+            "description": "Standard base64; at most 5 MiB when decoded."
+          },
+          "media_type": {
+            "type": "string",
+            "description": "One of `image/png`, `image/jpeg`, `image/gif` and `image/webp`."
+          }
+        },
+        "additionalProperties": false
       },
       "MessagePosted": {
         "type": "object",
@@ -26210,6 +26677,13 @@
             ],
             "description": "On an answered approval gate's 409 only: the gate that was answered."
           },
+          "local_read_permitted": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "On a temporary extract outage, true authorizes one local read under the fleet's network policy."
+          },
           "outcome": {
             "type": [
               "string",
@@ -26279,6 +26753,37 @@
             "description": "`true` only when every dependency answered. Mirrors the status code:\n`true` with a 200, `false` with a 503."
           }
         }
+      },
+      "RedirectEvidence": {
+        "type": "object",
+        "description": "The adjacent hosts observed on a refused redirect during this run.",
+        "required": [
+          "tool",
+          "from_host",
+          "to_host"
+        ],
+        "properties": {
+          "from_host": {
+            "$ref": "#/components/schemas/Hostname",
+            "description": "The host that returned the redirect."
+          },
+          "to_host": {
+            "$ref": "#/components/schemas/Hostname",
+            "description": "The destination refused before connection."
+          },
+          "tool": {
+            "$ref": "#/components/schemas/RefusedTool",
+            "description": "The tool that encountered the refused redirect."
+          }
+        },
+        "additionalProperties": false
+      },
+      "RefusedTool": {
+        "type": "string",
+        "description": "The tool whose actual network refusal supplied the redirect evidence.",
+        "enum": [
+          "web_fetch"
+        ]
       },
       "RegisterRequest": {
         "type": "object",
@@ -27502,6 +28007,93 @@
           }
         }
       },
+      "SearchRequest": {
+        "type": "object",
+        "description": "Search the public web for the given run.",
+        "required": [
+          "fencing_token",
+          "call_number",
+          "query"
+        ],
+        "properties": {
+          "call_number": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The model's one-based tool call number.",
+            "minimum": 1
+          },
+          "fencing_token": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The current holder's fence.",
+            "minimum": 0
+          },
+          "query": {
+            "type": "string",
+            "description": "Search terms submitted to the platform's configured vendors.",
+            "maxLength": 1048576,
+            "minLength": 1,
+            "pattern": "\\S"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SearchResponse": {
+        "type": "object",
+        "description": "The first vendor's successful search.",
+        "required": [
+          "vendor",
+          "results"
+        ],
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SearchResult"
+            },
+            "description": "Matching pages in relevance order."
+          },
+          "vendor": {
+            "type": "string",
+            "description": "The vendor that answered."
+          }
+        }
+      },
+      "SearchResult": {
+        "type": "object",
+        "description": "One web source in vendor order.",
+        "required": [
+          "url",
+          "excerpts"
+        ],
+        "properties": {
+          "excerpts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Relevant passages from this page."
+          },
+          "published": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Publication date, when supplied."
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Page title, when known."
+          },
+          "url": {
+            "type": "string",
+            "description": "Source URL."
+          }
+        }
+      },
       "SecretFleet": {
         "type": "object",
         "description": "One fleet a secret is available to.",
@@ -27811,6 +28403,13 @@
           "message"
         ],
         "properties": {
+          "images": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MessageImage"
+            },
+            "description": "Images accompanying the message."
+          },
           "message": {
             "type": "string",
             "description": "What to say to the fleet: 1 to 1,048,576 characters, with no NUL\ncharacter.\n\nCounted on the decoded text, which is what reaches the stream. The\nescaped form a client sends is not what counts against the limit."
@@ -28105,6 +28704,13 @@
             "minimum": 0,
             "x-stability": "beta"
           },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WebSource"
+            },
+            "description": "Pages returned by this call, in their original order."
+          },
           "status": {
             "oneOf": [
               {
@@ -28182,6 +28788,13 @@
             "format": "int64",
             "description": "How many lines the whole output had, before any cut.",
             "minimum": 0
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WebSource"
+            },
+            "description": "Pages returned by this call, in their original order."
           },
           "status": {
             "$ref": "#/components/schemas/ItemStatus",
@@ -28274,6 +28887,10 @@
               "$ref": "#/components/schemas/ToolTraceCall"
             },
             "description": "Every call the run made."
+          },
+          "sources_in_items": {
+            "type": "boolean",
+            "description": "The final report needed the room taken by duplicate citations. Settlement\nrestores them from this run's numbered items in the same transaction."
           }
         },
         "additionalProperties": false
@@ -28344,6 +28961,13 @@
               "null"
             ],
             "description": "The output's last lines, at most 5 lines and 1024 bytes. Absent when\nthe head already holds the whole output."
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WebSource"
+            },
+            "description": "Pages returned by this call, in their original order."
           },
           "status": {
             "$ref": "#/components/schemas/ToolCallStatus",
@@ -28555,6 +29179,10 @@
           "answer"
         ],
         "properties": {
+          "actor": {
+            "type": "string",
+            "description": "Who or what produced this turn, as stored on the thread."
+          },
           "answer": {
             "type": "string",
             "description": "The fleet's answer, or the fixed text a reply-less or failed run reads as."
@@ -28565,6 +29193,24 @@
               "$ref": "#/components/schemas/EarlierCall"
             },
             "description": "Every tool call the turn's run made, in the order it made them, as\n`thread.items` keeps them; empty for a turn that called none."
+          },
+          "event_type": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TurnKind",
+                "description": "How the turn entered the system. Earlier assignments may omit this field."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "images": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MessageImage"
+            },
+            "description": "Images that accompanied the person's message."
           },
           "message": {
             "type": "string",
@@ -29195,6 +29841,27 @@
             "description": "The invite's identifier, which the accept route names."
           }
         }
+      },
+      "WebSource": {
+        "type": "object",
+        "description": "A sanitized page citation shared by a completion, a trace row and its saved item.",
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Displayable page title, when supplied."
+          },
+          "url": {
+            "type": "string",
+            "description": "Displayable URL, stripped of credentials, query and fragment by the runner."
+          }
+        },
+        "additionalProperties": false
       },
       "WorkspaceAccount": {
         "type": "object",

@@ -27,21 +27,23 @@ pub struct Network {
 }
 
 /// The fleet's network policy: its two toggles, and an `allow` list naming
-/// exactly the hosts its approved grants send credentials to.
+/// the explicit web hosts and credential hosts a person approved.
 ///
-/// A fleet with nothing approved reaches no named host. Each approved static
+/// Each approved web host contributes its name. Each approved static
 /// secret contributes its own `host` field, the one host it is ever sent to,
 /// and an approved GitHub scope contributes the API host its origin rules
 /// govern. A secret with no readable `host` contributes nothing.
-pub(super) fn network(
+pub(super) fn network<'a>(
     toggles: Network,
-    statics: &Map<String, Value>,
+    statics: &'a Map<String, Value>,
     github: bool,
+    approved_hosts: impl IntoIterator<Item = &'a str>,
 ) -> NetworkPolicy<'static> {
     let hosts = statics
         .values()
         .filter_map(|stored| stored.get(FIELD_HOST).and_then(Value::as_str))
-        .chain(github.then_some(API_HOST));
+        .chain(github.then_some(API_HOST))
+        .chain(approved_hosts);
     let allow = hosts.fold(Vec::new(), |mut allow: Vec<Cow<'static, str>>, host| {
         if !allow.iter().any(|named| named.eq_ignore_ascii_case(host)) {
             allow.push(Cow::Owned(host.to_owned()));

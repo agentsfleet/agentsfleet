@@ -3,7 +3,8 @@ import { redirect } from "next/navigation";
 import { ApiError } from "@/lib/api/errors";
 import { firstTenantWorkspace } from "@/lib/api/workspaces";
 import { ERROR_CODE } from "@/lib/errors";
-import { workspacePath } from "@/lib/workspace-routes";
+import { defaultFleetPath } from "@/lib/api/fleets";
+import DashboardLayout from "../(dashboard)/layout";
 import NoWorkspaceEmptyState from "@/components/layout/NoWorkspaceEmptyState";
 import { AccountSetup } from "./AccountSetup";
 
@@ -19,34 +20,23 @@ const OPENING_REFUSALS: ReadonlySet<string> = new Set([
   ERROR_CODE.INSUFFICIENT_SCOPE,
 ]);
 
-// Dashboard entry (`/`). Resolves the caller's own workspace — or, owning none,
-// the first one they joined — and opens that workspace’s current fleet conversation; a caller
-// with no workspace at all lands on the create-workspace empty state instead
-// of a broken page. This is the ONLY place the "default workspace" is chosen —
-// every deeper page reads the workspace from its route param.
-//
-// One page, deliberately: the redirect fires before the layout tree renders,
-// so nothing here can share the layout's cached full walk — the complete list
-// on this request is pure double-payment on every cold entry.
+// Resolve the destination outside the dashboard layout. A returning visitor only
+// mounts the shell at their final URL. The empty and setup states still need it.
 export default async function DashboardIndexPage() {
   const token = await requireCredential();
 
-  // A transient list failure must NOT fall through to the create-first empty
-  // state — an operator who already owns workspaces would be shown "create a
-  // workspace" and could make a duplicate. The error propagates to
-  // `(dashboard)/error.tsx` (a retry surface) instead; the empty state renders
-  // only on a genuinely empty list (a successful 200 with no items). The one
-  // refusal caught is an account still opening, which only a fresh token fixes.
+  // Only a successful empty list offers workspace creation. Ordinary failures
+  // reach the retry boundary, and signup can wait for its tenant claim.
   let first;
   try {
     first = await firstTenantWorkspace(token);
   } catch (failure) {
-    if (await accountStillOpening(failure)) return <AccountSetup />;
+    if (await accountStillOpening(failure)) return <DashboardLayout><AccountSetup /></DashboardLayout>;
     throw failure;
   }
-  if (first) redirect(workspacePath(first.id, "fleets"));
+  if (first) redirect(await defaultFleetPath(first.id, token));
 
-  return <NoWorkspaceEmptyState />;
+  return <DashboardLayout><NoWorkspaceEmptyState /></DashboardLayout>;
 }
 
 /**

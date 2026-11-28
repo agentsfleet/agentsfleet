@@ -23,9 +23,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use futures_util::StreamExt as _;
 use futures_util::stream::{self, BoxStream};
 use guffbolt::{Chat, Describe, Ending, Tool, ToolFuture, ToolOutput, Tools};
-use guffbolt_ai::{
-    Chunk, Hosted, Message, Model, Models, Request, Spec, TextKind, ToolSpec, providers,
-};
+use guffbolt_ai::{Chunk, Message, Model, Models, Request, Spec, TextKind, ToolSpec, providers};
 use serde_json::{Value, json};
 
 const MODEL: &str = "accounts/fireworks/models/glm-5p3-flash";
@@ -194,7 +192,6 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         instructions: "Answer in one short line.",
         messages: &messages,
         tools: &[],
-        hosted: &[] as &[Hosted],
         cache_key: "fireworks-live",
         max_output_tokens: Some(256),
         single_attempt: false,

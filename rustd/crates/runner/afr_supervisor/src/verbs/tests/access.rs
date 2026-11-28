@@ -21,7 +21,9 @@ use crate::test_support::{Answer, FENCING, RUN_ID, plane};
 fn sentry() -> AccessRequest<'static> {
     AccessRequest {
         fencing_token: 0,
-        name: Cow::Borrowed("sentry"),
+        name: Some(Cow::Borrowed("sentry")),
+        host: None,
+        evidence: None,
         scope: None,
     }
 }
@@ -50,9 +52,12 @@ async fn requested(answer: fn() -> Answer) -> (Result<AccessAnswer, Unanswered>,
 /// A 201 raised a card for this run's turn, so the run ends waiting on it.
 #[tokio::test]
 async fn a_created_request_is_a_card_the_run_waits_on() {
-    let (answered, sent) =
-        requested(|| Answer::Created(Bytes::from_static(br#"{"grant_id":"g","gate_id":"c"}"#)))
-            .await;
+    let (answered, sent) = requested(|| {
+        Answer::Created(Bytes::from_static(
+            br#"{"state":"raised","grant_id":"g","gate_id":"c"}"#,
+        ))
+    })
+    .await;
     assert_eq!(answered, Ok(AccessAnswer::Asked));
     assert_eq!(sent, 1);
 }
@@ -61,14 +66,33 @@ async fn a_created_request_is_a_card_the_run_waits_on() {
 /// naming a card is an earlier request still waiting on a person.
 #[tokio::test]
 async fn a_200_is_a_covering_grant_or_a_pending_card() {
-    let (covered, _sent) =
-        requested(|| Answer::Reply(Bytes::from_static(br#"{"grant_id":"g","gate_id":null}"#)))
-            .await;
+    let (covered, _sent) = requested(|| {
+        Answer::Reply(Bytes::from_static(
+            br#"{"state":"covered","grant_id":"g","gate_id":null}"#,
+        ))
+    })
+    .await;
     assert_eq!(covered, Ok(AccessAnswer::Covered));
 
-    let (pending, _sent) =
-        requested(|| Answer::Reply(Bytes::from_static(br#"{"grant_id":"g","gate_id":"c"}"#))).await;
+    let (pending, _sent) = requested(|| {
+        Answer::Reply(Bytes::from_static(
+            br#"{"state":"pending","grant_id":"g","gate_id":null}"#,
+        ))
+    })
+    .await;
     assert_eq!(pending, Ok(AccessAnswer::Pending));
+}
+
+#[tokio::test]
+async fn a_new_card_without_an_id_cannot_suspend_a_run() {
+    let (answered, sent) = requested(|| {
+        Answer::Created(Bytes::from_static(
+            br#"{"state":"raised","grant_id":"g","gate_id":null}"#,
+        ))
+    })
+    .await;
+    assert_eq!(answered, Err(Unanswered::Unreachable));
+    assert_eq!(sent, 1);
 }
 
 /// A refusal keeps the code its problem named, and an unavailable daemon is

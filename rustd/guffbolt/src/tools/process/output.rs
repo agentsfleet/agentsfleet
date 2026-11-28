@@ -22,6 +22,8 @@ use crate::tools::env::{Ending, Process, ProcessEvent};
 const BYTES_PER_TOKEN: usize = 4;
 /// The tokens of output a call reads back when the model names no budget.
 const OUTPUT_TOKENS_DEFAULT: usize = 10_000;
+/// The default tool output budget, in bytes.
+pub const DEFAULT_BYTES: usize = OUTPUT_TOKENS_DEFAULT * BYTES_PER_TOKEN;
 /// How a process that exited reads.
 const EXITED: &str = "Process exited with code";
 /// How a session still running reads.

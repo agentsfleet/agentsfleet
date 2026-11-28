@@ -16,7 +16,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 use serde_json::{Map, Value};
 
-use crate::tool_trace::{FileChange, changes_free_of_nul, fields_free_of_nul, free_of_nul};
+use crate::tool_trace::{
+    FileChange, WebSource, changes_free_of_nul, fields_free_of_nul, free_of_nul,
+};
 
 mod item;
 pub use self::item::{ItemKind, ItemStatus};
@@ -52,7 +54,7 @@ const HOLDS_NUL: &str = "a string holds a NUL character";
 #[serde(deny_unknown_fields)]
 // NUL is one rule over every string the record carries: Postgres refuses it in
 // `text` and in `jsonb` alike.
-#[garde(custom(record_free_of_nul))]
+#[garde(custom(valid_record))]
 pub struct ToolCallRecord<'a> {
     /// Call number within its run, starting at 1. This is `n` in the `{fence}:{n}` identifier
     /// used by activity and saved records.
@@ -106,16 +108,37 @@ pub struct ToolCallRecord<'a> {
     #[serde(borrow, default, skip_serializing_if = "Vec::is_empty")]
     #[garde(dive)]
     pub changes: Vec<FileChange<'a>>,
+    /// Pages returned by this call, in their original order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[garde(dive)]
+    pub sources: Vec<WebSource>,
+}
+
+fn disclosed_sources(record: &ToolCallRecord<'_>) -> garde::Result {
+    if crate::tool_trace::source_scope(
+        &record.tool,
+        record.status == ItemStatus::Succeeded,
+        &record.sources,
+    ) && crate::tool_trace::requested_source(
+        &record.tool,
+        &record.arguments,
+        &record.sources,
+        false,
+    ) {
+        Ok(())
+    } else {
+        Err(garde::Error::new("undisclosable sources"))
+    }
 }
 
 /// Every string a record carries, arguments included, is free of NUL.
-fn record_free_of_nul<C: ?Sized>(record: &ToolCallRecord<'_>, _context: &C) -> garde::Result {
+fn valid_record<C: ?Sized>(record: &ToolCallRecord<'_>, _context: &C) -> garde::Result {
     let clean = free_of_nul(&record.output)
         && free_of_nul(&record.tool)
         && fields_free_of_nul(&record.arguments)
         && changes_free_of_nul(&record.changes);
     if clean {
-        Ok(())
+        disclosed_sources(record)
     } else {
         Err(garde::Error::new(HOLDS_NUL))
     }
@@ -236,6 +259,9 @@ pub struct ToolCallDetail<'a> {
     /// removed. Absent for any other call.
     #[serde(borrow, default, skip_serializing_if = "Vec::is_empty")]
     pub changes: Vec<FileChange<'a>>,
+    /// Pages returned by this call, in their original order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sources: Vec<WebSource>,
 }
 
 #[cfg(test)]

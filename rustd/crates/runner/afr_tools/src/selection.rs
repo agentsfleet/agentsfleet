@@ -2,7 +2,7 @@
 //!
 //! A selection is what a policy named, in the order it named it: the
 //! catalog's handlers, the tools the run builds over its own backends,
-//! `guffbolt`'s subagent tools, and the entries the provider hosts, borrowed
+//! `guffbolt`'s subagent tools, borrowed
 //! for the run. A child loop holds its parent's tools or fewer; `guffbolt`
 //! narrows them, so a selection is the run's alone.
 
@@ -42,12 +42,10 @@ impl Offered<'_> {
     }
 }
 
-/// The tools one run is offered: the functions the loop runs, and the tools
-/// the provider hosts.
+/// The tools one run is offered.
 #[derive(Debug, Clone, Default)]
 pub struct Selection<'c> {
     pub(crate) tools: Vec<Offered<'c>>,
-    pub(crate) hosted: Vec<&'static Entry>,
 }
 
 impl<'c> Selection<'c> {
@@ -69,29 +67,16 @@ impl<'c> Selection<'c> {
         }
     }
 
-    /// Whether `name` is one of the provider-hosted tools offered.
-    #[must_use]
-    pub fn hosts(&self, name: &str) -> bool {
-        self.hosted.iter().any(|entry| entry.name() == name)
-    }
-
-    /// Whether the run was offered `name`, as a function or as a tool the
-    /// provider hosts.
+    /// Whether the run was offered `name`.
     #[must_use]
     pub fn offers(&self, name: &str) -> bool {
-        self.find(name).is_some() || self.hosts(name)
+        self.find(name).is_some()
     }
 
     /// The functions the run was offered, in the order its policy named
     /// them.
     pub fn offered(&self) -> impl Iterator<Item = Offered<'c>> {
         self.tools.iter().copied()
-    }
-
-    /// The provider-hosted tools offered.
-    #[must_use]
-    pub fn hosted(&self) -> &[&'static Entry] {
-        &self.hosted
     }
 
     /// The function named `name`, when it is one offered.

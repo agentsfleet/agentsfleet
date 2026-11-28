@@ -45,6 +45,9 @@ Intake writes a turn `queued`. The assignment that first runs it stamps its fenc
 The report settles it by setting `settled_at`.
 A history-only receipt, such as a model change, is written opened and settled with no producer, so nothing runs it.
 
+Chat requests may store `images` beside `message` in `request_json`.
+The retry digest includes the attachments. An image sent during a live run stays queued for its own turn so the model receives the complete message.
+
 It is written on the change's own transaction (`afd_turns::view::activity::record_on`).
 `afd_turns::view::activity::commit` commits, then tells open tails; a refused commit announces nothing.
 

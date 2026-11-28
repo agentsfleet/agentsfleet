@@ -16,7 +16,7 @@ use crate::tools::process::{ExecCommand, Git, Shell, WriteStdin};
 use crate::tools::schedule::{
     CronAdd, CronList, CronRemove, CronRun, CronRuns, CronUpdate, ScheduleOnce,
 };
-use crate::tools::web::{HttpRequest, WebFetch};
+use crate::tools::web::{HttpRequest, WebFetch, WebSearch};
 use crate::tools::{ContextTool, Handler, Limits, Typed};
 
 use super::{Backend, BuiltIn, Given};
@@ -32,7 +32,7 @@ const fn over(name: &'static str, needs: &'static [Backend]) -> BuiltIn {
 }
 
 /// Every built-in tool, in the order `*` offers them.
-pub(super) const TOOLS: [BuiltIn; 41] = [
+pub(super) const TOOLS: [BuiltIn; 42] = [
     over("shell", ENV),
     over("exec_command", SESSIONS),
     over("write_stdin", SESSIONS),
@@ -49,6 +49,7 @@ pub(super) const TOOLS: [BuiltIn; 41] = [
     over("browser", ENV),
     over("screenshot", ENV),
     over("http_request", &[Backend::Outbound]),
+    over("web_search", &[Backend::Search]),
     over("web_fetch", &[Backend::Outbound]),
     over("memory_store", &[Backend::Memory]),
     over("memory_recall", &[Backend::Memory]),
@@ -141,7 +142,8 @@ fn file_tool<'run>(name: &str, given: Given<'run>) -> Option<Box<ContextTool<'ru
 fn backed_tool<'run>(name: &str, given: Given<'run>) -> Option<Box<ContextTool<'run>>> {
     Some(match name {
         "http_request" => boxed(HttpRequest::new(given.outbound?)),
-        "web_fetch" => boxed(WebFetch::new(given.outbound?)),
+        "web_search" => boxed(WebSearch::new(given.search?)),
+        "web_fetch" => boxed(WebFetch::new(given.outbound?).with_search(given.search)),
         "memory_store" => boxed(MemoryStoreTool::new(given.memory?)),
         "memory_recall" => boxed(MemoryRecall::new(given.memory?)),
         "memory_list" => boxed(MemoryList::new(given.memory?)),

@@ -132,7 +132,6 @@ fn request(messages: &[Message]) -> Request<'_> {
         instructions: "private pinned state",
         messages,
         tools: &[],
-        hosted: &[],
         cache_key: "",
         max_output_tokens: Some(37),
         single_attempt: true,

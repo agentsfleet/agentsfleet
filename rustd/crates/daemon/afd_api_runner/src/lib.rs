@@ -80,6 +80,8 @@ pub fn handler_for<D: RunnerPlane>(verb: RunnerRoute) -> MethodRouter<Arc<D>> {
             get(handler::runner::trigger::list::<D>).post(handler::runner::trigger::add::<D>)
         }
         RunnerRoute::Trigger => delete(handler::runner::trigger::remove::<D>),
+        RunnerRoute::Searches => post(handler::runner::web::search::<D>),
+        RunnerRoute::Extracts => post(handler::runner::web::extract::<D>),
         RunnerRoute::Access => post(handler::runner::access::request::<D>),
         RunnerRoute::Messages => post(handler::runner::message::handle::<D>),
         // A fleet's message to another carries text up to the one ceiling,

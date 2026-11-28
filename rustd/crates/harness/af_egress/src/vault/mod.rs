@@ -12,6 +12,7 @@
 
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::sync::{Arc, PoisonError, RwLock};
 use std::time::Duration;
 
 use af_core::clock::{self, Clock};
@@ -29,6 +30,22 @@ const REFRESH_MARGIN: Duration = Duration::from_secs(30);
 /// The event a mint logs under.
 const EVENT_CREDENTIAL_MINTED: &str = "credential_minted";
 
+/// Read-only access to the mask for every credential minted in this run.
+/// Observers can take a snapshot without waiting for an outstanding mint.
+#[derive(Clone, Default, Debug)]
+pub struct MintedMask(Arc<RwLock<Option<Arc<Scrub>>>>);
+
+impl MintedMask {
+    /// The current matcher, including all retired credentials, or none before the first mint.
+    #[must_use]
+    pub fn snapshot(&self) -> Option<Arc<Scrub>> {
+        self.0
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+}
+
 /// One run's credentials.
 #[derive(Debug)]
 pub(crate) struct Vault<'run> {
@@ -40,7 +57,7 @@ pub(crate) struct Vault<'run> {
     /// expires, so the masker keeps every token this run was handed.
     retired: Vec<(String, Minted)>,
     /// Masks every minted token; `None` until the first mint.
-    masker: Option<Scrub>,
+    pub(crate) masker: MintedMask,
 }
 
 impl<'run> Vault<'run> {
@@ -53,7 +70,7 @@ impl<'run> Vault<'run> {
             clock,
             minted: HashMap::new(),
             retired: Vec::new(),
-            masker: None,
+            masker: MintedMask::default(),
         }
     }
 
@@ -89,7 +106,7 @@ impl<'run> Vault<'run> {
     /// `text` with every minted token masked.
     pub(crate) fn mask<'t>(&self, text: &'t str) -> Cow<'t, str> {
         self.masker
-            .as_ref()
+            .snapshot()
             .map_or(Cow::Borrowed(text), |masker| masker.text(text))
     }
 
@@ -123,7 +140,11 @@ impl<'run> Vault<'run> {
         if let Some(replaced) = self.minted.insert(name.to_owned(), minted) {
             self.retired.push((name.to_owned(), replaced));
         }
-        self.masker = Some(masker);
+        *self
+            .masker
+            .0
+            .write()
+            .unwrap_or_else(PoisonError::into_inner) = Some(Arc::new(masker));
         Ok(())
     }
 }

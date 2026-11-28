@@ -59,7 +59,9 @@ async fn sent() -> Vec<Sent> {
     }
     let request = AccessRequest {
         fencing_token: 0,
-        name: Cow::Borrowed("github"),
+        name: Some(Cow::Borrowed("github")),
+        host: None,
+        evidence: None,
         scope: Some(serde_json::Map::from_iter([(
             "access".to_owned(),
             serde_json::json!("read"),
@@ -159,7 +161,9 @@ async fn an_add_is_retried_under_its_item_and_an_access_request_is_not() {
 
     let request = AccessRequest {
         fencing_token: 0,
-        name: Cow::Borrowed("sentry"),
+        name: Some(Cow::Borrowed("sentry")),
+        host: None,
+        evidence: None,
         scope: None,
     };
     let failed = plane.access(&run, FENCING, request).await.unwrap_err();

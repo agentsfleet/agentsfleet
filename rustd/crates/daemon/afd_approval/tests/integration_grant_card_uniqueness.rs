@@ -109,6 +109,7 @@ async fn a_card_insert_failure_rolls_back_the_new_grant() {
                 name: SENTRY,
                 kind: GrantKind::Secret,
                 scope: None,
+                redirect: None,
                 turn: &turn,
             },
             NOW,

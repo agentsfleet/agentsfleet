@@ -32,7 +32,7 @@ function backend(options: Backend = {}) {
 
 const decoder = new TextDecoder();
 
-/** The streamed data region after its reads settle, inside the layout's label store. */
+/** The streamed data region after its reads settle, inside the billing layout's label store. */
 async function markup(query: BillingSearch = {}, labels: Record<string, string> = LABELS): Promise<string> {
   const region = await UsageReport({ token: "fixture-token", query });
   const stream = await renderToReadableStream(<TooltipProvider><ModelLabelsProvider labels={labels}>{region}</ModelLabelsProvider></TooltipProvider>);
@@ -46,7 +46,7 @@ beforeEach(() => { mockAuthOnce({ token: "fixture-token" }); requests.length = 0
 afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); });
 
 describe("served billing page composition", () => {
-  it("usage_first_load_has_one_report_request: the first load reads one report and no catalogue or charges", async () => {
+  it("usage_first_load_has_one_report_request: the report region reads one report and reuses the route’s model labels", async () => {
     backend();
     const html = await markup();
     expect(html).toContain("Settled charges");

@@ -96,6 +96,9 @@ impl Healthy {
                 | Verb::DurableTaskCheckpointAuthorizations
                 | Verb::DurableTaskCheckpointPin
                 | Verb::TurnCheckpoint
+                // Web fixtures supply their own vendor results.
+                | Verb::WebSearch
+                | Verb::WebExtract
                 // A context save names a version only its fixture knows.
                 | Verb::ContextSave
                 // The native opening is a stream, never an HTTP fixture route.

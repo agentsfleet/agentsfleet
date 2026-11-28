@@ -299,6 +299,38 @@ fn fitted(
     })
 }
 
+/// Decode and, if necessary, resize a message attachment for the model.
+///
+/// # Errors
+/// The declared kind differs from the bytes, decoding or resizing failed, or
+/// the image exceeds the provider's byte limit before or after resizing.
+pub fn message_image(kind: ImageKind, data: Bytes) -> Result<Image, ToolOutput> {
+    let within_limit = |bytes: &Bytes| {
+        u64::try_from(bytes.len()).unwrap_or(u64::MAX) <= Limits::DEFAULT.max_image_bytes
+    };
+    let too_large = || ToolOutput::failed(code::FILE_TOO_LARGE, "An attached image exceeds 5 MiB");
+    if !within_limit(&data) {
+        return Err(too_large());
+    }
+    if sniffed(&data) != Some(kind) {
+        return Err(ToolOutput::failed(
+            code::NOT_AN_IMAGE,
+            "The attached image does not match its declared media type",
+        ));
+    }
+    let image = fitted(
+        "The attached image",
+        kind,
+        data,
+        Limits::DEFAULT.max_image_dimension,
+    )?
+    .image;
+    if !within_limit(&image.data) {
+        return Err(too_large());
+    }
+    Ok(image)
+}
+
 /// The bytes `written`, the picture at `path` scaled by `scaled` and written
 /// again as `kind`; a write that failed is refused naming both.
 fn rewritten(

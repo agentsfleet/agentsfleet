@@ -60,8 +60,8 @@ pub const HTTP_REQUEST: Entry = Entry::new("http_request", Runtime::Supervisor);
 pub const WEB_FETCH: Entry = Entry::new("web_fetch", Runtime::Supervisor);
 /// A push notification to the person the fleet works for, through Pushover.
 pub const NOTIFY: Entry = Entry::new("notify", Runtime::Supervisor);
-/// A web search the provider runs.
-pub const WEB_SEARCH: Entry = Entry::new("web_search", Runtime::Provider);
+/// A web search through the daemon under the fleet’s network policy.
+pub const WEB_SEARCH: Entry = Entry::new("web_search", Runtime::Supervisor);
 /// Stores one durable memory item.
 pub const MEMORY_STORE: Entry = Entry::new("memory_store", Runtime::Supervisor);
 /// Searches the fleet's memory.
@@ -188,9 +188,9 @@ pub fn is_task_tool(name: &str) -> bool {
 }
 
 /// Every published tool a run builds over its own backends when it starts:
-/// every tool of `guffbolt`'s this catalog publishes. The provider's
-/// `web_search` and this runner's own fleet tools are the rest.
-pub const BACKED: [&Entry; 29] = [
+/// every tool of `guffbolt`'s this catalog publishes.
+pub const BACKED: [&Entry; 30] = [
+    &WEB_SEARCH,
     &HTTP_REQUEST,
     &WEB_FETCH,
     &NOTIFY,
@@ -312,10 +312,6 @@ impl Catalog {
                 selection.tools.push(Offered::Built(built));
                 continue;
             };
-            if entry.runtime == Runtime::Provider {
-                selection.hosted.push(entry);
-                continue;
-            }
             let offered = match self.handler(name) {
                 Some(handler) => Offered::Handler(entry, handler),
                 None if BACKED.contains(&entry) => Offered::Backed(entry),

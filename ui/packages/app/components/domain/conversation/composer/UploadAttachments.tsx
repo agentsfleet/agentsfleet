@@ -6,10 +6,10 @@ import { Button, cn } from "@agentsfleet/design-system";
 import { FileTextIcon, PaperclipIcon, XIcon } from "@phosphor-icons/react/ssr";
 
 /** Native attachment contexts own preparation, error state and removal. */
-export function AddUploadPreview() {
+export function AddUploadPreview({imageOnly}: {imageOnly: boolean}) {
   const supported = useAuiState(state => state.thread.capabilities.attachments);
   if (!supported) return null;
-  return <ComposerPrimitive.AddAttachment asChild><Button variant="ghost" size="icon-row" className="[&_svg]:size-4.5" aria-label="Attach a preview file" title="Preview upload · up to 5 MiB">
+  return <ComposerPrimitive.AddAttachment asChild><Button variant="ghost" size="icon-row" className="[&_svg]:size-4.5" aria-label={imageOnly ? "Attach an image" : "Attach an image or preview file"} title={imageOnly ? "Attach an image · up to 5 MiB" : "Attach an image or preview file"}>
     <PaperclipIcon aria-hidden="true" />
   </Button></ComposerPrimitive.AddAttachment>;
 }
@@ -34,12 +34,14 @@ export function MessageUploadAttachments({preparing}: {preparing?: boolean}) {
 }
 
 function UploadAttachment({removable, preparing, message}: {removable?: boolean; preparing?: boolean; message?: boolean}) {
-  const {status, name} = useAuiState(state => state.attachment);
-  return <AttachmentPrimitive.Root title="Preview upload. The file is not stored or analyzed." className={cn("min-h-9 min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-md rounded-control border border-border py-sm text-eyebrow leading-normal", message ? "inline-flex max-w-full flex-wrap bg-card px-lg" : "grid bg-muted px-lg")}>
+  const {status, name, type} = useAuiState(state => state.attachment);
+  const image = type === "image";
+  const description = image ? "Image attachment" : "Preview upload. The file is not stored or analyzed.";
+  return <AttachmentPrimitive.Root title={description} className={cn("min-h-9 min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-md rounded-control border border-border py-sm text-eyebrow leading-normal", message ? "inline-flex max-w-full flex-wrap bg-card px-lg" : "grid bg-muted px-lg")}>
     <span className="flex min-w-0 items-center gap-md"><FileTextIcon className="size-4 shrink-0" aria-hidden="true" /><span className="min-w-0 truncate" title={name}><AttachmentPrimitive.Name /></span></span>
-    {removable || !message || status.type !== "complete" ? <span className="flex shrink-0 items-center gap-md"><span className="whitespace-nowrap text-eyebrow text-muted-foreground">{status.type === "running" || (preparing && status.type !== "complete") ? "Uploading…" : "Preview"}</span>
+    {removable || !message || status.type !== "complete" ? <span className="flex shrink-0 items-center gap-md"><span className="whitespace-nowrap text-eyebrow text-muted-foreground">{status.type === "running" || (preparing && status.type !== "complete") ? "Uploading…" : image ? "Image" : "Preview"}</span>
       {removable ? <AttachmentPrimitive.Remove asChild><Button variant="ghost" size="icon-sm" aria-label="Remove attachment"><XIcon aria-hidden="true" /></Button></AttachmentPrimitive.Remove> : null}
-    </span> : <span className="sr-only">Preview upload. The file is not stored or analyzed.</span>}
+    </span> : <span className="sr-only">{description}</span>}
     {status.type === "incomplete" ? <output className="col-span-full break-words text-destructive">{status.message || "Upload failed. Remove this file and try again."}</output> : null}
   </AttachmentPrimitive.Root>;
 }

@@ -68,12 +68,12 @@ struct Statement {
 pub(crate) struct NewTask {
     /// A short name a person reads in the fleet's task list.
     title: String,
-    /// The person's message the task comes from, as the prompt names it.
-    source_turn_id: String,
+    /// The person's message the task comes from. Defaults to the newest message.
+    source_turn_id: Option<String>,
     /// Where the task's objective starts in that message, in UTF-8 bytes.
-    source_start: i32,
+    source_start: Option<i32>,
     /// Where it ends, exclusive, in UTF-8 bytes.
-    source_end: i32,
+    source_end: Option<i32>,
     /// What the task works on.
     target: Target,
     /// What must hold for the task to be done: at least one.
@@ -86,12 +86,12 @@ pub(crate) struct NewTask {
 pub(crate) struct Steering {
     /// The unfinished task, as the prompt lists it.
     durable_task_id: String,
-    /// The person's message that steers it, as the prompt names it.
-    source_turn_id: String,
+    /// The person's message that steers it. Defaults to the newest message.
+    source_turn_id: Option<String>,
     /// Where the steering text starts in that message, in UTF-8 bytes.
-    source_start: i32,
+    source_start: Option<i32>,
     /// Where it ends, exclusive, in UTF-8 bytes.
-    source_end: i32,
+    source_end: Option<i32>,
 }
 
 /// Starts a durable task from a span of the person's message.
@@ -100,6 +100,7 @@ pub(crate) struct TaskStart;
 
 #[async_trait::async_trait]
 impl Handler for TaskStart {
+    const GUIDANCE: &'static str = "Use task_start when the person's newest message asks for work that must continue beyond this run.";
     const ENTRY: &'static Entry = &TASK_START;
     const DESCRIPTION: &'static str = "Call this tool only when the person's newest message \
         asks for work that must keep going past this run, such as fixing something until a \
@@ -109,9 +110,20 @@ impl Handler for TaskStart {
     type Arguments = NewTask;
 
     async fn run(&self, arguments: NewTask, context: ToolContext<'_, '_>) -> ToolOutput {
+        let (source_turn_id, source_start, source_end) = match source(
+            &context,
+            arguments.source_turn_id,
+            arguments.source_start,
+            arguments.source_end,
+        )
+        .await
+        {
+            Ok(span) => span,
+            Err(refusal) => return refusal,
+        };
         let item = DurableTaskBindingItem::NewWork {
-            source_start: arguments.source_start,
-            source_end: arguments.source_end,
+            source_start,
+            source_end,
             title: arguments.title,
             target: match arguments.target {
                 Target::ApiOnly => DurableTaskRequestedTarget::ApiOnly,
@@ -121,7 +133,7 @@ impl Handler for TaskStart {
             },
             statements: arguments.statements.into_iter().map(statement).collect(),
         };
-        bind(context, arguments.source_turn_id, item).await
+        bind(context, source_turn_id, item).await
     }
 }
 
@@ -139,13 +151,55 @@ impl Handler for TaskInput {
     type Arguments = Steering;
 
     async fn run(&self, arguments: Steering, context: ToolContext<'_, '_>) -> ToolOutput {
+        let (source_turn_id, source_start, source_end) = match source(
+            &context,
+            arguments.source_turn_id,
+            arguments.source_start,
+            arguments.source_end,
+        )
+        .await
+        {
+            Ok(span) => span,
+            Err(refusal) => return refusal,
+        };
         let item = DurableTaskBindingItem::Steer {
-            source_start: arguments.source_start,
-            source_end: arguments.source_end,
+            source_start,
+            source_end,
             durable_task_id: arguments.durable_task_id,
         };
-        bind(context, arguments.source_turn_id, item).await
+        bind(context, source_turn_id, item).await
     }
+}
+
+async fn source(
+    context: &ToolContext<'_, '_>,
+    turn_id: Option<String>,
+    start: Option<i32>,
+    end: Option<i32>,
+) -> Result<(String, i32, i32), ToolOutput> {
+    let missing = || {
+        ToolOutput::failed(
+            ToolErrorCode::InvalidArguments,
+            "Name the source turn and its byte range when the newest message is unavailable.",
+        )
+    };
+    let latest = context.run.task_source.lock().await;
+    let inherited = latest
+        .as_ref()
+        .filter(|message| turn_id.as_ref().is_none_or(|id| id == &message.turn_id));
+    let bytes = inherited.and_then(|message| i32::try_from(message.bytes).ok());
+    let start = start.unwrap_or_default();
+    let end = end.or(bytes).ok_or_else(missing)?;
+    if bytes.is_some_and(|length| end > length) {
+        return Err(ToolOutput::failed(
+            ToolErrorCode::InvalidArguments,
+            "The source span extends past the end of the message.",
+        ));
+    }
+    let turn_id = turn_id
+        .or_else(|| inherited.map(|message| message.turn_id.clone()))
+        .ok_or_else(missing)?;
+    Ok((turn_id, start, end))
 }
 
 /// A statement as the binding carries it.

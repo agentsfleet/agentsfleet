@@ -20,11 +20,64 @@ use crate::tools::mcp::{ListMcpResourceTemplates, ListMcpResources, ReadMcpResou
 use crate::tools::memory::{
     CORE_CATEGORY, DEFAULT_CATEGORY, Memory, MemoryForget, MemoryStoreTool, Reach,
 };
-use crate::tools::outbound::Allowlist;
+use crate::tools::outbound::{Allowlist, OutboundFuture, Refused, Response};
 use crate::tools::process::Git;
 use crate::tools::search::{Deferred, ToolSearch};
+use crate::tools::web::{SearchBackend, SearchResult};
 use crate::tools::{ContextTool, Local, LocalMemory, ToolsConfig, Typed, code};
 use crate::{CallRef, Describe as _, Tool as _, ToolSpec};
+
+fn examples_parse<H: super::Handler>() {
+    assert!(!H::EXAMPLES.is_empty(), "{}", H::NAME);
+    for example in H::EXAMPLES {
+        assert!(
+            serde_json::from_str::<H::Arguments>(example).is_ok(),
+            "{}: {example}",
+            H::NAME
+        );
+    }
+}
+
+#[test]
+fn every_example_a_tool_gives_parses_as_its_arguments() {
+    use super::{agents, files, memory, message, notify, plan, schedule, web};
+
+    examples_parse::<plan::UpdatePlan>();
+    examples_parse::<message::Message<'static>>();
+    examples_parse::<notify::NotifyTool<'static>>();
+    examples_parse::<memory::MemoryRecall<'static>>();
+    examples_parse::<memory::MemoryList<'static>>();
+    examples_parse::<web::WebFetch<'static>>();
+    examples_parse::<web::HttpRequest<'static>>();
+    examples_parse::<files::ApplyPatch<'static>>();
+    examples_parse::<files::FileEdit<'static>>();
+    examples_parse::<files::FileWrite<'static>>();
+    examples_parse::<schedule::CronRemove<'static>>();
+    examples_parse::<schedule::CronUpdate<'static>>();
+    examples_parse::<agents::SpawnAgent>();
+}
+
+fn names_sibling<H: super::Handler>(name: &str) {
+    assert!(H::DESCRIPTION.contains(name), "{}: {name}", H::NAME);
+}
+
+#[test]
+fn every_tool_names_the_sibling_it_is_confused_with() {
+    use super::{agents, files, memory, message, notify, schedule, web};
+
+    names_sibling::<message::Message<'static>>("notify");
+    names_sibling::<notify::NotifyTool<'static>>("message");
+    names_sibling::<memory::MemoryRecall<'static>>("memory_list");
+    names_sibling::<memory::MemoryList<'static>>("memory_recall");
+    names_sibling::<web::WebFetch<'static>>("http_request");
+    names_sibling::<web::HttpRequest<'static>>("web_fetch");
+    names_sibling::<files::FileEdit<'static>>("file_write");
+    names_sibling::<files::FileWrite<'static>>("file_edit");
+    names_sibling::<files::ApplyPatch<'static>>("file_edit");
+    names_sibling::<schedule::CronRemove<'static>>("cron_list");
+    names_sibling::<schedule::CronUpdate<'static>>("cron_list");
+    names_sibling::<agents::SpawnAgent>("wait_agent");
+}
 
 /// The words that name a host product rather than the harness.
 const HOST_WORDS: [&str; 4] = ["agentsfleet", "daemon", "fleet", "workspace"];
@@ -78,6 +131,30 @@ fn values(schema: &Value) -> Vec<String> {
     }
 }
 
+/// A web backend for inspecting tool schemas only.
+#[derive(Debug)]
+struct NoPages;
+
+impl SearchBackend for NoPages {
+    fn search<'a>(&'a self, _: &'a CallRef, _: &'a str) -> OutboundFuture<'a, Vec<SearchResult>> {
+        Box::pin(std::future::ready(Err(Refused::new(
+            code::UPSTREAM_UNREACHABLE,
+            "no search service",
+        ))))
+    }
+
+    fn extract<'a>(
+        &'a self,
+        _: &'a CallRef,
+        _: &'a str,
+    ) -> OutboundFuture<'a, (Response, Option<String>)> {
+        Box::pin(std::future::ready(Err(Refused::new(
+            code::UPSTREAM_UNREACHABLE,
+            "no page service",
+        ))))
+    }
+}
+
 /// Every tool the crate builds: every built-in over a backend for each, which
 /// `*` offers, the seven subagent tools among them, then `tool_search` and the
 /// three MCP resource tools. An MCP server's own tools are the server's
@@ -90,6 +167,7 @@ fn built_in<'run>(
     let servers: Vec<Arc<Server>> = Vec::new();
     local
         .builder()
+        .with_search(&NoPages)
         .with_scheduler(fake)
         .with_channel(fake)
         .with_notifier(fake)
@@ -134,8 +212,9 @@ fn guffbolt_tool_specs_name_no_host_product() {
         .flat_map(|tool| {
             let spec = tool.spec();
             model_text(spec)
-                .iter()
-                .flat_map(|text| host_words(text))
+                .into_iter()
+                .chain(std::iter::once(tool.guidance().to_owned()))
+                .flat_map(|text| host_words(&text))
                 .map(|word| format!("{}: {word}", spec.name))
                 .collect::<Vec<_>>()
         })
@@ -143,8 +222,8 @@ fn guffbolt_tool_specs_name_no_host_product() {
 
     assert_eq!(
         tools.len(),
-        45,
-        "the 41 built-ins, the seven subagent tools among them, tool_search and the three MCP \
+        46,
+        "the 42 built-ins, the seven subagent tools among them, tool_search and the three MCP \
          resource tools are each checked"
     );
     assert_eq!(

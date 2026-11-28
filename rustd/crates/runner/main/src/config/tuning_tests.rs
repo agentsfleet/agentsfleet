@@ -197,6 +197,7 @@ fn egress_values_reach_the_network_limits() -> Checked {
     assert_eq!(selected.egress.connect_timeout, Duration::from_secs(5));
     assert_eq!(selected.egress.request_timeout, Duration::from_mins(1));
     assert_eq!(selected.egress.max_redirects, 1);
+    refused_naming("[egress]\nmax_redirects = 21\n", "max_redirects")?;
     assert_eq!(selected.egress.mask_matcher_bytes, 4 * 1024 * 1024);
     Ok(())
 }

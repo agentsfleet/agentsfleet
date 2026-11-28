@@ -22,6 +22,7 @@ use std::sync::Arc;
         "Retry with the same `operation_id` and body to receive the same fleet with ",
         "`replayed: true`. The same key with another body answers 409 `UZ-SETUP-005`. ",
         "A key whose fleet was deleted answers 410 `UZ-SETUP-013`.",
+        " Invalid images return 400 `UZ-AGT-026`. A text-only model returns 409 `UZ-AGT-027`.",
     ),
     params(afd_http::openapi::path::Workspace),
     request_body = afd_api_wire::fleet::CreateFleetRequest,
@@ -41,6 +42,7 @@ pub(crate) async fn create<D: TenantPlane>(
     body: Bytes,
 ) -> Result<Response, Refusal> {
     let request = input::create(&body)?;
+    crate::handler::fleet::image_input::validate(&request.message, &request.images).await?;
     let created = services
         .creations()
         .create(access(&owned, &person), &request, services.now())

@@ -5,9 +5,6 @@ import { listTenantWorkspacesCached } from "@/lib/workspace";
 import { getTenantBillingCached } from "@/lib/api/tenant_billing";
 import type { WaitingInvite } from "@/lib/api/invites";
 import { listWaitingInvitesCached } from "@/lib/invites";
-import { ModelLabelsProvider } from "@/components/domain/models/ModelLabels";
-import { NO_MODEL_LABELS } from "@/lib/model-labels";
-import { modelLabelsCached } from "@/lib/model-labels-server";
 
 const NO_WAITING_INVITES: WaitingInvite[] = [];
 
@@ -17,7 +14,7 @@ function readShell(token: string) {
     // The switcher needs the complete workspace list; this
     // is the one place that walks the complete cursor-paginated list off
     // the page data path. `cache()` deduplicates that walk with the
-    // `[workspaceId]` guard and entry redirect.
+    // `[workspaceId]` guard and the page that renders in this shell.
     listTenantWorkspacesCached(token).catch(() => ({
       items: [],
       total: 0,
@@ -40,9 +37,6 @@ export default async function DashboardLayout({
   children: React.ReactNode;
 }) {
   const token = await credential();
-  // Start the shared read alongside the shell; only label consumers suspend.
-  // The Usage frame can stream while names load, without an identifier/name swap.
-  const labels = token ? modelLabelsCached(token).catch(() => NO_MODEL_LABELS) : undefined;
   const [listResult, billing, waitingInvites] = token
     ? await readShell(token)
     : [{ items: [], total: 0 }, null, NO_WAITING_INVITES];
@@ -66,11 +60,10 @@ export default async function DashboardLayout({
     <TooltipProvider>
       <ShellFrame
         workspaces={listResult.items}
-
         billing={billing}
         waitingInvites={waitingInvites}
       >
-        <ModelLabelsProvider labels={NO_MODEL_LABELS} pending={labels}>{children}</ModelLabelsProvider>
+        {children}
       </ShellFrame>
     </TooltipProvider>
   );

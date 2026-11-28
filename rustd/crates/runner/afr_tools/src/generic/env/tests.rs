@@ -107,6 +107,8 @@ async fn a_search_the_executor_refuses_reads_as_the_environments_refusal() {
             text: "fn (".to_owned(),
             literal: false,
             ignore_case: false,
+            context: 0,
+            line_chars: None,
         }),
         limit: 10,
     };

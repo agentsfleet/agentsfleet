@@ -12,6 +12,7 @@ import { z } from "zod";
 import { HTTP_STATUS_UNAUTHORIZED } from "./errors";
 import { STEER_DISPOSITION, steerMessagesUrl, type SteerAccepted, type SteerRequest } from "./fleets-types";
 import { ERROR_CODE } from "@/lib/errors";
+import type { MessageImage } from "./message-images";
 
 /** A steer's answer: the daemon's 202, or a refusal's status and code. */
 export type SteerResult =
@@ -46,8 +47,9 @@ export async function postSteer(
   message: string,
   operationId: string,
   signal: AbortSignal,
+  images?: readonly MessageImage[],
 ): Promise<SteerResult> {
-  const body: SteerRequest = { message, operation_id: operationId };
+  const body: SteerRequest = { message, operation_id: operationId, ...(images?.length ? {images} : {}) };
   let res: Response;
   try {
     res = await fetch(steerMessagesUrl(workspaceId, fleetId), {

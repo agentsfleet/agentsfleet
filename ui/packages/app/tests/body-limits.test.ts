@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { TEXT_BODY_LIMIT_BYTES } from "@/lib/api/body-limits";
+import { CHAT_BODY_LIMIT_BYTES, TEXT_BODY_LIMIT_BYTES } from "@/lib/api/body-limits";
 import nextConfig from "../next.config";
 
 // The daemon's own statement of its body limit, which its Rust test pins to
@@ -23,6 +23,6 @@ describe("the app's proxy limits", () => {
 
   it("buffer every body a route forwards whole, past Next's default", () => {
     expect(TEXT_BODY_LIMIT_BYTES).toBeGreaterThan(NEXT_PROXY_DEFAULT_BYTES);
-    expect(nextConfig.experimental?.proxyClientMaxBodySize).toBe(TEXT_BODY_LIMIT_BYTES);
+    expect(nextConfig.experimental?.proxyClientMaxBodySize).toBe(CHAT_BODY_LIMIT_BYTES);
   });
 });

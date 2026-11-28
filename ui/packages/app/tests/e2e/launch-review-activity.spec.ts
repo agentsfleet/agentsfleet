@@ -39,7 +39,11 @@ test("Launch review interleaves eight keyboard disclosures with the answer and r
   await expect(worked).toHaveAttribute("aria-expanded", "false");
   await worked.click();
   await expect(reply.locator('[data-tool="wait_agent"]')).toHaveCount(1);
-  await expect(reply.locator('[data-tool="exec_command"]')).toHaveCount(5);
+  const commands = reply.locator('[data-tool="exec_command"]');
+  await expect(commands).toHaveCount(5);
+  const commandLabel = commands.getByText("Ran command", {exact: true}).first();
+  await expect(commandLabel).toHaveCSS("color", "rgb(133, 139, 149)");
+  await expect(commandLabel).toHaveCSS("font-weight", "400");
   await worked.click();
   await reply.getByRole("button", {name: "Quote reply"}).click();
   const dismiss = page.getByRole("button", {name: "Remove quote"});
@@ -47,6 +51,10 @@ test("Launch review interleaves eight keyboard disclosures with the answer and r
   await dismiss.click();
   for (const theme of ["dark", "light"]) {
     await page.evaluate(value => { document.documentElement.dataset.theme = value; }, theme);
+    const commandSummary = groups.getByText("Edited files, ran 3 commands", {exact: true});
+    const caption = theme === "dark" ? "rgb(133, 139, 149)" : "rgb(102, 112, 123)";
+    await expect(commandSummary).toHaveCSS("color", caption);
+    await expect(commandSummary).toHaveCSS("font-weight", "400");
     const agentIcon = controls.filter({hasText: "UI reviewer started"}).locator("svg").first();
     await expect(agentIcon).toHaveCSS("color", theme === "dark" ? "rgb(196, 180, 231)" : "rgb(106, 78, 139)");
     for (const [index, anchor] of (isMobile ? [reply.getByText(LAUNCH_REPLIES[0]), reply.getByText(LAUNCH_REPLIES[1])] : [reply.getByText(LAUNCH_REPLIES[0])]).entries()) {

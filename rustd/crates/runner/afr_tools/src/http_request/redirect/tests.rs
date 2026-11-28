@@ -259,7 +259,11 @@ async fn should_retain_safe_context_when_redirects_stop() {
     for (case, reason, sends) in [
         (0, "valid bounded Location", 1),
         (1, "loop refused", 1),
-        (2, "limit exceeded", 4),
+        (
+            2,
+            "limit exceeded",
+            usize::from(af_egress::redirect::MAX_REDIRECTS) + 1,
+        ),
     ] {
         let run = RunFixture::new();
         let (transport, sent) = RecordingTransport::answering(move |request| {

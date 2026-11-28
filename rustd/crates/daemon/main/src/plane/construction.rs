@@ -106,7 +106,8 @@ impl NativeInputs<'_> {
             .with_wake(self.wake.clone())
             .with_clock(self.runtime.clock)
             .with_checkpoint_resume(self.runtime.resume_from_checkpoint)
-            .with_limits(run_limits(&self.runtime.operations.tuning));
+            .with_limits(run_limits(&self.runtime.operations.tuning))
+            .with_web_workspace(self.admin_workspace.clone());
         runs.thread = Arc::new(
             afd_fleet::run::history::Conversations::new(self.database.clone()).with_page_turns(
                 i64::from(self.runtime.operations.tuning.turns.history_turns_per_page),

@@ -85,6 +85,16 @@ fn should_empty_arguments_that_alone_would_not_fit_one_post() {
 }
 
 #[test]
+fn item_metadata_counts_against_the_room_for_its_arguments() {
+    let room = MESSAGE_BYTES_MAX - post_envelope_bytes();
+    let empty = json!({"query": ""});
+    let args = json!({"query": "q".repeat(room - encoded_len(&empty))});
+    let kept = record(1, clean_json(args), &clean(""));
+    assert!(kept.truncated_arguments);
+    assert!(encoded_len(&kept) <= room);
+}
+
+#[test]
 fn should_cut_an_output_that_escapes_past_one_post() {
     // Each control character escapes to six bytes: 48 MiB of JSON.
     let output = "\u{1}".repeat(MESSAGE_BYTES_MAX / 4);

@@ -10,7 +10,7 @@ use af_validate::TEXT_MAX_CHARS;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-use crate::tool_trace::{FileChange, ToolCallStatus, changes_fit, edge_fits};
+use crate::tool_trace::{FileChange, ToolCallStatus, WebSource, changes_fit, edge_fits};
 
 mod durable_task;
 pub use durable_task::{
@@ -119,6 +119,10 @@ pub struct ToolCallCompleted<'a> {
     #[serde(borrow, default, skip_serializing_if = "Vec::is_empty")]
     #[garde(skip)]
     pub changes: Vec<FileChange<'a>>,
+    /// Pages returned by this call, in their original order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[garde(dive)]
+    pub sources: Vec<WebSource>,
 }
 
 /// A long-running tool is still working, so a reader's spinner survives it.
@@ -219,7 +223,13 @@ impl ActivityFrame<'_> {
             return true;
         };
         let edges = [body.output_head.as_deref(), body.output_tail.as_deref()];
-        edges.into_iter().flatten().all(edge_fits) && changes_fit(&body.changes)
+        edges.into_iter().flatten().all(edge_fits)
+            && changes_fit(&body.changes)
+            && crate::tool_trace::source_scope(
+                &body.name,
+                body.status == ToolCallStatus::Succeeded,
+                &body.sources,
+            )
     }
 }
 

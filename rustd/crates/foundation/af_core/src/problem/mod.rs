@@ -118,6 +118,7 @@ mod integration;
 mod invite;
 mod request;
 mod setup;
+mod web;
 
 /// The families, in `REGISTRY` order — which is the order [`ENTRIES`] takes.
 ///
@@ -125,7 +126,7 @@ mod setup;
 /// describing it live in comparable files. The order is load-bearing: it is
 /// what lets [`ENTRIES`] be flattened from the parts rather than written out
 /// a second time that could disagree with them.
-const FAMILIES: [&[Problem]; 7] = [
+const FAMILIES: [&[Problem]; 8] = [
     durable_task::DURABLE_TASK,
     request::REQUEST,
     auth::AUTH,
@@ -133,6 +134,7 @@ const FAMILIES: [&[Problem]; 7] = [
     integration::INTEGRATION,
     invite::INVITE,
     setup::SETUP,
+    web::WEB,
 ];
 
 /// How many entries the families hold between them.
@@ -142,7 +144,8 @@ const TOTAL: usize = FAMILIES[0].len()
     + FAMILIES[3].len()
     + FAMILIES[4].len()
     + FAMILIES[5].len()
-    + FAMILIES[6].len();
+    + FAMILIES[6].len()
+    + FAMILIES[7].len();
 
 /// One entry per code this workspace declares, in `REGISTRY` order.
 ///

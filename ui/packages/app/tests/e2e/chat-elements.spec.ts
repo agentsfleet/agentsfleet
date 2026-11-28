@@ -1,5 +1,6 @@
 import { expect } from "@playwright/test";
 import { test } from "./fixtures/chat-probe";
+import keenHawk from "../../../../../tests/fixtures/fleets/keen-hawk.json";
 
 test("tool disclosures remain reachable inside the conversation at 320px", async ({page, chatProbe}, info) => {
   await page.setViewportSize({width: 320, height: 844});
@@ -79,7 +80,7 @@ test("native attachment preparation accepts a preview and shows its text receipt
   await page.goto(`${chatProbe}?visual=1`);
   await page.getByRole("button", {name: "Completed", exact: true}).click();
   const chooser = page.waitForEvent("filechooser");
-  await page.getByRole("button", {name: "Attach a preview file"}).click();
+  await page.getByRole("button", {name: "Attach an image or preview file"}).click();
   await (await chooser).setFiles({name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("demo")});
   await expect(page.getByText("notes.txt", {exact: true})).toBeVisible();
   await expect(page.getByRole("alert")).toHaveCount(0);
@@ -88,6 +89,46 @@ test("native attachment preparation accepts a preview and shows its text receipt
   await expect(page.getByText(/Upload preview · Not saved to fleet history/)).toBeVisible();
   await expect(page.getByText(/The file was not read, stored, or analyzed/)).toBeVisible();
   expect(requests).toEqual(["POST"]);
+});
+
+test("the fleet composer sends a picture with its message and rejects an oversized file", async ({page, chatProbe}) => {
+  const sent: unknown[] = [];
+  await page.route("**/live/v1/workspaces/*/fleets/*/messages", async route => {
+    if (route.request().method() !== "POST") return route.fallback();
+    sent.push(route.request().postDataJSON());
+    if (sent.length === 1) {
+      return route.fulfill({status: 409, json: {
+        error_code: "UZ-AGT-027", detail: "Model Text-only cannot receive images",
+      }});
+    }
+    await route.fulfill({status: 202, json: {
+      status: "accepted", turn_id: "01924f4e-0000-7000-8000-00000000fee7", replayed: false, disposition: "started",
+    }});
+  });
+  await page.goto(`${chatProbe}?research=1`);
+  const form = page.getByRole("form", {name: "Chat composer"});
+  const attach = async (name: string, buffer: Buffer) => {
+    const chooser = page.waitForEvent("filechooser");
+    await form.getByRole("button", {name: "Attach an image or preview file"}).click();
+    await (await chooser).setFiles({name, mimeType: "image/png", buffer});
+  };
+  await attach("too-large.png", Buffer.alloc(6 * 1024 * 1024));
+  await expect(form.getByRole("alert")).toContainText("5 MiB");
+  expect(sent).toHaveLength(0);
+
+  await attach("picture.png", Buffer.from(keenHawk.image_png, "base64"));
+  await form.getByRole("textbox").fill(keenHawk.follow_ups[0]!);
+  await form.getByRole("button", {name: "Send", exact: true}).click();
+  await expect(form.getByText("Model Text-only cannot receive images")).toBeVisible();
+  await expect(form.getByRole("textbox")).toHaveValue("");
+  await form.getByRole("button", {name: "Try again", exact: true}).click();
+  await expect.poll(() => sent).toHaveLength(2);
+  expect(sent[0]).toEqual({
+    message: keenHawk.follow_ups[0],
+    operation_id: expect.any(String),
+    images: [{media_type: "image/png", data: keenHawk.image_png}],
+  });
+  expect(sent[1]).toEqual(sent[0]);
 });
 
 test("a native upload submission stays visible and a refusal returns its draft", async ({page, chatProbe}, info) => {
@@ -101,7 +142,7 @@ test("a native upload submission stays visible and a refusal returns its draft",
   await page.getByRole("button", {name: "Completed", exact: true}).click();
   const replies = await page.locator('[data-role="assistant"]').count();
   const chooser = page.waitForEvent("filechooser");
-  await page.getByRole("button", {name: "Attach a preview file"}).click();
+  await page.getByRole("button", {name: "Attach an image or preview file"}).click();
   await (await chooser).setFiles({name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("demo")});
   const composer = page.getByRole("textbox", {name: "Message your fleet…"});
   await composer.fill("Review this preview");

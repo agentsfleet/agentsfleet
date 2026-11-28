@@ -69,6 +69,34 @@ fn a_record_is_kept_with_its_whole_output() {
     assert_eq!(narrowed(&record(3, "hello")), Ok(5));
 }
 
+#[test]
+fn a_fetch_item_needs_the_full_requested_path_while_a_trace_can_keep_its_bounded_prefix() {
+    use crate::tool_trace::{ARGS_LEAF_MAX_BYTES, RawToolTrace};
+    let page = format!("https://docs.test/{}", "x".repeat(ARGS_LEAF_MAX_BYTES));
+    let preview = &page[..ARGS_LEAF_MAX_BYTES];
+    let mut item = fields(1, "page");
+    item["tool"] = json!("web_fetch");
+    item["arguments"] = json!({"url": preview});
+    item["sources"] = json!([{"url":page}]);
+    assert_eq!(narrowed(&item.to_string()), Err(DetailRejection::Malformed));
+    let trace = json!({"calls":[{"call_id":"1","name":"web_fetch","status":"succeeded",
+        "duration_ms":0,"arguments":item["arguments"],"sources":item["sources"]}]})
+    .to_string();
+    let raw: RawToolTrace<'_> = serde_json::from_str(&trace).expect("trace fixture");
+    assert_eq!(
+        raw.narrow().expect("bounded URL").calls[0].sources[0].url,
+        page
+    );
+
+    item["arguments"] = json!({"url":page});
+    assert_eq!(narrowed(&item.to_string()), Ok(4));
+    item["sources"] = json!([{"url":"https://redirect.test"}]);
+    assert_eq!(
+        narrowed(&item.to_string()),
+        Ok(4),
+        "a verified origin needs no destination path"
+    );
+}
 /// No field cap: the record holds everything the call returned, and every
 /// argument it was made with, however large.
 #[test]
@@ -156,6 +184,7 @@ fn the_answers_round_trip() {
         output: "all of it".into(),
         output_line_count: 224,
         truncated: false,
+        sources: Vec::new(),
         changes: vec![FileChange {
             path: "src/a.rs".into(),
             added: 24,

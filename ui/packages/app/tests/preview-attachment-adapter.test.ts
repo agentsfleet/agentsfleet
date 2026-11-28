@@ -91,4 +91,37 @@ it("keeps a rejected upload incomplete without leaking the response body", async
   expect(fetchMock).toHaveBeenCalledOnce(); adapter.dispose();
 });
 
+it("reads an attached image locally and accepts only image kinds for a first message", async () => {
+  const fleet = new PreviewAttachmentAdapter("workspace", "fleet", "owner");
+  const creating = new PreviewAttachmentAdapter("workspace", null, null);
+  const png = new File([new Uint8Array([137, 80, 78, 71])], "picture.png", {type: "image/png"});
+  const prepared = await fleet.add({file: png});
+  await expect(fleet.send(prepared)).resolves.toMatchObject({
+    type: "image", status: {type: "complete"}, content: [{type: "image", image: "data:image/png;base64,iVBORw=="}],
+  });
+  expect(creating.accept).toBe("image/png,image/jpeg,image/gif,image/webp");
+  await expect(creating.send(await creating.add({file: png}))).resolves.toMatchObject({type: "image"});
+  await expect(creating.add({file: new File(["demo"], "notes.txt")})).rejects.toThrow("Attach a PNG");
+  const file = await fleet.add({file: new File(["demo"], "notes.txt")});
+  await expect(creating.send(file)).rejects.toThrow("Attach an image");
+  expect(fetchMock).not.toHaveBeenCalled();
+  fleet.dispose();
+  creating.dispose();
+});
+
+it("rejects empty and oversized images and cancels a pending image read", async () => {
+  const adapter = new PreviewAttachmentAdapter("workspace", "fleet", "owner");
+  for (const size of [0, 6 * 1024 * 1024]) {
+    const file = new File([new Uint8Array(size)], "picture.png", {type: "image/png"});
+    await expect(adapter.add({file})).rejects.toThrow("5 MiB");
+  }
+  const attachment = await adapter.add({file: new File(["png"], "picture.png", {type: "image/png"})});
+  const controller = new AbortController();
+  const reading = adapter.send(attachment, {signal: controller.signal});
+  const refused = expect(reading).rejects.toThrow("Unable to read the attached image");
+  controller.abort();
+  await refused;
+  adapter.dispose();
+});
+
 function receipt() {return Response.json({preview: true, stored: false, reply: "Upload preview accepted. The file was not read, stored, or analyzed."});}

@@ -109,6 +109,7 @@ impl Error {
             ErrorKind::ConnectorReconnectRequired | ErrorKind::ConnectorMintFailed => {
                 error_code::CONNECTOR_OAUTH_EXCHANGE_FAILED
             }
+            ErrorKind::Web { ref reason, .. } => reason.code(),
             ErrorKind::GrantRequired => error_code::GRANT_NOT_FOUND,
         }
     }

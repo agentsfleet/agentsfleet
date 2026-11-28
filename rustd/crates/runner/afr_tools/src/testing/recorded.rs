@@ -318,7 +318,11 @@ impl crate::verbs::RunVerbs for RecordingVerbs {
     ) -> Result<crate::verbs::AccessAnswer, crate::verbs::Unanswered> {
         self.record(Asked::Access(af_wire::access_verb::AccessRequest {
             fencing_token: request.fencing_token,
-            name: std::borrow::Cow::Owned(request.name.into_owned()),
+            name: request
+                .name
+                .map(|name| std::borrow::Cow::Owned(name.into_owned())),
+            host: request.host,
+            evidence: request.evidence,
             scope: request.scope,
         }));
         self.access

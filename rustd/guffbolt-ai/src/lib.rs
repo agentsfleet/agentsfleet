@@ -44,8 +44,7 @@ pub mod testing;
 pub mod wire;
 
 pub use self::types::{
-    Call, Chunk, End, Hosted, Image, ImageKind, Message, Model, Replay, Request, TextKind,
-    ToolSpec, Usage,
+    Call, Chunk, End, Image, ImageKind, Message, Model, Replay, Request, TextKind, ToolSpec, Usage,
 };
 
 #[cfg(feature = "wire")]

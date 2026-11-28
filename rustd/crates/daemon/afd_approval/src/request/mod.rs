@@ -1,4 +1,4 @@
-//! A fleet asking for one secret or integration, and the card a person
+//! A fleet asking for a host, a secret or an integration, and the card a person
 //! answers it on.
 //!
 //! # Why this crate, beside the revoke
@@ -84,6 +84,8 @@ pub enum GrantKind {
     Secret,
     /// A connected integration whose token is minted per run.
     Integration,
+    /// Permission for web tools to reach a named host.
+    Host,
 }
 
 impl GrantKind {
@@ -93,12 +95,19 @@ impl GrantKind {
         match self {
             Self::Secret => grant_type::SECRET,
             Self::Integration => grant_type::INTEGRATION,
+            Self::Host => grant_type::HOST,
         }
     }
 
     /// The card's headline and blast radius for `name`.
     fn card(self, name: &str) -> (String, String) {
         match self {
+            Self::Host => (
+                format!("reach {name}"),
+                format!(
+                    "web tools on this fleet may reach {name} until a person revokes the grant"
+                ),
+            ),
             Self::Secret => (
                 format!("use the workspace secret {name}"),
                 format!("every run of this fleet holds {name}, until a person revokes the grant"),
@@ -113,7 +122,7 @@ impl GrantKind {
     }
 }
 
-/// One secret or integration a fleet asks to hold.
+/// One host or credential a fleet asks a person to approve.
 #[derive(Debug, Clone, Copy)]
 pub struct Wanted<'a> {
     /// The vault key or the integration's name — `sentry`, `github` — which is
@@ -125,6 +134,8 @@ pub struct Wanted<'a> {
     /// `af_fleet_runtime::config::RepositoryBinding::recorded` writes, or
     /// `None` for a name that takes no scope.
     pub scope: Option<&'a str>,
+    /// Redirect observed by the requesting runner, when this host request followed a refusal.
+    pub redirect: Option<&'a af_wire::access_verb::RedirectEvidence>,
     /// The turn whose run asked: the card carries it, and its answer resumes it.
     pub turn: &'a Uuid7,
 }
@@ -140,12 +151,15 @@ impl Wanted<'_> {
         let scope = self
             .scope
             .and_then(|text| serde_json::from_str::<serde_json::Value>(text).ok());
-        serde_json::json!({
-            EVIDENCE_SERVICE: self.name,
-            EVIDENCE_KIND: self.kind.as_str(),
-            EVIDENCE_SCOPE: scope,
-        })
-        .to_string()
+        let mut evidence = serde_json::Map::from_iter([
+            (EVIDENCE_SERVICE.to_owned(), self.name.into()),
+            (EVIDENCE_KIND.to_owned(), self.kind.as_str().into()),
+            (EVIDENCE_SCOPE.to_owned(), scope.unwrap_or_default()),
+        ]);
+        if let Some(redirect) = self.redirect {
+            evidence.insert("redirect".to_owned(), serde_json::json!(redirect));
+        }
+        serde_json::Value::Object(evidence).to_string()
     }
 }
 

@@ -35,7 +35,7 @@ mod runtime;
 #[cfg(feature = "test-util")]
 mod test_util;
 #[cfg(feature = "test-util")]
-pub use test_util::boot_with_connector_boundary;
+pub use test_util::{boot_with_connector_boundary, boot_with_web_clients};
 
 use std::net::SocketAddr;
 

@@ -14,7 +14,7 @@ const GATE = {gate_id: "gate-one", workspace_id: PROPS.workspaceId, fleet_id: PR
   proposed_action: "Publish runner image", tool_name: "registry", action_name: "publish", blast_radius: "Production registry · Release tag"};
 // An access card: the fleet asked for a credential, named by the evidence's service.
 const ACCESS = {...GATE, gate_type: "integration_grant", proposed_action: "mint short-lived credentials for sentry", evidence: {service: "sentry"}};
-const page = (items: Array<typeof GATE & {detail?: string; evidence?: Record<string, unknown>; expires_at?: string}> = [GATE]) => ({ok: true, data: {items, next_cursor: null}});
+const page = (items: Array<typeof GATE & {fleet_name?: string; detail?: string; evidence?: Record<string, unknown>; expires_at?: string}> = [GATE]) => ({ok: true, data: {items, next_cursor: null}});
 beforeEach(() => {vi.clearAllMocks(); mocks.list.mockReset(); mocks.deny.mockReset(); mocks.approve.mockReset(); mocks.answer.mockReset(); mocks.list.mockResolvedValue(page());});
 afterEach(cleanup);
 
@@ -325,4 +325,51 @@ it("keeps the typed answer and shows the refusal when the fleet was archived", a
   expect(screen.getByLabelText("Your answer")).toHaveProperty("value", "Roll back");
   expect(screen.getByRole("button", {name: "Send answer"})).toHaveProperty("disabled", false);
   expect(mocks.capture).not.toHaveBeenCalled();
+});
+
+it("an access card for a host names it and shows only the redirect hostnames", async () => {
+  const from = "docs.vendor.example";
+  const to = "support.vendor.example";
+  const signed = "/private/guide?signature=sensitive";
+  mocks.list.mockResolvedValue(page([{...ACCESS, proposed_action: signed, detail: signed, blast_radius: signed,
+    evidence: {kind: "host", service: to, scope: null, redirect: {tool: "web_fetch", from_host: from, to_host: to, url: signed}},
+    expires_at: "2026-11-12T12:00:00Z"}]));
+  render(<FleetApprovalSummary {...PROPS} />);
+  expect(await screen.findByText(`Allow this fleet to reach ${to}?`)).toBeTruthy();
+  expect(screen.getByText(`received a redirect from ${from} to ${to}.`, {exact: false})).toBeTruthy();
+  expect(screen.getByText(/web tools reach .* on future runs until you revoke access/)).toBeTruthy();
+  expect(screen.getByText("Respond by", {exact: false})).toBeTruthy();
+  expect(screen.getByRole("button", {name: "Deny"})).toBeTruthy();
+  expect(document.body.textContent).not.toContain(signed);
+  fireEvent.click(screen.getByRole("button", {name: "View exact action"}));
+  expect(screen.getByRole("dialog", {name: "Exact action"})).toBeTruthy();
+  expect(document.body.textContent).not.toContain(signed);
+  expect(screen.queryByText("Expires", {exact: false})).toBeNull();
+});
+
+it.each([
+  {from_host: "docs.vendor.example/secret?sig=private", to_host: "support.vendor.example"},
+  {from_host: "docs.vendor.example", to_host: "other.example"},
+])("withholds approval when redirect evidence cannot be shown safely", async redirect => {
+  mocks.list.mockResolvedValue(page([{...ACCESS, evidence: {kind: "host", service: "support.vendor.example",
+    redirect: {tool: "web_fetch", ...redirect}}}]));
+  render(<FleetApprovalSummary {...PROPS} />);
+  expect(await screen.findByText("Request details unavailable.")).toBeTruthy();
+  expect(screen.queryByRole("button", {name: "Approve"})).toBeNull();
+  expect(document.body.textContent).not.toContain("sig=private");
+});
+
+
+it("a direct host request can still be approved after its response date", async () => {
+  const host = "support.vendor.example";
+  mocks.list.mockResolvedValue(page([{...ACCESS, fleet_name: "release-assistant", status: "timed_out",
+    evidence: {kind: "host", service: host}, expires_at: "2026-11-12T12:00:00Z"}]));
+  mocks.approve.mockResolvedValue(receipt("gate-one", "approved"));
+  render(<FleetApprovalSummary {...PROPS} />);
+  expect(await screen.findByText(`Allow release-assistant to reach ${host}?`)).toBeTruthy();
+  expect(screen.queryByText(/received a redirect/)).toBeNull();
+  expect(screen.getByText("Respond by", {exact: false})).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", {name: "Approve"}));
+  expect(await screen.findByText("Request approved.")).toBeTruthy();
+  expect(mocks.approve).toHaveBeenCalledExactlyOnceWith("workspace", "gate-one", undefined);
 });

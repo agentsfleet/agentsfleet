@@ -190,3 +190,33 @@ async fn a_search_skips_gitignored_paths() {
     assert_eq!(found.text, "src/main.rs");
     live.stop().await;
 }
+
+#[tokio::test]
+async fn grep_context_surrounds_the_last_match_in_one_executor_call() {
+    let live = Live::start().await;
+    std::fs::write(
+        live.root.join("notes"),
+        format!(
+            "before\n{}hit\nhit again\nafter\n",
+            "x".repeat(live.client.sizes().max_frame_bytes)
+        ),
+    )
+    .unwrap();
+    let counted = Counted::new(&live.client);
+    let sandbox = SandboxEnv::new(&counted);
+    let answer = call(
+        &tools(&sandbox),
+        "grep",
+        &json!({"pattern":"hit", "context":1, "limit":1}),
+    )
+    .await;
+    assert_eq!(
+        answer.text,
+        format!(
+            "notes:1: before\nnotes:2: {} [line cut at 500 characters]\nnotes:3: hit again\n... limit reached; narrow the path or the pattern",
+            "x".repeat(500)
+        )
+    );
+    assert_eq!(counted.taken(), ["fs/search"]);
+    live.stop().await;
+}

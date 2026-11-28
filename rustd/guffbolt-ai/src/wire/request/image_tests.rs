@@ -16,6 +16,45 @@ use rig_core::message::{
 use super::super::route::Api as Wire;
 use super::tests::{CALL_ID, OUTPUT, built, conversation};
 
+#[test]
+fn a_users_picture_follows_the_text_on_an_image_wire() {
+    let messages = [Message::user_with_images(
+        "What colour is this?".to_owned(),
+        vec![Image {
+            kind: ImageKind::Png,
+            data: Bytes::from_static(b"\x89PNG"),
+        }],
+    )];
+    for wire in [
+        Wire::Chat,
+        Wire::Messages,
+        Wire::Responses,
+        Wire::Gemini,
+        Wire::Ollama,
+    ] {
+        let request = built(wire, &messages, &[]);
+        let RigMessage::User { content } = request.chat_history[1].as_ref() else {
+            panic!("one user turn");
+        };
+        let parts = content.iter().collect::<Vec<_>>();
+        assert!(
+            matches!(parts.first(), Some(UserContent::Text(text)) if text.text == "What colour is this?")
+        );
+        if wire.carries_images() {
+            let [_, UserContent::Image(image)] = parts.as_slice() else {
+                panic!("one image after the text");
+            };
+            assert_eq!(image.media_type, Some(ImageMediaType::PNG));
+            assert_eq!(
+                image.data,
+                DocumentSourceKind::Base64("iVBORw==".to_owned())
+            );
+        } else {
+            assert_eq!(parts.len(), 1);
+        }
+    }
+}
+
 /// An image a call read goes back inside its result, after the text, as
 /// base64 under its media type: the shape rig turns into a Messages `image`
 /// block and a Responses `input_image`.
@@ -31,7 +70,7 @@ fn should_carry_a_tool_results_image_as_base64_content_after_its_text() {
         }),
     };
 
-    let sent = built(Wire::Messages, &messages, &[], &[]);
+    let sent = built(Wire::Messages, &messages, &[]);
 
     let RigMessage::User { content: answered } = sent.chat_history[3].as_ref() else {
         panic!("the result is a user turn: {:?}", sent.chat_history);
@@ -76,7 +115,7 @@ fn should_name_each_image_kinds_media_type() {
             }),
         };
 
-        let sent = built(Wire::Responses, &messages, &[], &[]);
+        let sent = built(Wire::Responses, &messages, &[]);
 
         let RigMessage::User { content: answered } = sent.chat_history[3].as_ref() else {
             panic!("the result is a user turn: {:?}", sent.chat_history);

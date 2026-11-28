@@ -137,11 +137,25 @@ where
             instructions: &self.instructions,
             messages: &window.messages,
             tools,
-            hosted: &[],
             cache_key: "",
             max_output_tokens: window.max_output_tokens,
             single_attempt: false,
         }
+    }
+
+    fn instructions<'a>(&'a self, request: &Request<'a>) -> std::borrow::Cow<'a, str> {
+        let mut text = std::borrow::Cow::Borrowed(request.instructions);
+        for guidance in request
+            .tools
+            .iter()
+            .filter_map(|spec| self.tools.guidance_for(spec.name))
+        {
+            if !text.is_empty() {
+                text.to_mut().push_str("\n\n");
+            }
+            text.to_mut().push_str(guidance);
+        }
+        text
     }
 
     fn dispatch<'a>(&'a self, call: &'a Call, _call_ref: &'a CallRef) -> ToolFuture<'a> {

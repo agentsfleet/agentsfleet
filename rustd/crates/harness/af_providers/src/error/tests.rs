@@ -181,7 +181,6 @@ async fn should_name_a_reply_past_the_cap_the_fleets_error_and_never_reopen_it()
         instructions: "",
         messages: &messages,
         tools: &[],
-        hosted: &[],
         cache_key: "",
         max_output_tokens: None,
         single_attempt: false,

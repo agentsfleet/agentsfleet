@@ -171,6 +171,8 @@ backed! {
 impl Handler for MemoryStoreTool<'_> {
     const NAME: &'static str = "memory_store";
     const DESCRIPTION: &'static str = "Remember a fact for later runs under a stable key.";
+    const GUIDANCE: &'static str = "Use memory_store with category core for standing guidance only \
+        when the person's newest message asks you to remember it. Store other facts under another category.";
     type Arguments = Store;
 
     async fn run(&self, arguments: Store, _context: Context<'_>) -> ToolOutput {
@@ -201,8 +203,10 @@ backed! {
 
 impl Handler for MemoryRecall<'_> {
     const NAME: &'static str = "memory_recall";
-    const DESCRIPTION: &'static str =
-        "Read remembered facts whose key or content holds the query, key matches first.";
+    const DESCRIPTION: &'static str = "Find remembered facts by matching their key or content, with key matches first. Only \
+        core entries are shown at the start. Use memory_list to find keys and categories when \
+        you lack a query.";
+    const EXAMPLES: &'static [&'static str] = &[r#"{"query":"release notes","limit":3}"#];
     type Arguments = Recall;
 
     async fn run(&self, arguments: Recall, _context: Context<'_>) -> ToolOutput {
@@ -226,8 +230,9 @@ backed! {
 
 impl Handler for MemoryList<'_> {
     const NAME: &'static str = "memory_list";
-    const DESCRIPTION: &'static str =
-        "List the keys and categories of every remembered fact, newest first.";
+    const DESCRIPTION: &'static str = "Return remembered keys and categories, newest first. Only core entries are shown at the \
+        start. Use memory_recall when you need the content of a particular fact.";
+    const EXAMPLES: &'static [&'static str] = &[r#"{"category":"note"}"#];
     type Arguments = List;
 
     async fn run(&self, arguments: List, _context: Context<'_>) -> ToolOutput {

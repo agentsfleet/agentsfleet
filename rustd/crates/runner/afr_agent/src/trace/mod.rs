@@ -14,7 +14,7 @@ use std::time::Duration;
 
 use af_wire::tool_trace::{
     ARGS_LEAF_MAX_BYTES, ARGS_MAX_BYTES, FileChange, OUTPUT_EDGE_MAX_BYTES, OUTPUT_EDGE_MAX_LINES,
-    ToolCallStatus, ToolTrace, ToolTraceCall, encoded_len,
+    ToolCallStatus, ToolTrace, ToolTraceCall, WebSource, encoded_len,
 };
 use serde_json::{Map, Value};
 
@@ -31,6 +31,7 @@ pub(crate) struct Outcome {
     pub(crate) elapsed: Duration,
     /// For an edit that succeeded, each file it changed; empty otherwise.
     pub(crate) changes: Vec<FileChange<'static>>,
+    pub(crate) sources: Vec<WebSource>,
 }
 
 impl Outcome {
@@ -50,6 +51,7 @@ impl Outcome {
             line_count: Some(u64::try_from(output.lines().count()).unwrap_or(u64::MAX)),
             exit_code,
             elapsed,
+            sources: Vec::new(),
             changes: Vec::new(),
         }
     }
@@ -63,6 +65,7 @@ impl Outcome {
             line_count: None,
             exit_code: None,
             elapsed,
+            sources: Vec::new(),
             changes: Vec::new(),
         }
     }
@@ -123,6 +126,8 @@ fn leaf(text: &str) -> Option<String> {
 #[derive(Debug, Default)]
 pub(crate) struct Trace {
     calls: Vec<ToolTraceCall<'static>>,
+    /// Started on the first citation so other runs pay no serialization cost.
+    row_bytes: Option<usize>,
 }
 
 impl Trace {
@@ -134,7 +139,7 @@ impl Trace {
         arguments: Map<String, Value>,
         outcome: Outcome,
     ) {
-        self.calls.push(ToolTraceCall {
+        let row = ToolTraceCall {
             call_id: Cow::Owned(number.to_string()),
             name: Cow::Owned(name.to_owned()),
             arguments,
@@ -144,13 +149,40 @@ impl Trace {
             output_line_count: outcome.line_count,
             exit_code: outcome.exit_code,
             duration_ms: af_core::clock::saturating_millis(outcome.elapsed),
+            sources: outcome.sources,
             changes: outcome.changes,
-        });
+        };
+        if let Some(bytes) = &mut self.row_bytes {
+            *bytes = bytes.saturating_add(encoded_len(&row));
+        }
+        self.calls.push(row);
+    }
+
+    /// Remaining space for citations on the newest call, including all previous rows.
+    pub(crate) fn source_room(&mut self) -> usize {
+        let prefix = br#"{"calls":[]}"#.len() + self.calls.len().saturating_sub(1);
+        let bytes = self
+            .row_bytes
+            .get_or_insert_with(|| self.calls.iter().map(encoded_len).sum());
+        af_wire::protocol::MESSAGE_BYTES_MAX.saturating_sub(prefix.saturating_add(*bytes))
+    }
+
+    /// Install the very same prefix that the full item and the live frame carry.
+    pub(crate) fn cite_last(&mut self, sources: &[WebSource]) {
+        if let Some(row) = self.calls.last_mut() {
+            row.sources = sources.to_vec();
+            if let Some(bytes) = &mut self.row_bytes {
+                *bytes += br#","sources":"#.len() + encoded_len(&row.sources);
+            }
+        }
     }
 
     /// The finished trace, including a known empty set when no tool ran.
     pub(crate) fn finish(self) -> ToolTrace<'static> {
-        ToolTrace { calls: self.calls }
+        ToolTrace {
+            calls: self.calls,
+            sources_in_items: false,
+        }
     }
 }
 

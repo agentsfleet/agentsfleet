@@ -4,6 +4,7 @@ import { ArrowUpRightIcon, CaretRightIcon, GlobeIcon, PaperclipIcon, TerminalWin
 import { List, ListItem, cn } from "@agentsfleet/design-system";
 import { SUMMARY_ICON, SUMMARY_ROW } from "@/components/domain/shared/summary/summary-row";
 import { WorkSection } from "../../shared/summary/WorkSection";
+import type { WebSource } from "@/lib/api/turns";
 import type { RunResource } from "./recorded-run-resources";
 
 const RESOURCE_ROW = `${SUMMARY_ROW} min-h-8 rounded-sm py-sm text-label leading-label hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:min-h-11`;
@@ -15,6 +16,23 @@ export function PreviewOutputs({links}: {links: readonly string[]}) {
     <a key={href} href={href} target="_blank" rel="noopener noreferrer" className={RESOURCE_ROW}>
       <GlobeIcon className={SUMMARY_ICON} aria-hidden="true" /><span className="min-w-0 flex-1 font-medium">Launch preview</span><ArrowUpRightIcon className={SUMMARY_ICON} aria-hidden="true" />
     </a>)}</>;
+}
+
+/** Only web links without embedded credentials become navigable. */
+export function WebSources({pages}: {pages: readonly WebSource[]}) {
+  if (!pages.length) return null;
+  return <List variant="plain">{pages.map(({url, title}) => {
+    const location = URL.parse(url);
+    const web = location && (location.protocol === "https:" || location.protocol === "http:");
+    const hidden = web && (location.username || location.password || location.search || location.hash);
+    const label = hidden ? location.origin : title || url;
+    const link = web && !hidden;
+    return <ListItem key={url}>{link ?
+      <a href={location.href} target="_blank" rel="noopener noreferrer" className={RESOURCE_ROW}>
+        <GlobeIcon className={SUMMARY_ICON} aria-hidden="true" /><span className="min-w-0 flex-1 break-words">{label}</span>
+        <ArrowUpRightIcon className={SUMMARY_ICON} aria-hidden="true" />
+      </a> : <span className="break-words text-label">{label}</span>}</ListItem>;
+  })}</List>;
 }
 
 export function RunResources({rows}: {rows: readonly RunResource[]}) {

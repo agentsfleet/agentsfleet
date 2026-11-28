@@ -22,6 +22,7 @@ pub mod observe;
 pub mod settings;
 #[cfg(any(test, feature = "test-util"))]
 pub mod testing;
+pub mod web;
 
 mod connect;
 mod provider;

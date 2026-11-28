@@ -146,8 +146,11 @@ backed! {
 
 impl Handler for FileWrite<'_> {
     const NAME: &'static str = "file_write";
-    const DESCRIPTION: &'static str = "Write a file in the working directory, replacing what \
-        was there, and make any missing directories on the way.";
+    const DESCRIPTION: &'static str = "Create or replace an entire file, creating missing directories, and return the change. \
+        Use file_edit to replace selected text in an existing file, or apply_patch for changes \
+        across files.";
+    const EXAMPLES: &'static [&'static str] =
+        &[r#"{"path":"notes.md","content":"Ready for review.\n"}"#];
     type Arguments = Content;
 
     async fn run(&self, arguments: Content, _context: Context<'_>) -> ToolOutput {

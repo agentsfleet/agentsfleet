@@ -5,7 +5,7 @@
 --
 -- $1 workspace · $2 fleet · $3 cursor instant · $4 cursor turn · $5 the processed status ·
 -- $6 the failed status · $7 page size
-SELECT id AS turn_id, created_at, sequence, status, failure_reason,
+SELECT id AS turn_id, created_at, sequence, actor, kind, status, failure_reason,
        request_json::text AS request_json, answer_text
   FROM thread.turns
  WHERE workspace_id = $1 AND thread_id = $2 AND opened_at IS NOT NULL

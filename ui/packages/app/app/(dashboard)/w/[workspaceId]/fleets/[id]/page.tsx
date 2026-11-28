@@ -1,6 +1,5 @@
 import { claims, requireCredential } from "@/lib/auth/credential";
-import { hasScope } from "@/lib/auth/platform";
-import { SCOPE } from "@/lib/auth/scopes";
+import { expandScopes, SCOPE } from "@/lib/auth/scopes";
 import { notFound, redirect } from "next/navigation";
 import { workspacePath } from "@/lib/workspace-routes";
 import { ApiError } from "@/lib/api/errors";
@@ -38,23 +37,31 @@ export default async function FleetDetailPage({
 
   if (query.view && query.view !== "chat") redirect(workspacePath(workspaceId, `fleets/${id}`));
   const viewData = startChatData({workspaceId, fleetId: id, token});
-  const [fleetResult, billing, workspaces, sessionClaims, canGrant] = await Promise.all([
+  const [fleetResult, billing, workspaces, sessionClaims] = await Promise.all([
     loadFleet(workspaceId, id, token),
     getTenantBillingCached(token).catch(() => null),
     listTenantWorkspacesCached(token).catch(() => null),
     claims(),
-    hasScope(SCOPE.FLEET_WRITE),
   ]);
   if (!fleetResult) notFound();
 
-  const {fleet} = fleetResult;
   const account = workspaces?.items.find(item => item.id === workspaceId)?.account.tenant_id ?? null;
   const viewer = typeof sessionClaims?.sub === "string" ? sessionClaims.sub : null;
+  // afd_auth::scope::parse_claim separates a session token's scopes on literal spaces.
+  const scopes = expandScopes(typeof sessionClaims?.scopes === "string" ? sessionClaims.scopes.split(" ") : []);
+  const {schedules, triggers, grants, ...fields} = fleetResult.fleet;
+  // The fleet detail includes these lists, but each list has its own read permission.
+  const lists = {
+    schedules: viewer && scopes.has(SCOPE.SCHEDULE_READ) ? schedules : undefined,
+    triggers: viewer && scopes.has(SCOPE.FLEET_READ) ? triggers : undefined,
+    grants: viewer && scopes.has(SCOPE.GRANT_READ) ? grants : undefined,
+  };
+  const fleet = {...fields, schedules: lists.schedules ?? [], triggers: lists.triggers ?? [], grants: lists.grants ?? []};
   const {content, latestRun, models} = await loadChatView(workspaceId, fleet, viewData, viewer);
   return <div data-fleet-workspace className="flex h-full min-h-0 flex-1 flex-col overflow-clip">
     <FleetViewedTracker fleetId={fleet.id} status={fleet.status} />
-    <FleetWorkspace account={account} workspace={workspaceId} fleet={fleet} models={models} viewer={viewer}>
-      <FleetHeader workspaceId={workspaceId} fleet={fleet} canGrant={canGrant} latestRun={latestRun}
+    <FleetWorkspace account={account} workspace={workspaceId} fleet={{...fields, ...lists}} models={models} viewer={viewer}>
+      <FleetHeader workspaceId={workspaceId} fleet={fleet} canGrant={scopes.has(SCOPE.FLEET_WRITE)} latestRun={latestRun}
         exhaustedAt={billing?.is_exhausted ? billing.exhausted_at : undefined} />
       <div className="page-entrance flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-clip">{content}</div>
     </FleetWorkspace>

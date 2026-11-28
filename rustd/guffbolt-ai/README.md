@@ -14,6 +14,7 @@ provider implements:
 - `Usage`: the tokens one step spent.
 
 guffbolt depends on this crate and re-exports every type under its own path.
+On every wire, `Request.tools` offers functions that the embedder executes. A web search uses the same function interface.
 A provider crate implements `Model` with this crate alone. A loop drives it
 with guffbolt.
 

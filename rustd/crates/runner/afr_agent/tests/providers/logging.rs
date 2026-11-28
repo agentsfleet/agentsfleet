@@ -30,7 +30,6 @@ async fn recorded(reply: Reply, filtered: bool) -> String {
         instructions: "Read the run.",
         messages: &messages,
         tools: &[],
-        hosted: &[],
         cache_key: "private-log-proof",
         max_output_tokens: None,
         single_attempt: false,

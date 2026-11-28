@@ -293,8 +293,8 @@ pub(super) struct EgressTuning {
     /// How long one request may take.
     #[garde(range(min = 1))]
     pub request_timeout_seconds: u64,
-    /// Redirects followed before giving up.
-    #[garde(range(min = 1))]
+    /// Redirects followed before giving up, up to the Fetch standard ceiling.
+    #[garde(range(min = 1, max = af_egress::redirect::MAX_REDIRECTS))]
     pub max_redirects: u8,
     /// Memory the matcher that masks a redirect's secrets in its response may
     /// build; past it the response is refused.

@@ -3,7 +3,7 @@
 //! # Why these need a real datastore
 //!
 //! The grant and its card share a transaction, the grant row is unique per
-//! fleet and name, and the unique active grant reference arbitrates cards.
+//! fleet, kind and name, and the unique active grant reference arbitrates cards.
 //! Each claim here is a claim about what those statements and constraints
 //! decide, so each is proven against the real schema.
 #![expect(
@@ -233,4 +233,59 @@ async fn a_request_names_the_fleet_that_asked() {
     assert_eq!(grant_count(&theirs).await, 0);
     assert_eq!(cards(&theirs).await, Vec::new());
     assert_eq!(grant_count(&mine).await, 1);
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn a_host_and_a_credential_of_one_name_stay_two_grants() {
+    use crate::grant_lane::grants;
+    use afd_approval::Revocation;
+    let lane = Lane::isolated().await;
+    let host = "support.vendor.example";
+    let first = lane.asking_turn().await;
+    let second = lane.asking_turn().await;
+    let secret_turn = lane.asking_turn().await;
+    let (a, b) = tokio::join!(
+        ask(&lane, host, GrantKind::Host, None, &first),
+        ask(&lane, host, GrantKind::Host, None, &second)
+    );
+    assert!(matches!(
+        (&a, &b),
+        (Requested::Raised { .. }, Requested::Pending { .. })
+            | (Requested::Pending { .. }, Requested::Raised { .. })
+    ));
+    let asked_secret = ask(&lane, host, GrantKind::Secret, None, &secret_turn).await;
+    assert_ne!(a.grant(), asked_secret.grant());
+    let open = cards(&lane).await;
+    assert_eq!(open.len(), 2);
+    let host_card = open
+        .iter()
+        .find(|c| c.evidence.get("kind").and_then(serde_json::Value::as_str) == Some("host"))
+        .expect("the host card");
+    let secret_card = open
+        .iter()
+        .find(|c| c.evidence.get("kind").and_then(serde_json::Value::as_str) == Some("secret"))
+        .expect("the credential card");
+    answer(&lane, &host_card.action, Decision::Approved).await;
+    assert!(matches!(
+        ask(&lane, host, GrantKind::Host, None, &second).await,
+        Requested::Covered { .. }
+    ));
+    assert!(matches!(
+        ask(&lane, host, GrantKind::Secret, None, &secret_turn).await,
+        Requested::Pending { .. }
+    ));
+    answer(&lane, &secret_card.action, Decision::Approved).await;
+    let store = grants(&lane);
+    assert_eq!(
+        store
+            .revoke(&lane.workspace, &lane.fleet, a.grant())
+            .await
+            .expect("host revocation"),
+        Revocation::Revoked
+    );
+    assert!(matches!(
+        ask(&lane, host, GrantKind::Secret, None, &secret_turn).await,
+        Requested::Covered { .. }
+    ));
 }

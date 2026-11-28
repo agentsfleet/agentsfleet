@@ -32,9 +32,12 @@ export function useFleetUploadPreviews({workspaceId, fleetId, subject, turns, on
   useEffect(() => {adapter.connect(); return () => adapter.dispose();}, [adapter]);
   const receive = useCallback(async (message: AppendMessage) => {
     adapter.signal.throwIfAborted();
-    const files = message.attachments ?? [];
+    const attachments = message.attachments ?? [];
+    const files = attachments.filter(file => file.type !== "image");
     if (!files.length) return onNew(message);
     if (!subject) throw new Error("Sign in before uploading a preview.");
+    const images = attachments.filter(file => file.type === "image");
+    if (images.length) await onNew({...message, attachments: images});
     const id = files.map(file => file.id).join(":");
     const text = fleetMessageText(message);
     const reply = files.flatMap(file => file.content.flatMap(part => part.type === "text" ? [part.text] : [])).join("\n");
@@ -94,7 +97,7 @@ function refusingAddressedUploads(adapter: PreviewAttachmentAdapter, runtime: Pr
     remove: attachment => adapter.remove(attachment),
     send: (attachment, options) => {
       const sending = runtime?.current?.thread.composer.getState().submission;
-      if (sending !== undefined && parseChatAddress(fleetComposerText(sending)) !== null) return Promise.reject(new MessageNotSentError());
+      if (attachment.type !== "image" && sending !== undefined && parseChatAddress(fleetComposerText(sending)) !== null) return Promise.reject(new MessageNotSentError());
       return adapter.send(attachment, options);
     },
   };

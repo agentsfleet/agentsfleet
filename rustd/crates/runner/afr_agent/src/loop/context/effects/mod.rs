@@ -43,7 +43,6 @@ impl Summarizer for Model<'_, '_> {
                 instructions: af_context::SUMMARY_INSTRUCTIONS,
                 messages: &messages,
                 tools: &[],
-                hosted: &[],
                 cache_key: self.shared.fleet_id,
                 max_output_tokens: Some(task.output_tokens),
                 single_attempt: true,

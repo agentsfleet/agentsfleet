@@ -51,7 +51,7 @@ const TaskSchema = z.object({context: z.object({
   usage: z.object({runs: z.number().int(), decision_calls: z.number().int()}),
 })});
 /** `task_start`'s statements, as the fleet's model wrote them. */
-const StartedSchema = z.object({source_turn_id: z.string(), statements: z.array(z.object({id: z.string().min(1), question: z.string().min(1)})).min(1)});
+const StartedSchema = z.object({source_turn_id: z.uuidv7().nullish(), statements: z.array(z.object({id: z.string().min(1), question: z.string().min(1)})).min(1)});
 
 /** The completion checks a turn's run recorded. */
 function goalChecks(turn: TurnDetail): string[] {
@@ -93,13 +93,12 @@ test.describe.serial(`prime fleet ${fixture.name}`, {tag: POST_DEPLOY_TAG}, () =
     expect(await tasks(), "a new fleet has no task").toEqual([]);
     // The task's objective is the fixture's own words: the first bytes of the message, before what this run adds.
     const asked = await say(page, workspaceId, primed().id, `${objective} Call ${TASK_START} with the target api_only. ` +
-      "Copy source_turn_id verbatim from the current message in the run input. " +
       `Its objective is the text this message opens with, before these instructions: source_start 0 and source_end ${Buffer.byteLength(objective)}.`);
     assertPassed(classifyTerminalTurn(asked));
     expect(asked.actor).toBe(`${PERSON_ACTOR_PREFIX}${fixtureSubject(PRIME_PERSON)}`);
     const accepted = asked.tool_calls?.calls.find(call => call.name === TASK_START && call.status === TOOL_CALL_STATUS.SUCCEEDED);
     const call = StartedSchema.parse(accepted?.arguments);
-    expect(call.source_turn_id).toBe(asked.turn_id);
+    if (call.source_turn_id != null) expect(call.source_turn_id).toBe(asked.turn_id);
     const listed = await tasks();
     expect(listed, "one message starts one task").toHaveLength(1);
     started = {taskId: entry(fixture, listed, 0, "task").id, asked, statements: call.statements};

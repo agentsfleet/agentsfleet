@@ -10,7 +10,7 @@
 use std::borrow::Cow;
 
 use af_core::id::Uuid7;
-use af_wire::access_verb::{AccessRequest, AccessRequested};
+use af_wire::access_verb::{AccessOutcome, AccessRequest, AccessRequested};
 use af_wire::message_verb::MessagePosted;
 use af_wire::steer_verb::FleetSteerAccepted;
 use afr_tools::FleetsCall;
@@ -57,6 +57,38 @@ impl<'a> FencedVerbs<'a> {
 
 #[async_trait::async_trait]
 impl afr_tools::RunVerbs for FencedVerbs<'_> {
+    fn web_timeout(&self) -> std::time::Duration {
+        self.plane.tuning.call_timeout
+    }
+
+    async fn web_search(
+        &self,
+        call_number: u64,
+        query: &str,
+    ) -> Result<af_wire::web::SearchResponse, Unanswered> {
+        self.plane
+            .web_search(self.run_id, self.fencing_token, call_number, query)
+            .await
+            .map_err(|failure| web_unanswered(&failure))
+    }
+
+    async fn web_extract(
+        &self,
+        call_number: u64,
+        url: &str,
+    ) -> Result<af_wire::web::ExtractResponse, afr_tools::WebUnanswered> {
+        self.plane
+            .web_extract(self.run_id, self.fencing_token, call_number, url)
+            .await
+            .map_err(|failure| {
+                if failure.local_read_permitted() {
+                    afr_tools::WebUnanswered::LocalReadPermitted
+                } else {
+                    afr_tools::WebUnanswered::Unanswered(web_unanswered(&failure))
+                }
+            })
+    }
+
     async fn durable_task_decision(
         &self,
         input: af_wire::durable_task::DecisionReservationInput,
@@ -117,7 +149,7 @@ impl afr_tools::RunVerbs for FencedVerbs<'_> {
         let requested = body
             .decode::<AccessRequested<'_>>()
             .map_err(|failure| unanswered(&failure))?;
-        Ok(access_answer(body.created(), &requested))
+        access_answer(body.created(), &requested)
     }
 
     async fn message(&self, call_number: u64, text: &str) -> Result<bool, Unanswered> {
@@ -227,12 +259,25 @@ impl afr_tools::RunVerbs for FencedVerbs<'_> {
 /// What an access request did: a 201 raised a card for this run's turn; a
 /// 200 found the fleet's approved grant covering it, or, naming a card, an
 /// earlier request's card still waiting on a person.
-const fn access_answer(created: bool, requested: &AccessRequested<'_>) -> AccessAnswer {
-    match (created, &requested.gate_id) {
-        (true, _) => AccessAnswer::Asked,
-        (false, None) => AccessAnswer::Covered,
-        (false, Some(_card)) => AccessAnswer::Pending,
+const fn access_answer(
+    created: bool,
+    requested: &AccessRequested<'_>,
+) -> Result<AccessAnswer, Unanswered> {
+    match (created, requested.state, requested.gate_id.is_some()) {
+        (true, AccessOutcome::Raised, true) => Ok(AccessAnswer::Asked),
+        (false, AccessOutcome::Covered, false) => Ok(AccessAnswer::Covered),
+        (false, AccessOutcome::Pending, _) => Ok(AccessAnswer::Pending),
+        _ => Err(Unanswered::Unreachable),
     }
+}
+
+/// A 5xx with a registered web problem carries a specific reason. A transport
+/// error, including a lost response, leaves the outcome unknown.
+fn web_unanswered(failure: &crate::Error) -> Unanswered {
+    failure.web_problem_code().map_or_else(
+        || unanswered(failure),
+        |code| Unanswered::Refused(Some(code)),
+    )
 }
 
 /// A failed call as a tool reads it. A refusal keeps its registry code,

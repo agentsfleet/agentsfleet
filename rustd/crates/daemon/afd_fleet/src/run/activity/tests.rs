@@ -174,6 +174,7 @@ fn every_frame(call_id: &'static str) -> [ActivityFrame<'static>; 4] {
             output_tail: None,
             output_line_count: None,
             exit_code: None,
+            sources: Vec::new(),
             changes: Vec::new(),
         }),
         ActivityFrame::FleetResponseChunk(FleetResponseChunk {
@@ -306,6 +307,7 @@ fn test_published_completed_carries_outcome() {
         output_tail: Some(Cow::Borrowed("exit")),
         output_line_count: Some(40),
         exit_code: Some(2),
+        sources: Vec::new(),
         changes: Vec::new(),
     });
     let value = published(&frame);
@@ -345,6 +347,7 @@ fn a_published_edit_carries_each_files_counts() {
         output_tail: None,
         output_line_count: Some(3),
         exit_code: None,
+        sources: Vec::new(),
         changes: vec![FileChange {
             path: Cow::Borrowed("src/a.rs"),
             added: 24,

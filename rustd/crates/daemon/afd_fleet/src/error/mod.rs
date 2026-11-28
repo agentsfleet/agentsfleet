@@ -118,6 +118,15 @@ impl Error {
 }
 
 impl Error {
+    /// A web refusal with safe status details and any explicit local-read permission.
+    #[must_use]
+    pub fn web_failure(&self) -> Option<&crate::run::web::Failure> {
+        match &self.inner.kind {
+            ErrorKind::Web { reason, .. } => Some(reason),
+            _ => None,
+        }
+    }
+
     /// Raises `kind` as an error, capturing a backtrace.
     ///
     /// A thin pass through the generated `From<ErrorKind>` — kept because the

@@ -189,6 +189,7 @@ async fn queue(creations: &Creations, tenant: &SeededFleet, index: u64) -> Resul
     for _ in 0..CHATS_PER_TENANT {
         let now = clock::now();
         let request = CreateFleetRequest {
+            images: Vec::new(),
             message: MESSAGE.to_owned(),
             operation_id: Entropy::new().uuid7(now)?.to_string(),
             model_ref: Some(PLATFORM_MODEL_REF.to_owned()),

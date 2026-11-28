@@ -33,8 +33,11 @@ use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 
 use crate::error::query;
-use crate::run::envelope::Acquired;
 use crate::run::sql::history::{SELECT_CALLS_OF, SELECT_FINISHED_BEFORE};
+
+#[path = "history_assignment.rs"]
+mod assignment;
+pub use assignment::turns_before;
 
 /// The event a chat run issued without its turns is logged under.
 pub(super) const EVENT_HISTORY_UNAVAILABLE: &str = "run_history_unavailable";
@@ -61,6 +64,10 @@ pub struct FinishedTurn {
     pub created_at: Timestamp,
     /// Its place in the thread, which a saved summary's watermark counts in.
     pub sequence: i64,
+    /// The producer recorded on the thread.
+    pub actor: String,
+    /// The kind the thread recorded when the turn entered.
+    pub kind: String,
     /// How it ended: processed or failed.
     pub status: String,
     /// The failure a failed turn ended on.
@@ -93,7 +100,10 @@ pub struct CallRow {
 impl FinishedTurn {
     /// The bytes of text the row stored: what the read counts toward one frame.
     fn stored_bytes(&self) -> usize {
-        self.request_json.len() + self.answer_text.as_ref().map_or(0, String::len)
+        self.request_json.len()
+            + self.actor.len()
+            + self.kind.len()
+            + self.answer_text.as_ref().map_or(0, String::len)
     }
 }
 
@@ -206,58 +216,6 @@ impl Thread for Conversations {
     }
 }
 
-/// The turns `acquired`'s run carries: none unless its event is a chat
-/// message, and none when the read fails.
-pub(super) async fn turns(
-    thread: &dyn Thread,
-    acquired: &Acquired,
-    event_type: TurnKind,
-) -> Vec<Turn<'static>> {
-    let at = Cursor {
-        created_at: acquired.turn_created_at,
-        turn_id: acquired.turn_id.clone(),
-    };
-    turns_before(
-        thread,
-        &acquired.workspace_id,
-        &acquired.fleet_id,
-        &at,
-        event_type,
-    )
-    .await
-}
-
-/// `turns`, for the event at `at` in `workspace`'s `fleet`: what a chat
-/// run carries, read through `thread`.
-pub async fn turns_before(
-    thread: &dyn Thread,
-    workspace: &Uuid7,
-    fleet: &Uuid7,
-    at: &Cursor,
-    event_type: TurnKind,
-) -> Vec<Turn<'static>> {
-    if event_type != TurnKind::Chat {
-        return Vec::new();
-    }
-    // Boxed: the page walk holds a row across each call read, and every
-    // issue path awaits this.
-    match Box::pin(read(thread, workspace, fleet, at)).await {
-        Ok((turns, bytes)) => {
-            metrics::carried(bytes);
-            turns
-        }
-        Err(failure) => {
-            metrics::read_failed();
-            let error_code = failure.code().as_str();
-            let fleet_id = fleet.as_str();
-            let agentsfleet_turn_id = at.turn_id.as_str();
-            let event = EVENT_HISTORY_UNAVAILABLE;
-            tracing::warn!(error_code, fleet_id, agentsfleet_turn_id, event);
-            Vec::new()
-        }
-    }
-}
-
 /// Every finished turn before `at`, oldest first, with its calls, read a
 /// page at a time, newest first, until the thread ends or what was read
 /// passes one frame; and the bytes it stored.
@@ -314,9 +272,17 @@ pub(super) fn turn(row: FinishedTurn, calls: Vec<CallRow>) -> Option<Turn<'stati
         }
         _unfinished => return None,
     };
+    let event_type = TurnKind::parse(&row.kind);
     Some(Turn {
         sequence: u64::try_from(row.sequence).unwrap_or_default(),
+        actor: Cow::Owned(row.actor),
+        event_type,
         message: Cow::Owned(message_of(&row.request_json).into_owned()),
+        images: if event_type == Some(TurnKind::Chat) {
+            af_wire::turn::images_of(&row.request_json)
+        } else {
+            Vec::new()
+        },
         calls: calls.into_iter().filter_map(call).collect(),
         answer: Cow::Owned(answer),
     })

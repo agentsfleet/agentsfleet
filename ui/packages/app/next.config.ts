@@ -41,10 +41,10 @@ const nextConfig: NextConfig = {
     useTypeScriptCli: true,
     // `proxy.ts` matches the create and message routes, so Next buffers their
     // bodies, and past its 10 MiB default it truncates them silently. The
-    // number is lib/api/body-limits.ts's TEXT_BODY_LIMIT_BYTES, written out
+    // number is lib/api/body-limits.ts's CHAT_BODY_LIMIT_BYTES, written out
     // because a local import breaks `next start <dir>` under Bun from another
     // directory; tests/body-limits.test.ts pins the two equal.
-    proxyClientMaxBodySize: 12_599_296,
+    proxyClientMaxBodySize: 32 * 1024 * 1024,
     optimizePackageImports: ["@phosphor-icons/react", "@phosphor-icons/react/ssr"],
   },
 

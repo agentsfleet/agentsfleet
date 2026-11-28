@@ -23,14 +23,26 @@ fn refuse_unless(holds: bool, rejection: TraceRejection) -> garde::Result {
 }
 
 /// Every string one call carries, arguments included, free of NUL.
-pub(super) fn call_free_of_nul<C: ?Sized>(call: &ToolTraceCall<'_>, _context: &C) -> garde::Result {
+pub(super) fn valid_call<C: ?Sized>(call: &ToolTraceCall<'_>, _context: &C) -> garde::Result {
     let edges = [call.output_head.as_deref(), call.output_tail.as_deref()];
     let clean = free_of_nul(&call.call_id)
         && free_of_nul(&call.name)
         && edges.into_iter().flatten().all(free_of_nul)
         && fields_free_of_nul(&call.arguments)
         && changes_free_of_nul(&call.changes);
-    refuse_unless(clean, TraceRejection::HoldsNul)
+    refuse_unless(clean, TraceRejection::HoldsNul)?;
+    disclosed_sources(call)
+}
+
+fn disclosed_sources(call: &ToolTraceCall<'_>) -> garde::Result {
+    refuse_unless(
+        super::source_scope(
+            &call.name,
+            call.status == super::ToolCallStatus::Succeeded,
+            &call.sources,
+        ) && super::requested_source(&call.name, &call.arguments, &call.sources, true),
+        TraceRejection::Malformed,
+    )
 }
 
 /// A call id is a call number the record verb keys by: decimal digits naming

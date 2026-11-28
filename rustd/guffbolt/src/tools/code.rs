@@ -66,3 +66,6 @@ pub const MCP_SERVER_NOT_FOUND: ErrorCode = ErrorCode::new("mcp_server_not_found
 pub const SCHEDULE_NOT_FOUND: ErrorCode = ErrorCode::new("schedule_not_found");
 /// The scheduler could not keep what the call changed.
 pub const SCHEDULE_UNSAVED: ErrorCode = ErrorCode::new("schedule_unsaved");
+
+/// A page could not be read as text.
+pub const UNSUPPORTED_MEDIA: ErrorCode = ErrorCode::new("unsupported_media");

@@ -31,7 +31,31 @@ pub fn allowlist_host(entry: &str) -> Option<String> {
     } else {
         Url::parse(&format!("{ASSUMED_SCHEME}{entry}"))
     };
-    url.ok()?.host().map(|host| spelled(&host))
+    canonical_url(url.ok()?)
+        .ok()?
+        .host()
+        .map(|host| spelled(&host))
+}
+
+/// Normalize the DNS root label once, before checking which network and
+/// credential policies apply. The outgoing request uses the same host.
+pub(crate) fn canonical_url(mut url: Url) -> Result<Url, url::ParseError> {
+    if let Some(domain) = url.domain().and_then(|host| host.strip_suffix('.')) {
+        if domain.is_empty() || domain.ends_with('.') {
+            return Err(url::ParseError::InvalidDomainCharacter);
+        }
+        let host = domain.to_owned();
+        url.set_host(Some(&host))?;
+    }
+    Ok(url)
+}
+
+/// Match an already canonical URL host against a configured bare hostname.
+pub(crate) fn names_host(configured: &str, canonical: &str) -> bool {
+    configured
+        .strip_suffix('.')
+        .unwrap_or(configured)
+        .eq_ignore_ascii_case(canonical)
 }
 
 /// `host` as [`allowlist_host`] spells an entry's.

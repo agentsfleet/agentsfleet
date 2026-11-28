@@ -88,6 +88,7 @@ fn evidence_carries_the_name_the_approve_statement_joins_on_and_the_scope() -> O
             name: "github",
             kind: GrantKind::Integration,
             scope: Some(scope),
+            redirect: None,
             turn: &turn,
         }
         .evidence(),
@@ -111,6 +112,7 @@ fn a_secret_request_carries_no_scope() -> Outcome {
             name: "sentry",
             kind: GrantKind::Secret,
             scope: None,
+            redirect: None,
             turn: &turn,
         }
         .evidence(),

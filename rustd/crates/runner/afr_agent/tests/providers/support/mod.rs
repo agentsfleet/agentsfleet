@@ -271,6 +271,15 @@ pub(crate) async fn run_with(
     run: &RunPayload<'_>,
     executor: Option<&dyn Executor>,
 ) -> (RunOutput, Vec<ActivityFrame<'static>>) {
+    run_with_verbs(engine, run, executor, &afr_tools::CLOSED).await
+}
+
+pub(crate) async fn run_with_verbs(
+    engine: &Loop,
+    run: &RunPayload<'_>,
+    executor: Option<&dyn Executor>,
+    verbs: &dyn afr_tools::RunVerbs,
+) -> (RunOutput, Vec<ActivityFrame<'static>>) {
     let (sent, frames) = std::sync::mpsc::channel();
     let sink = move |frame| sent.send(frame).expect("the suite holds the receiver");
     let stop = CancellationToken::new();
@@ -287,7 +296,7 @@ pub(crate) async fn run_with(
         memory: afr_memory::Seed::default(),
         executor: &executor,
         mint: &CountingMint::never(),
-        verbs: &afr_tools::CLOSED,
+        verbs,
         checkpoint: &Discard,
         inbox: &afr_agent::testing::NoInbox,
         events: &sink,

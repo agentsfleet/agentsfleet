@@ -18,6 +18,7 @@ use afd_db::Db;
 /// carries the live tail and the disposable notifications.
 #[derive(Debug, Clone)]
 pub struct Runs {
+    pub(super) web: super::web::Web,
     clock: afd_runner::timing::RunClock,
     resume_from_checkpoint: bool,
     database: Db,
@@ -71,6 +72,7 @@ impl Runs {
     #[must_use]
     pub fn new(database: Db, bus: Handle, entropy: Entropy) -> Self {
         Self {
+            web: super::web::Web::default(),
             clock: afd_runner::timing::RunClock::default(),
             resume_from_checkpoint: true,
             database,

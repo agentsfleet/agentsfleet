@@ -5,7 +5,7 @@
 -- in force until a person approves the card.
 WITH requested AS MATERIALIZED (
   SELECT id, status, scope FROM connector.integration_grants
-  WHERE fleet_id = $1 AND service = $2
+  WHERE fleet_id = $1 AND grant_type = $3 AND service = $2
   FOR UPDATE
 ), open_card AS MATERIALIZED (
   SELECT g.id FROM fleet.approval_gates g
@@ -19,7 +19,6 @@ WITH requested AS MATERIALIZED (
 ), reopened AS (
   UPDATE connector.integration_grants g
   SET status          = CASE WHEN a.status = $6 THEN $5 ELSE g.status END,
-      grant_type      = $3,
       requested_scope = CASE WHEN EXISTS (SELECT 1 FROM open_card) THEN g.requested_scope
                              ELSE $4::jsonb END,
       approved_at     = CASE WHEN a.status = $6 THEN NULL ELSE g.approved_at END,

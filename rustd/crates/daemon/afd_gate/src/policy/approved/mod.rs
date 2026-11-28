@@ -7,9 +7,11 @@
 //! anything, and a reader that could see `pending` would be invited to treat
 //! it as a maybe.
 
+use std::collections::BTreeSet;
+
 use af_core::id::Uuid7;
 use af_fleet_runtime::config::RepositoryBinding;
-use afd_api_wire::grant::status;
+use afd_api_wire::grant::{grant_type, status};
 use sqlx::PgConnection;
 
 use crate::error::{Result, query};
@@ -70,10 +72,29 @@ impl Approved {
             .map_err(query(CONTEXT_APPROVED))
     }
 
-    /// The approved names, for `afd_credential::secrets::declared` to resolve.
+    /// The distinct approved credential names, for `afd_credential::secrets::declared` to resolve.
     #[must_use]
     pub fn names(&self) -> Vec<&str> {
-        self.0.iter().map(|grant| grant.name.as_str()).collect()
+        self.0
+            .iter()
+            .filter(|grant| {
+                matches!(
+                    grant.grant_type.as_str(),
+                    grant_type::SECRET | grant_type::INTEGRATION
+                )
+            })
+            .map(|grant| grant.name.as_str())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect()
+    }
+
+    /// The host grants a person explicitly approved, distinct from vault names.
+    pub(super) fn hosts(&self) -> impl Iterator<Item = &str> {
+        self.0
+            .iter()
+            .filter(|grant| grant.grant_type == grant_type::HOST)
+            .map(|grant| grant.name.as_str())
     }
 
     /// Whether `name` was approved as `grant_type`.
@@ -95,7 +116,9 @@ impl Approved {
         Ok(self
             .0
             .iter()
-            .find(|grant| grant.name == CREDENTIAL_GITHUB)
+            .find(|grant| {
+                grant.name == CREDENTIAL_GITHUB && grant.grant_type == grant_type::INTEGRATION
+            })
             .and_then(|grant| grant.scope.as_deref())
             .map(RepositoryBinding::parse)
             .transpose()?)
@@ -109,7 +132,7 @@ impl FromIterator<ApprovedGrant> for Approved {
     }
 }
 
-/// Holds `fleet`'s approved grant for `name` through the caller's commit, so a
+/// Holds `fleet`'s approved `kind` grant for `name` through the caller's commit, so a
 /// revoke waits for whatever the caller issues under it.
 ///
 /// # Errors
@@ -118,11 +141,13 @@ pub async fn hold_approved_on(
     connection: &mut PgConnection,
     fleet: &Uuid7,
     name: &str,
+    kind: &str,
 ) -> Result<bool> {
     sqlx::query_scalar::<_, String>(HOLD_APPROVED_GRANT)
         .bind(fleet)
         .bind(name)
         .bind(status::APPROVED)
+        .bind(kind)
         .fetch_optional(connection)
         .await
         .map(|held| held.is_some())

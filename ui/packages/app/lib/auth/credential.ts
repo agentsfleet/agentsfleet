@@ -49,6 +49,9 @@ const SIGN_IN_PATH = "/sign-in";
 const CLAIM_TENANT_ID = "tenant_id";
 const CLAIM_METADATA = "metadata";
 
+// All projections share one verified provider session during a React request.
+const requestSession = cache(() => auth());
+
 /**
  * The bearer for an outbound daemon call, or `null` when nobody is signed in.
  *
@@ -69,13 +72,13 @@ const CLAIM_METADATA = "metadata";
  * credential in module scope.
  */
 export const credential = cache(async (): Promise<string | null> => {
-  const { getToken } = await auth();
+  const { getToken } = await requestSession();
   return getToken();
 });
 
 /** App-owned identity for personal settings; never use a caller-supplied user as authority. */
 export const accountSessionIdentity = cache(async () => {
-  const identity = await auth();
+  const identity = await requestSession();
   if (!identity.userId || !identity.sessionId) return null;
   return {subject: identity.userId, sessionId: identity.sessionId,
     recentlyVerified: identity.has({reverification: "strict"}), impersonating: Boolean(identity.actor)};
@@ -110,7 +113,7 @@ export async function requireCredential(): Promise<string> {
  */
 export const claims = cache(async (): Promise<Record<string, unknown> | null> => {
   try {
-    const { sessionClaims } = await auth();
+    const { sessionClaims } = await requestSession();
     return (sessionClaims as Record<string, unknown> | null) ?? null;
   } catch {
     return null;

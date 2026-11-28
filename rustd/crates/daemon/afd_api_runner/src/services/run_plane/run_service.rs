@@ -19,6 +19,26 @@ use afd_setup::trigger::TriggerRow;
 /// direction: the HTTP layer states what it needs, and the service crate stays
 /// unaware that an HTTP layer exists.
 impl RunPlane for RunService {
+    fn web_search(
+        &self,
+        runner: &Uuid7,
+        run: Uuid7,
+        request: &garde::Valid<af_wire::web::SearchRequest>,
+        deadline: tokio::time::Instant,
+    ) -> impl Future<Output = afd_fleet::Result<af_wire::web::SearchResponse>> + Send {
+        Self::web_search(self, runner, run, request, deadline)
+    }
+
+    fn web_extract(
+        &self,
+        runner: &Uuid7,
+        run: Uuid7,
+        request: &garde::Valid<af_wire::web::ExtractRequest>,
+        deadline: tokio::time::Instant,
+    ) -> impl Future<Output = afd_fleet::Result<af_wire::web::ExtractResponse>> + Send {
+        Self::web_extract(self, runner, run, request, deadline)
+    }
+
     fn load(
         &self,
         runner_id: &Uuid7,

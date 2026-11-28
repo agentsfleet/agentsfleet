@@ -19,14 +19,16 @@ import { Output } from "../../services/output.ts";
 import { requireWorkspaceId, resolveAuthToken } from "../workspace/guards.ts";
 import { writesJson } from "./read.ts";
 import { DISPOSITION_QUEUED, DISPOSITION_STARTED } from "./steer-placement.ts";
+import { messageImage, type MessageImage } from "./message-image.ts";
 
 export interface FleetCreateInput {
   readonly message: string;
   readonly name?: string | undefined;
   readonly model?: string | undefined;
+  readonly image?: string | undefined;
 }
 
-export const FLEET_CREATE_USAGE = 'usage: agentsfleet fleet create "<message>" [--name <name>] [--model <ref>]' as const;
+export const FLEET_CREATE_USAGE = 'usage: agentsfleet fleet create "<message>" [--name <name>] [--model <ref>] [--image <path>]' as const;
 const CREATE_RESPONSE_INVALID = "FLEET_CREATE_RESPONSE_INVALID";
 const BAD_GATEWAY = 502;
 
@@ -48,7 +50,7 @@ const createFleet = (
   wsId: string,
   token: Redacted.Redacted<string>,
   input: FleetCreateInput,
-  signal?: AbortSignal,
+  image: MessageImage | undefined,
 ): Effect.Effect<CreatedFleet, CliError, HttpClient> =>
   Effect.gen(function* () {
     const http = yield* HttpClient;
@@ -56,12 +58,12 @@ const createFleet = (
       path: wsFleetsPath(wsId),
       method: HTTP_METHOD.post,
       token,
-      signal,
       body: {
         message: input.message,
         operation_id: uuidv7(),
         ...(input.model === undefined ? {} : { model_ref: input.model }),
         ...(input.name === undefined ? {} : { name: input.name }),
+        ...(image === undefined ? {} : { images: [image] }),
       },
     });
     return yield* Schema.decodeUnknownEffect(CreatedSchema)(body).pipe(Effect.mapError(() => new ServerError({
@@ -79,9 +81,10 @@ export const fleetCreateEffect = (
     if (message === undefined || message.trim().length === 0) {
       return yield* Effect.fail(new ValidationError({ detail: "message is required", suggestion: FLEET_CREATE_USAGE }));
     }
+    const image = flags.image === undefined ? undefined : yield* messageImage(flags.image);
     const wsId = yield* requireWorkspaceId;
     const token = yield* resolveAuthToken;
-    const created = yield* createFleet(wsId, token, { ...flags, message });
+    const created = yield* createFleet(wsId, token, { ...flags, message }, image);
     const output = yield* Output;
     const { id, name } = created.fleet;
     const { turn_id: turnId, disposition } = created.accepted;

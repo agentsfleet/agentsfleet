@@ -46,7 +46,7 @@ impl Stub {
                 }
             },
             (Runtime::Sandbox, None) => ToolOutput::failed(ToolErrorCode::SandboxUnavailable, name),
-            (Runtime::Supervisor | Runtime::Provider, _) => ToolOutput::succeeded(name),
+            (Runtime::Supervisor, _) => ToolOutput::succeeded(name),
         }
     }
 }

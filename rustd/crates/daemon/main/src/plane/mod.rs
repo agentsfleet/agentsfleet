@@ -91,6 +91,22 @@ impl ServingPlane {
         self
     }
 
+    /// Routes daemon web operations through a test's instrumented endpoints.
+    #[cfg(feature = "test-util")]
+    pub(crate) fn with_web_clients(
+        mut self,
+        clients: Option<(af_providers::web::Parallel, af_providers::web::Exa)>,
+    ) -> Self {
+        if let Some((parallel, exa)) = clients {
+            self.runs.runs = self.runs.runs.with_web_clients(
+                parallel,
+                exa,
+                Arc::new(af_core::clock::SystemClock),
+            );
+        }
+        self
+    }
+
     /// Assembles the plane over already-connected pools.
     ///
     /// Takes them CONNECTED rather than taking configuration, for the reason

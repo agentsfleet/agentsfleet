@@ -16,8 +16,6 @@ pub enum Runtime {
     Supervisor,
     /// Inside the run's sandbox, through the executor connection.
     Sandbox,
-    /// At the model provider, sent as the provider's own hosted tool spec.
-    Provider,
 }
 
 /// What a handler is given for one call.
@@ -62,8 +60,6 @@ pub type RunTool<'b> = dyn for<'call, 'run> guffbolt::Tool<ToolContext<'call, 'r
 pub enum ToolErrorCode {
     /// The model called a tool this run was not offered.
     NotOffered,
-    /// The tool is the provider's to run, and this provider offers none.
-    HostedToolUnavailable,
     /// A sandbox-side tool was called on a run that has no sandbox.
     SandboxUnavailable,
     /// The call's arguments do not parse as the tool's schema, or break a
@@ -149,7 +145,6 @@ impl ToolErrorCode {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::NotOffered => guffbolt::ErrorCode::NOT_OFFERED.as_str(),
-            Self::HostedToolUnavailable => "hosted_tool_unavailable",
             Self::SandboxUnavailable => code::SANDBOX_UNAVAILABLE.as_str(),
             Self::InvalidArguments => code::INVALID_ARGUMENTS.as_str(),
             Self::MemoryFull => code::MEMORY_FULL.as_str(),

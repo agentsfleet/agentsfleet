@@ -15,6 +15,7 @@
 
 pub mod detail;
 pub(crate) mod durable_tasks;
+mod image_input;
 pub mod memory;
 pub mod memory_access;
 mod memory_request;

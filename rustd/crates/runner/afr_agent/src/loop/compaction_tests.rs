@@ -76,7 +76,7 @@ impl guffbolt::Model for Model {
     fn stream<'a>(&'a self, request: Request<'a>) -> BoxStream<'a, af_providers::Result<Chunk>> {
         let mut chunks = if request.single_attempt {
             self.seen.summaries.fetch_add(1, Ordering::SeqCst);
-            assert!(request.tools.is_empty() && request.hosted.is_empty());
+            assert_eq!(request.tools, &[]);
             assert_eq!(request.instructions, af_context::SUMMARY_INSTRUCTIONS);
             assert_eq!(
                 request.max_output_tokens,

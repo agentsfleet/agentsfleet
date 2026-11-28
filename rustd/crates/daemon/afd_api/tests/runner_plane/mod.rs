@@ -258,3 +258,5 @@ mod schedule_guard;
 mod durable_task_bounds;
 
 mod durable_task_routes;
+
+mod web;

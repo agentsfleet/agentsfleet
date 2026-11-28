@@ -31,6 +31,7 @@ vi.mock("@clerk/nextjs/server", () => ({
 
 vi.mock("@clerk/nextjs", () => ({
   ClerkProvider: clerkProvider,
+  useSession: () => ({isLoaded: false, isSignedIn: false, session: null}),
   UserProfile: ({ path, routing, appearance }: { path: string; routing: string; appearance: unknown }) => React.createElement("div", { "data-user-profile": path, "data-routing": routing, "data-appearance": JSON.stringify(appearance) }),
   SignOutButton: ({ children }: { children: React.ReactNode }) => children,
   UserButton: () => React.createElement("div", { "data-user-button": "1" }),

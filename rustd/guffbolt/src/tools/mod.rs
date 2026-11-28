@@ -133,6 +133,10 @@ pub trait Handler: Send + Sync + fmt::Debug {
     const NAME: &'static str;
     /// What the tool does, as the model reads it.
     const DESCRIPTION: &'static str;
+    /// Guidance for a model request that offers this tool.
+    const GUIDANCE: &'static str = "";
+    /// JSON argument examples shown beside this tool's description.
+    const EXAMPLES: &'static [&'static str] = &[];
     /// What one call carries.
     type Arguments: DeserializeOwned + JsonSchema + Send;
 
@@ -162,7 +166,7 @@ impl<H: Handler> Typed<H> {
     /// `handler`, its schema the one it states ([`Handler::schema`]).
     #[must_use]
     pub fn new(handler: H) -> Self {
-        let schema = handler.schema();
+        let schema = handler.schema().with_examples(H::EXAMPLES);
         Self { handler, schema }
     }
 
@@ -176,6 +180,10 @@ impl<H: Handler> Typed<H> {
 impl<H: Handler> Describe for Typed<H> {
     fn spec(&self) -> ToolSpec<'_> {
         self.schema.spec(H::NAME)
+    }
+
+    fn guidance(&self) -> &'static str {
+        H::GUIDANCE
     }
 }
 

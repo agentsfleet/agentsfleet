@@ -34,6 +34,8 @@ use crate::tools::{
     Sessions,
 };
 
+use crate::tools::web::SearchBackend;
+
 use self::config::Pattern;
 pub use self::config::{InvalidPattern, ToolsConfig};
 
@@ -46,6 +48,8 @@ pub enum Backend {
     Sessions,
     /// Where requests leave for the network: [`Outbound`].
     Outbound,
+    /// Where search and page extraction are routed.
+    Search,
     /// Where memories are kept: [`MemoryStore`].
     Memory,
     /// Where jobs are kept and fired: [`Scheduler`].
@@ -66,6 +70,7 @@ impl Backend {
             Self::Env => "env",
             Self::Sessions => "sessions",
             Self::Outbound => "outbound",
+            Self::Search => "search",
             Self::Memory => "memory",
             Self::Scheduler => "scheduler",
             Self::Channel => "channel",
@@ -193,6 +198,13 @@ impl<'run> ToolsBuilder<'run> {
         self
     }
 
+    /// The builder with search and policy-routed page reading.
+    #[must_use]
+    pub const fn with_search(mut self, search: &'run dyn SearchBackend) -> Self {
+        self.given.search = Some(search);
+        self
+    }
+
     /// The builder, its memory tools over `memory`.
     #[must_use]
     pub const fn with_memory(mut self, memory: &'run dyn MemoryStore) -> Self {
@@ -287,6 +299,7 @@ struct Given<'run> {
     repository: Option<&'run str>,
     image_input: bool,
     outbound: Option<&'run dyn Outbound>,
+    search: Option<&'run dyn SearchBackend>,
     memory: Option<&'run dyn MemoryStore>,
     scheduler: Option<&'run dyn Scheduler>,
     channel: Option<&'run dyn Channel>,
@@ -325,6 +338,7 @@ impl<'run> Given<'run> {
             Backend::Env => self.env.is_some(),
             Backend::Sessions => self.sessions.is_some(),
             Backend::Outbound => self.outbound.is_some(),
+            Backend::Search => self.search.is_some(),
             Backend::Memory => self.memory.is_some(),
             Backend::Scheduler => self.scheduler.is_some(),
             Backend::Channel => self.channel.is_some(),

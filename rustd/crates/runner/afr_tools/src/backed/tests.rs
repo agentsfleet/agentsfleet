@@ -22,10 +22,10 @@ fn a_run_builds_only_the_backed_tools_its_policy_names() {
         .tools(&["memory_recall", "shell", "notify", "web_search", "teleport"])
         .expect("every backend is given");
 
-    for built in ["memory_recall", "shell", "notify"] {
+    for built in ["memory_recall", "shell", "notify", "web_search"] {
         assert!(tools.tool(built).is_some(), "{built} is built by the run");
     }
-    for hosted_elsewhere in ["web_search", "teleport", "memory_store"] {
+    for hosted_elsewhere in ["teleport", "memory_store"] {
         assert!(
             tools.tool(hosted_elsewhere).is_none(),
             "{hosted_elsewhere} is not built by the run"

@@ -89,7 +89,7 @@ pub fn workspace_handler_for<D: TenantPlane>(verb: WorkspaceRoute) -> Option<Met
         WorkspaceRoute::Models => Some(handler::models::private(get(handler::models::list::<D>))),
         WorkspaceRoute::Fleets => Some(reading(
             get(fleet::list::<D>).post(fleet::native::create::create::<D>),
-            TEXT_BODY_BYTES_MAX,
+            af_wire::protocol::MESSAGE_BYTES_MAX,
         )),
         WorkspaceRoute::Secrets => Some(get(secret::list::<D>).post(secret::store::<D>)),
         WorkspaceRoute::Secret => Some(put(secret::replace::<D>).delete(secret::remove::<D>)),
@@ -130,7 +130,7 @@ pub fn fleet_handler_for<D: TenantPlane>(verb: FleetRoute) -> Option<MethodRoute
         FleetRoute::MemoryAccess => Some(patch(fleet::memory_access::set::<D>)),
         FleetRoute::Messages => Some(reading(
             get(fleet::message::thread::<D>).post(fleet::message_steer::steer::<D>),
-            TEXT_BODY_BYTES_MAX,
+            af_wire::protocol::MESSAGE_BYTES_MAX,
         )),
         FleetRoute::TurnsStream => Some(get(handler::stream::fleet::<D>)),
         // No PUT beside the PATCH: a schedule is edited field by field, and a

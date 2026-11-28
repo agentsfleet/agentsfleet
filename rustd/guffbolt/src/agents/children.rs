@@ -169,6 +169,7 @@ fn turn<R: Raise>(raise: &R, id: u64) -> Option<Running<'_>> {
     } = agents.begin(id)?;
     let me = Me { id, depth };
     let seat = Seat {
+        tools: tools.clone(),
         id,
         depth,
         stop: stop.clone(),
@@ -248,7 +249,7 @@ fn mend(transcript: &mut Transcript) {
             .rev()
             .find_map(|(at, message)| match message {
                 Message::Assistant { calls, .. } => Some((at, calls)),
-                Message::User(_) | Message::ToolResult { .. } => None,
+                Message::User(_) | Message::UserImages { .. } | Message::ToolResult { .. } => None,
             })
     else {
         return;
@@ -258,7 +259,7 @@ fn mend(transcript: &mut Transcript) {
         .skip(last)
         .filter_map(|message| match message {
             Message::ToolResult { call_id, .. } => Some(call_id.as_str()),
-            Message::User(_) | Message::Assistant { .. } => None,
+            Message::User(_) | Message::UserImages { .. } | Message::Assistant { .. } => None,
         })
         .collect();
     let unanswered: Vec<String> = calls

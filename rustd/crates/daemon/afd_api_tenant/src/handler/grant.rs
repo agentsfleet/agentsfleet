@@ -221,9 +221,13 @@ async fn report_revoked<D: TenantPlane>(
 /// The closed spelling a stored grant kind names, so an event never carries
 /// a stored string; `None` for a spelling this build does not write.
 pub(crate) fn stored_kind(stored: &str) -> Option<&'static str> {
-    [grant_type::SECRET, grant_type::INTEGRATION]
-        .into_iter()
-        .find(|known| *known == stored)
+    [
+        grant_type::SECRET,
+        grant_type::INTEGRATION,
+        grant_type::HOST,
+    ]
+    .into_iter()
+    .find(|known| *known == stored)
 }
 
 /// One stored grant, as the wire shows it.

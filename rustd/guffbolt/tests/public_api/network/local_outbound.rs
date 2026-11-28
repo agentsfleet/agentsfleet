@@ -43,6 +43,7 @@ async fn local_outbound_refuses_a_request_before_it_leaves() {
     for arguments in [
         json!({"url": "https://docs.test/", "method": "TRACE"}),
         json!({"url": "not a url"}),
+        json!({"url": "https://private-user:private-password@docs.test/"}),
         json!({"url": "http://docs.test/"}),
         json!({"url": "https://127.0.0.1/"}),
         json!({"url": "https://[::ffff:10.0.0.1]/"}),
@@ -56,6 +57,7 @@ async fn local_outbound_refuses_a_request_before_it_leaves() {
         [
             "[method_not_allowed] TRACE is not a method this tool sends",
             "[invalid_arguments] not a url is not a URL: relative URL without a base",
+            "[invalid_arguments] credentials are not allowed in the URL",
             "[https_required] http://docs.test/ is not https",
             "[egress_denied] 127.0.0.1 is a private, loopback or reserved address",
             "[egress_denied] [::ffff:a00:1] is a private, loopback or reserved address",

@@ -142,7 +142,7 @@ pub(super) fn users(script: &Script, index: usize) -> Vec<String> {
         sent.messages
             .iter()
             .filter_map(|message| match message {
-                Message::User(text) => Some(text.clone()),
+                Message::User(text) | Message::UserImages { text, .. } => Some(text.clone()),
                 Message::Assistant { .. } | Message::ToolResult { .. } => None,
             })
             .collect()
@@ -155,7 +155,7 @@ pub(super) fn shape(script: &Script, index: usize) -> Vec<(&'static str, String)
         sent.messages
             .iter()
             .map(|message| match message {
-                Message::User(text) => ("user", text.clone()),
+                Message::User(text) | Message::UserImages { text, .. } => ("user", text.clone()),
                 Message::Assistant { text, .. } => ("assistant", text.clone()),
                 Message::ToolResult { output, .. } => ("tool", output.clone()),
             })

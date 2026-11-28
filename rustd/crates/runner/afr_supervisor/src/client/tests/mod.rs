@@ -5,6 +5,7 @@ mod durable_task;
 mod retry;
 mod routing;
 mod transport;
+mod web;
 
 use super::{Call, HttpRunnerApi, RunnerApi, Verb};
 use crate::config::{Config, ENV_API_URL, ENV_RUNNER_TOKEN};

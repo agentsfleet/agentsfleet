@@ -43,3 +43,4 @@ pub use self::policy::{Draft, Placement};
 pub use self::refusal::Refusal;
 pub use self::resolve::{BlockedAddress, Resolve, SystemResolver, blocked_literal, unblocked};
 pub use self::transport::{Inbound, Outbound, Transport};
+pub use self::vault::MintedMask;

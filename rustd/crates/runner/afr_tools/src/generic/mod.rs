@@ -43,6 +43,10 @@ impl<'b> Generic<'b> {
 }
 
 impl Describe for Generic<'_> {
+    fn guidance(&self) -> &'static str {
+        self.tool.guidance()
+    }
+
     fn spec(&self) -> ToolSpec<'_> {
         self.tool.spec()
     }

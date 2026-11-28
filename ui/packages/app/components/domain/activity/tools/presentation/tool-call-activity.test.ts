@@ -13,6 +13,14 @@ describe("recorded tool activity", () => {
   it.each([
     [TOOL_NAME.FLEET_ACTIVITY, {}, "Reading fleet activity", "Read fleet activity", ""],
     [TOOL_NAME.FLEET_STEER, {fleet_id: "bob-id"}, "Sending fleet message", "Sent fleet message", ""],
+    [TOOL_NAME.WEB_SEARCH, {query: "IANA example domains"}, "Searching the web", "Searched the web", "IANA example domains"],
+    [TOOL_NAME.WEB_SEARCH, {}, "Searching the web", "Searched the web", ""],
+    [TOOL_NAME.WEB_FETCH, {}, "Reading page", "Read page", ""],
+    [TOOL_NAME.WEB_FETCH, {url: "http://iana.org/help"}, "Reading page", "Read page", "http://iana.org/help"],
+    [TOOL_NAME.WEB_FETCH, {url: "file:///tmp/report"}, "Reading page", "Read page", ""],
+    [TOOL_NAME.WEB_FETCH, {url: "https://:secret@iana.org/help"}, "Reading page", "Read page", ""],
+    [TOOL_NAME.WEB_FETCH, {url: "https://iana.org/help?sig=private#fragment"}, "Reading page", "Read page", "https://iana.org/help"],
+    [TOOL_NAME.WEB_FETCH, {url: "https://author:pass@iana.org/help"}, "Reading page", "Read page", ""],
     [TOOL_NAME.FILE_READ, {path: "/workspace/a.ts"}, "Reading file", "Read file", "a.ts"],
     [TOOL_NAME.FILE_WRITE, {path: "a.ts"}, "Writing", "Wrote", "a.ts"],
     [TOOL_NAME.FILE_EDIT, {path: "a.ts"}, "Editing", "Edited", "a.ts"],
@@ -86,6 +94,15 @@ describe("recorded tool activity", () => {
     expect(toolGroupActivity([part("file_read", CELL_STATE.INTERRUPTED), part("unknown", SUCCESS)], [0, 1], false).label).toBe("Interrupted · 2 tools");
     expect(toolGroupActivity([{...part("unknown"), result: {}}, part("file_read", SUCCESS)], [0, 1], false).label).toBe("Outcome unavailable · 2 tools");
     expect(toolGroupActivity(content, [1, 99], false)).toMatchObject({label: "Tool activity", state: CELL_STATE.SETTLED});
+  });
+
+  it("summarizes a search followed by a successful page read and preserves other outcomes", () => {
+    const search = part(TOOL_NAME.WEB_SEARCH, SUCCESS);
+    const read = part(TOOL_NAME.WEB_FETCH, SUCCESS);
+    expect(toolGroupActivity([search, read], [0, 1], false)).toMatchObject({label: "Searched the web and read a page", state: SUCCESS});
+    expect(toolGroupActivity([read, search], [0, 1], false).label).toBe("Worked · 2 tools");
+    expect(toolGroupActivity([search, part(TOOL_NAME.WEB_FETCH, CELL_STATE.FAILED)], [0, 1], false).label).toBe("Work failed · 2 tools");
+    expect(toolGroupActivity([search, part(TOOL_NAME.WEB_FETCH)], [0, 1], true).label).toBe("Reading page");
   });
 
   it.each([TOOL_NAME.FLEET_ACTIVITY, TOOL_NAME.FLEET_STEER, "unregistered_action"])("summarizes the completed call %s with its recorded run duration", name => {

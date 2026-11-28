@@ -58,7 +58,11 @@ async fn spawn_agent_with_fork_turns_starts_from_the_parents_last_turns() {
     };
     assert_eq!(
         first(1),
-        Some(vec![user("second"), said("2"), user("third\n\nlast two")]),
+        Some(vec![
+            user("second"),
+            said("2"),
+            user("third\n\n[Source: harness]\nlast two")
+        ]),
         "the parent's last two turns, none before, then the task"
     );
     assert_eq!(
@@ -68,11 +72,15 @@ async fn spawn_agent_with_fork_turns_starts_from_the_parents_last_turns() {
             said("1"),
             user("second"),
             said("2"),
-            user("third\n\neverything"),
+            user("third\n\n[Source: harness]\neverything"),
         ]),
         "every turn when fork_turns is absent"
     );
-    assert_eq!(first(3), Some(vec![user("alone")]), "the task alone");
+    assert_eq!(
+        first(3),
+        Some(vec![user("[Source: harness]\nalone")]),
+        "the task alone"
+    );
 }
 
 /// A `fork_turns` that is neither `none`, `all` nor a number of turns is

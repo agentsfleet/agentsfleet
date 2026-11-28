@@ -1,7 +1,7 @@
 //! Root and child state start under the current run's authority.
 
 use super::{EVENT_CHILD_STARTED, Harness, Shared, context, publication};
-use crate::{context::Checkpoints, events::Live, offer, router::Router};
+use crate::{context::Checkpoints, events::Live, offer, prompt::turn_message, router::Router};
 use af_wire::run::{EarlierCall, Turn};
 use af_wire::tool_trace::CALL_ID_SEPARATOR;
 use guffbolt::agents::Seat;
@@ -35,11 +35,12 @@ impl<'s, 'run> Harness<'s, 'run> {
             durable_task_report: None,
             shared,
             id: 0,
+            child_tools: None,
             depth: 0,
             stop: shared.stop.clone(),
             selection,
-            router: Router::new(offer::tools(selection, &shared.backed), selection),
-            hosted: offer::hosted(selection),
+            router: Router::new(offer::tools(selection, &shared.backed)),
+
             live: Live::new(shared.events, shared.scrub, shared.started),
             checkpoints: Checkpoints::new(shared.context),
             context: context::State::new(
@@ -86,6 +87,7 @@ impl<'s, 'run> Harness<'s, 'run> {
             depth,
             stop,
             transcript,
+            tools,
         } = seat;
         let run_id = shared.run_id;
         let child_id = id;
@@ -100,11 +102,12 @@ impl<'s, 'run> Harness<'s, 'run> {
             durable_task_report: None,
             shared,
             id,
+            child_tools: Some(tools),
             depth,
             stop,
             selection,
-            router: Router::new(offer::tools(selection, &shared.backed), selection),
-            hosted: offer::hosted(selection),
+            router: Router::new(offer::tools(selection, &shared.backed)),
+
             live: Live::silent(shared.scrub, shared.started),
             checkpoints: Checkpoints::never(),
             context: context::State::new(0),
@@ -136,7 +139,8 @@ pub(super) fn opening(
     mut saved: Option<&mut context::Saved>,
     history: &[Turn<'_>],
     calls: bool,
-) -> af_context::Result<Vec<Message>> {
+    image_input: bool,
+) -> crate::error::Result<Vec<Message>> {
     let mut messages = Vec::new();
     if let Some(summary) = saved.as_deref().and_then(context::Saved::summary) {
         messages.push(Message::User(summary.context()?));
@@ -146,9 +150,15 @@ pub(super) fn opening(
             continue;
         }
         let start = messages.len();
-        messages.push(Message::User(
-            scrub.clean(turn.message.to_string()).into_inner(),
-        ));
+        let text = scrub
+            .clean(turn_message(&turn.message, turn.event_type, &turn.actor))
+            .into_inner();
+        let images = if image_input {
+            super::message_images::decode(&turn.images)?
+        } else {
+            Vec::new()
+        };
+        messages.push(Message::user_with_images(text, images));
         let mut answer = String::new();
         for call in &turn.calls {
             if calls {

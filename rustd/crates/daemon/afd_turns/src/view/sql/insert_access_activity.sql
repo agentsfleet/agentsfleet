@@ -11,7 +11,7 @@ SELECT uuidv7(), f.id, f.workspace_id,
   FROM fleet.fleets f
  WHERE f.workspace_id = $1
    AND (EXISTS (SELECT FROM connector.integration_grants g
-                 WHERE g.fleet_id = f.id AND g.service = $2)
+                 WHERE g.fleet_id = f.id AND g.service = $2 AND g.grant_type IN ($7, $8))
         OR EXISTS (SELECT FROM fleet.triggers t
                     WHERE t.fleet_id = f.id AND t.workspace_id = $1
                       AND COALESCE(t.secret_name, t.source) = $2))

@@ -37,7 +37,7 @@ describe("fleet create", () => {
     expect(error).toBeInstanceOf(ValidationError);
     expect(error).toMatchObject({
       detail: "message is required",
-      suggestion: 'usage: agentsfleet fleet create "<message>" [--name <name>] [--model <ref>]',
+      suggestion: 'usage: agentsfleet fleet create "<message>" [--name <name>] [--model <ref>] [--image <path>]',
     });
     if (Exit.isFailure(exit)) expect(exitCodeForFailure(exit.cause)).toBe(4);
     expect(rec.requests).toEqual([]);

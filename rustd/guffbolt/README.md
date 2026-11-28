@@ -329,7 +329,6 @@ impl Conversation for Chat {
             instructions: "Note down what you are told.",
             messages: &window.messages,
             tools,
-            hosted: &[],
             cache_key: "chat-1",
             max_output_tokens: window.max_output_tokens,
             single_attempt: false,
@@ -480,6 +479,8 @@ Each event takes `&self`, and `guffbolt` waits on none of them. `call_started` r
 ## Tools
 
 A tool implements two traits. `Describe` gives the model its name, description and parameters' JSON Schema. `Tool<Cx>` runs one call with the context `Cx` your loop lends it.
+
+A tool can also contribute instructions through `Describe::guidance`, or `Handler::GUIDANCE` for a typed handler. `Chat` appends these instructions in the order it offers the tools. An embedder that builds its own prompt can implement `Conversation::instructions` and look up each requested tool with `Tools::guidance_for`. A child request carries its narrowed list.
 
 `Tools` holds one loop's tools, offers them in order and dispatches a call by name. `Tools::hold` keeps a tool callable without offering it.
 
@@ -670,6 +671,7 @@ A backend is what a tool calls to do its work. Each tool takes its backend when 
 |---|---|---|---|
 | `Env` | `with_env` | `shell`, `git`, `file_read`, `file_write`, `file_edit`, `apply_patch`, `image`, `ls`, `find`, `grep`, `browser_open`, `browser`, `screenshot` | `LocalEnv`: this host's processes, the files under one directory |
 | `Env` and `Sessions` | `with_env`, `with_sessions` | `exec_command`, `write_stdin` | `Sessions`: the processes a run keeps open |
+| `SearchBackend` | `with_search` | `web_search` and policy-routed reads for `web_fetch` | Supplied by the embedder |
 | `Outbound` | `with_outbound` | `http_request`, `web_fetch`, MCP servers over HTTP | `LocalOutbound`: HTTPS only, to the public hosts an `Allowlist` names |
 | `MemoryStore` | `with_memory` | `memory_store`, `memory_recall`, `memory_list`, `memory_forget` | `LocalMemory`: one process's map |
 | `Scheduler` | `with_scheduler` | `cron_add`, `cron_list`, `cron_update`, `cron_remove`, `cron_run`, `cron_runs`, `schedule` | `LocalScheduler`: a file under a directory you name |
@@ -863,7 +865,6 @@ impl Conversation for Agent<'_> {
             instructions: "Recall before you answer.",
             messages: &window.messages,
             tools,
-            hosted: &[],
             cache_key: "run-1",
             max_output_tokens: window.max_output_tokens,
             single_attempt: false,
@@ -968,7 +969,7 @@ An `Env` runs processes and touches files under one root. It starts a process an
 
 Every path is relative to `Env::root`. The environment refuses a path that leaves the root, by name or through a link. A process's unread output keeps its first and last 512 KiB, and the middle is counted.
 
-`find` and `grep` make one `Env::search` call, answered where the files are. The search skips `.git` and whatever `.gitignore` names, and follows no link. `LocalEnv` runs it with the `ignore` walker and `grep-searcher` on the host.
+`find` and `grep` make one `Env::search` call, answered where the files are. Pass `context: 1` to `grep` to include the line before and after a match. The limit counts matching lines. Each displayed line keeps its first 500 Unicode characters and carries a note when shortened. The search skips `.git` and whatever `.gitignore` names, and follows no link. `LocalEnv` runs it with the `ignore` walker and `grep-searcher` on the host.
 
 ```rust
 use guffbolt::tools::env::{Env, Hit, LocalEnv, Pattern, Search};
@@ -984,6 +985,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             text: "pub struct Chat<".to_owned(),
             literal: true,
             ignore_case: false,
+            context: 0,
+            line_chars: None,
         }),
         limit: 10,
     };
@@ -1115,7 +1118,7 @@ async fn connect() -> Result<Vec<Box<ContextTool<'static>>>, Box<dyn std::error:
 
 ### Deferred tools
 
-A run with many tools, such as every tool of several MCP servers, can hold most of them unoffered with `Tools::hold`. `tool_search` searches their names and descriptions, and loads the best matches.
+A run with many tools, such as every tool of several MCP servers, can hold most of them unoffered with `Tools::hold`. `tool_search` searches their names and descriptions, and loads the best eight matches by default. Pass an explicit `limit` to change that count.
 
 Build a `tools::search::Deferred` from `Tools::held_specs`, and offer `Typed::new(ToolSearch::new(deferred))` beside your tools. In your `offered`, add each held tool `Deferred::is_loaded` names.
 
@@ -1580,7 +1583,6 @@ impl Conversation for Task<'_> {
             instructions: "Ship the release.",
             messages: &window.messages,
             tools,
-            hosted: &[],
             cache_key: "task-1",
             max_output_tokens: window.max_output_tokens,
             single_attempt: false,
@@ -1773,7 +1775,11 @@ impl Model for Lead {
             Some(Message::User(task)) if may_spawn => {
                 call(id, "spawn_agent", json!({ "message": task, "fork_turns": "none" }))
             }
-            Some(Message::User(task)) => answer(format!("Done: {task}")),
+            Some(Message::User(task)) => {
+                let (source, body) = task.split_once('\n').expect("a child task has a source");
+                assert_eq!(source, guffbolt::HARNESS_TAG);
+                answer(format!("Done: {body}"))
+            }
             Some(Message::ToolResult { output, .. }) if output.contains("agent_id") => {
                 call(id, "wait_agent", json!({ "target": 1 }))
             }
@@ -1840,7 +1846,6 @@ impl Conversation for Chat<'_, '_> {
             instructions: "Delegate what you can.",
             messages: &window.messages,
             tools,
-            hosted: &[],
             cache_key: "run-1",
             max_output_tokens: window.max_output_tokens,
             single_attempt: false,

@@ -2,7 +2,7 @@
 
 import { fleetMessageText as extractMessageText } from "@/lib/chat-message-text";
 export { fleetMessageText as extractMessageText } from "@/lib/chat-message-text";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { MessageNotSentError, type AppendMessage } from "@assistant-ui/react";
 
@@ -10,11 +10,13 @@ import { PENDING_SEND_STATE, type PendingSendOutcome, type PendingSendWriters } 
 import { outcomeOf, releaseRoute, routeOf } from "./useFleetMessageRoute";
 import type { useFleetTurnStream } from "../stream/useFleetTurnStream";
 import { postSteer } from "@/lib/api/fleet-steer";
+import { messageImages, type MessageImage } from "@/lib/api/message-images";
 import { STEER_DISPOSITION, type SteerAccepted } from "@/lib/api/fleets-types";
 import { ACTOR } from "@/lib/turns/turn-summary";
 import { mintOperationId } from "@/lib/streaming/operation-id";
 import { SEND_MARK, sendMarks } from "@/lib/streaming/send-marks";
 import { workspacePath } from "@/lib/workspace-routes";
+import { ERROR_CODE } from "@/lib/errors";
 
 // The tail of the steer delivery chain, lifted out of `FleetThread` at its
 // length cap. Every send is one operation: named before the optimistic append,
@@ -72,6 +74,8 @@ type DeliveryCtx = {
 /** A failed send's text and id, the ledger it belongs to, and what the
  * composer has done with it since: shown it, and emptied it after. */
 type Restored = { operationId: string; text: string; ledger: PendingSendWriters; shown: boolean; cleared: boolean };
+type HeldImages = { owner: PendingSendWriters; sends: ReadonlyMap<string, readonly MessageImage[]> };
+const NO_IMAGES: HeldImages["sends"] = new Map();
 
 export type MessageDelivery = {
   /** assistant-ui's `onNew`: a message the composer submitted. */
@@ -84,11 +88,31 @@ export type MessageDelivery = {
   noteRestored: (operationId: string, text: string) => void;
   /** The composer's draft changed: whether a failed send's text came back. */
   noteDraft: (text: string) => void;
+  canResendImage: (operationId: string) => boolean;
+  dismiss: (operationId: string) => void;
 };
 
 export function useMessageDelivery(ctx: DeliveryCtx): MessageDelivery {
   const deliver = useSerializedDelivery(ctx);
   const { writers } = ctx;
+  // Only the operation and its attachment marker outlive this conversation in
+  // local storage. Keep the bytes in memory while this composer owns them.
+  const [heldImages, setHeldImages] = useState<HeldImages>();
+  const imageSends = heldImages?.owner === writers ? heldImages.sends : NO_IMAGES;
+  const holdImages = useCallback((id: string, images?: readonly MessageImage[]) => {
+    setHeldImages(previous => {
+      const held = previous?.owner === writers ? previous.sends : NO_IMAGES;
+      if (!images && !held.has(id)) return previous;
+      const sends = new Map(held);
+      if (images) sends.set(id, images); else sends.delete(id);
+      return {owner: writers, sends};
+    });
+  }, [writers]);
+  const canResendImage = useCallback((id: string) => imageSends.has(id), [imageSends]);
+  const dismiss = useCallback((id: string) => {
+    holdImages(id);
+    writers.dismiss(id);
+  }, [holdImages, writers]);
   const { take, forget, remember, noteDraft } = useRestoredDraft(writers);
   // Every submit the composer made, counted the way assistant-ui counts them:
   // it returns a failed send's draft only when no newer send started since.
@@ -99,38 +123,50 @@ export function useMessageDelivery(ctx: DeliveryCtx): MessageDelivery {
       const send = ++sends.current;
       const text = extractMessageText(msg);
       if (text.length === 0) return;
+      const images = messageImages(msg);
       const back = take();
-      const operationId = back?.text === text && back.ledger === writers ? back.operationId : mintOrNull();
+      const operationId = !images.length && back?.text === text && back.ledger === writers ? back.operationId : mintOrNull();
       if (operationId === null) throw new MessageNotSentError();
       dismissConflictsOf(writers, text);
-      if (await deliver(operationId, text)) return;
+      if (images.length) holdImages(operationId, images);
+      if (await deliver(operationId, text, images)) {
+        if (images.length) holdImages(operationId);
+        return;
+      }
+      // The retry notice owns the full image message and its operation.
+      if (images.length) return;
       // A draft assistant-ui did not return is not this send's to reuse: the
       // same words typed later are a new message.
       if (sends.current === send) remember(operationId, text);
       throw new MessageNotSentError();
     },
-    [deliver, writers, take, remember],
+    [deliver, writers, take, remember, holdImages],
   );
 
   const resend = useCallback(
     (operationId: string) => {
       const entry = writers.find(operationId);
       if (entry === undefined) return;
+      const images = imageSends.get(operationId);
+      if (entry.hasImages && images === undefined) return;
       // Resent from the notice: the composer's copy is no longer a recovery.
       forget(operationId);
       // A conflict's id is spent: it is dismissed, and the text goes out as new.
       const spent = entry.state === PENDING_SEND_STATE.CONFLICT;
       const sendAs = spent ? mintOrNull() : operationId;
       if (sendAs === null) return;
-      if (spent) writers.dismiss(operationId);
-      void deliver(sendAs, entry.text);
+      if (spent) dismiss(operationId);
+      if (images?.length) holdImages(sendAs, images);
+      void deliver(sendAs, entry.text, images).then(accepted => {
+        if (accepted && images?.length) holdImages(sendAs);
+      });
     },
-    [deliver, writers, forget],
+    [deliver, writers, forget, imageSends, holdImages, dismiss],
   );
 
   return useMemo(
-    () => ({ onNew, resend, noteRestored: remember, noteDraft }),
-    [onNew, resend, remember, noteDraft],
+    () => ({ onNew, resend, noteRestored: remember, noteDraft, canResendImage, dismiss }),
+    [onNew, resend, remember, noteDraft, canResendImage, dismiss],
   );
 }
 
@@ -195,14 +231,14 @@ function useRestoredDraft(writers: PendingSendWriters) {
 // Removing the browser-side queue let two rapid submissions race: their POSTs
 // could reach the server out of submission order, so "stop" could be assigned
 // an earlier turn id than the "deploy" it was meant to follow.
-function useSerializedDelivery(ctx: DeliveryCtx): (operationId: string, text: string) => Promise<boolean> {
+function useSerializedDelivery(ctx: DeliveryCtx): (operationId: string, text: string, images?: readonly MessageImage[]) => Promise<boolean> {
   const { workspaceId, fleetId, fleetName, sentAs, appendOptimistic, discardOptimistic, writers } = ctx;
   const acknowledged = useAcknowledgement(ctx);
   return useCallback(
-    (operationId: string, text: string): Promise<boolean> => {
+    (operationId: string, text: string, images?: readonly MessageImage[]): Promise<boolean> => {
       // The ledger entry is written first: a document that dies between here
       // and the acknowledgement leaves a record the next one can resend.
-      writers.begin({ operationId, text, submittedAtMs: Date.now() });
+      writers.begin({ operationId, text, submittedAtMs: Date.now(), ...(images?.length ? {hasImages: true} : {}) });
       sendMarks.mark(SEND_MARK.SEND, operationId);
       const tempId = appendOptimistic(text, OPTIMISTIC_ACTOR, sentAs);
       // The clock starts at Send, not at the send's turn in the queue: a send
@@ -210,10 +246,11 @@ function useSerializedDelivery(ctx: DeliveryCtx): (operationId: string, text: st
       const deadline = startDeadline();
       let dispatched = false;
       let over = false;
-      const ended = (outcome: PendingSendOutcome): boolean => {
+      const ended = (outcome: PendingSendOutcome, detail?: string): boolean => {
         over = true;
         discardOptimistic(tempId);
-        writers.fail(operationId, outcome);
+        if (detail === undefined) writers.fail(operationId, outcome);
+        else writers.fail(operationId, outcome, detail);
         return false;
       };
       // Out of time before its turn, it never left this tab and the daemon
@@ -227,9 +264,14 @@ function useSerializedDelivery(ctx: DeliveryCtx): (operationId: string, text: st
           const route = await within(deadline, routeOf(text, { workspaceId, fleetId, fleetName }, operationId, deadline.signal));
           if (route === null) return ended(PENDING_SEND_STATE.UNKNOWN);
           if (!route.ok) return ended(route.outcome);
-          const result = await within(deadline, postSteer(workspaceId, route.fleetId, route.words, operationId, deadline.signal));
+          const result = await within(deadline, images?.length
+            ? postSteer(workspaceId, route.fleetId, route.words, operationId, deadline.signal, images)
+            : postSteer(workspaceId, route.fleetId, route.words, operationId, deadline.signal));
           if (result === null) return ended(PENDING_SEND_STATE.UNKNOWN);
-          return result.ok ? acknowledged(operationId, tempId, result.data, route.fleetId) : ended(outcomeOf(result));
+          if (result.ok) return acknowledged(operationId, tempId, result.data, route.fleetId);
+          const imageRefused = result.errorCode === ERROR_CODE.MESSAGE_IMAGE_INVALID
+            || result.errorCode === ERROR_CODE.MESSAGE_IMAGE_UNSUPPORTED;
+          return ended(outcomeOf(result), imageRefused ? result.error : undefined);
         } finally {
           deadline.clear();
         }

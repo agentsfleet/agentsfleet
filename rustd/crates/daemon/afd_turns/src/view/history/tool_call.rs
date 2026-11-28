@@ -45,6 +45,7 @@ struct StoredToolCall {
     output_line_count: i64,
     truncated: bool,
     changes: Option<String>,
+    sources: Option<String>,
 }
 
 /// One kept record, its words read.
@@ -70,6 +71,8 @@ pub struct ToolCallRow {
     /// For an edit, each file it changed and the lines it added and removed,
     /// as the wire spells the list; none for any other call.
     pub changes: Option<String>,
+    /// The sanitized source list, serialized as JSON.
+    pub sources: Option<String>,
 }
 
 impl ToolCallRow {
@@ -86,6 +89,7 @@ impl ToolCallRow {
             output_line_count: stored.output_line_count,
             truncated: stored.truncated,
             changes: stored.changes,
+            sources: stored.sources,
         })
     }
 }
@@ -116,6 +120,7 @@ impl ToolCallRow {
             output_line_count: i64::try_from(output.lines().count()).unwrap_or(i64::MAX),
             truncated: false,
             changes: None,
+            sources: None,
         }
     }
 
@@ -182,6 +187,7 @@ mod tests {
             output_line_count: 1,
             truncated: false,
             changes: None,
+            sources: None,
         }
     }
 

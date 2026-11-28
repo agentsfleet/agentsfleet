@@ -57,7 +57,10 @@ fn chat(count: u64) -> RunPayload<'static> {
     let mut run = payload(&[UPDATE_PLAN.name()], unbounded());
     run.history = (1..=count)
         .map(|sequence| Turn {
+            images: Vec::new(),
             sequence,
+            actor: "steer:fixture".into(),
+            event_type: Some(af_wire::turn::TurnKind::Chat),
             message: format!("message {sequence}").into(),
             calls: Vec::new(),
             answer: format!("answer {sequence}").into(),
@@ -78,7 +81,7 @@ fn chat(count: u64) -> RunPayload<'static> {
 /// A saved checkpoint of `run`'s thread, covering through `covered_through`,
 /// written for this run's model and fixed prompt text.
 fn checkpoint(run: &RunPayload<'_>, covered_through: u64) -> Value {
-    let fixed = Prompt::new(run, &afr_memory::Seed::default()).fixed;
+    let fixed = Prompt::new(run, &afr_memory::Seed::default(), false, true).fixed;
     let (model, pinned) = super::context::digests(
         &run.policy.context.model,
         run.policy.inference.as_ref(),
@@ -262,7 +265,9 @@ fn texts(messages: &[Message]) -> Vec<&str> {
     messages
         .iter()
         .filter_map(|message| match message {
-            Message::User(text) | Message::Assistant { text, .. } => Some(text.as_str()),
+            Message::User(text)
+            | Message::UserImages { text, .. }
+            | Message::Assistant { text, .. } => Some(text.as_str()),
             Message::ToolResult { .. } => None,
         })
         .collect()

@@ -3,6 +3,8 @@ import {afterEach, expect, it} from "vitest";
 import type {FleetToolCall} from "@/lib/streaming/fleet-stream-row";
 import {ev} from "@/tests/fleet-thread/harness";
 import {recordedRunResources} from "./recorded-run-resources";
+import {readSavedTrace, readToolOutcome} from "@/lib/streaming/fleet-stream-tool-trace";
+import {WorkSources} from "./WorkContextSections";
 import {AttachedSources, PreviewOutputs, RunResources} from "./RunResources";
 
 afterEach(cleanup);
@@ -88,4 +90,25 @@ it("records explicit process endings without an exit code and keeps an unknown p
   }
   const tail = call("write_stdin", {session_id: 12}, "Earlier output", {status: "failed", outputTail: "Output\nProcess timed out"});
   expect(recordedRunResources({...run, tools: [preview("Starting"), tail]}).rows[0]?.detail).toContain("Process timed out");
+});
+
+it("the run summary links only web sources", () => {
+  const sources = [{url: "https://docs.example.test/page", title: "Guide"}, {url: "http://support.example.test/"}, {url: "javascript:alert(1)"}, {url: "https://support.example.test/private?sig=hidden", title: "sensitive title"}];
+  const complete = {name: "web_search", call_id: "1:1", status: "succeeded", duration_ms: 3, sources};
+  const read = {name: "web_fetch", call_id: "1:2", status: "succeeded", duration_ms: 1, sources: [{url: "https://docs.example.test/page"}]};
+  const reloaded = readSavedTrace(JSON.parse(JSON.stringify({calls: [complete, read]})), 0);
+  expect(reloaded?.calls[0]?.sources).toEqual(readToolOutcome(complete)?.sources);
+  const turn = ev({actor: "operator", role: "user", tools: reloaded?.calls});
+  const {rerender} = render(<WorkSources turns={[turn]} />);
+  const links = screen.getAllByRole("link");
+  expect(screen.getByRole("link", {name: "Guide"}).getAttribute("href")).toBe("https://docs.example.test/page");
+  expect(links.map(link => link.getAttribute("href"))).toEqual(sources.slice(0, 2).map(source => source.url));
+  expect(links.every(link => link.getAttribute("rel") === "noopener noreferrer")).toBe(true);
+  expect(screen.getByText("javascript:alert(1)").closest("a")).toBeNull();
+  expect(screen.queryByText("sensitive title")).toBeNull();
+  expect(screen.getByText("https://support.example.test").closest("a")).toBeNull();
+  expect(readToolOutcome({...complete, status: "failed"})?.sources).toBeUndefined();
+  const older = readSavedTrace({calls: [{name: "web_fetch", call_id: "1:2", status: "succeeded", duration_ms: 1}]}, 0);
+  rerender(<WorkSources turns={[{...turn, tools: older?.calls}]} />);
+  expect(screen.queryAllByRole("link")).toHaveLength(0);
 });

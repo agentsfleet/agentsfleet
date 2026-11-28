@@ -10,6 +10,7 @@ pub mod history;
 pub mod hold;
 pub mod runner;
 pub mod turn;
+pub mod web;
 
 use opentelemetry::KeyValue;
 use opentelemetry::metrics::{Counter, Histogram};
@@ -38,6 +39,7 @@ pub struct Handles {
     signup_replayed: Counter<u64>,
     signup_failed: Counter<u64>,
     run_polls: Counter<u64>,
+    web_calls: Counter<u64>,
     run_candidates: Counter<u64>,
     history_bytes: Histogram<f64>,
     history_cuts: Counter<u64>,
@@ -79,6 +81,7 @@ impl Handles {
             signup_bootstrapped: instruments.counter_u64(&declared::SIGNUP_BOOTSTRAPPED_TOTAL)?,
             signup_replayed: instruments.counter_u64(&declared::SIGNUP_REPLAYED_TOTAL)?,
             signup_failed: instruments.counter_u64(&declared::SIGNUP_FAILED_TOTAL)?,
+            web_calls: instruments.counter_u64(&declared::WEB_CALLS_TOTAL)?,
             run_polls: instruments.counter_u64(&declared::RUN_POLLS_TOTAL)?,
             run_candidates: instruments
                 .counter_u64(&declared::RUN_POLL_CANDIDATES_SCANNED_TOTAL)?,

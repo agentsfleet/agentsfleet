@@ -32,7 +32,7 @@ const SETTLE_DEADLINE: Duration = Duration::from_secs(90);
 /// How often the event row is read while waiting.
 const SETTLE_POLL: Duration = Duration::from_millis(250);
 /// The statuses an event ends in (`af_core::turn::status`).
-const SETTLED: [&str; 3] = ["processed", "fleet_error", "gate_blocked"];
+const SETTLED: [&str; 4] = ["processed", "fleet_error", "gate_blocked", "waiting"];
 
 /// A settled event's answer, NULL when no run produced one.
 const ANSWER: &str = "SELECT answer_text FROM thread.turns \
@@ -228,15 +228,12 @@ pub(crate) fn assert_token_stayed_on_the_wire(seen: &[Seen], asked: &[Asked]) {
 }
 
 /// Every tool a run with no decision profile offers its model, sorted: the
-/// runner's published catalog less the provider-run tool and the two task
+/// runner's published catalog less the two task
 /// tools, and `guffbolt`'s sub-agent tools. Read from the runner's catalog,
 /// so a daemon list that drifts from it fails the suite that compares them.
 pub(crate) fn offered_catalog() -> Vec<&'static str> {
     let mut offered: Vec<&'static str> = (afr_tools::catalog::PUBLISHED.into_iter())
-        .filter(|entry| {
-            entry.runtime() != afr_tools::Runtime::Provider
-                && !afr_tools::catalog::is_task_tool(entry.name())
-        })
+        .filter(|entry| !afr_tools::catalog::is_task_tool(entry.name()))
         .map(afr_tools::Entry::name)
         .chain(guffbolt::agents::TOOLS)
         .collect();

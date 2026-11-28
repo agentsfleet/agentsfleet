@@ -235,6 +235,7 @@ export const sortFlag = Flag.Literals("sort", API_KEY_SORTS).pipe(
 export const keyNameFlag = textFlag(FLAG.name, "A name to recognise the key by");
 export const secretNameFlag = textFlag("secret", "Name of a secret saved in this workspace", METAVAR.name);
 export const modelOverrideFlag = textFlag(FLAG.model, "Use this model instead of the default", METAVAR.name);
+export const fleetImageFlag = textFlag("image", "Attach a PNG, JPEG, GIF or WebP image", "<path>");
 export const fleetNameFlag = textFlag(FLAG.name, "Name for the fleet (default: fleet- plus the end of its ID)", METAVAR.name);
 export const fleetModelFlag = textFlag(
   FLAG.model,

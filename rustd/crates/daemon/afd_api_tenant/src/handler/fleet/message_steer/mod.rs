@@ -115,7 +115,8 @@ const STATUS_ACCEPTED: &str = "accepted";
         "after stopping or pausing the fleet.\n\n",
         "Reusing it with different text or sender returns 409 `UZ-AGT-016`. Each person is ",
         "one sender; workspace API keys share one sender. Without `operation_id`, every ",
-        "request creates a new message.",
+        "request creates a new message. An image message keeps its own turn when a run is active. ",
+        "Invalid images return 400 `UZ-AGT-026`. A text-only model returns 409 `UZ-AGT-027`.",
     ),
     request_body = SteerRequest<'_>,
     params(
@@ -142,9 +143,11 @@ pub(crate) async fn steer<D: TenantPlane>(
     let fleet = parse_fleet_id(&fleet_id)?;
     clock.agent(fleet.as_str());
     let steer = read_steer(&body)?;
+    super::image_input::validate(&steer.message, &steer.images).await?;
     let actor = actor_for(person.person());
-    let request_json = stored_payload(&steer.message)?;
-    let operation_id = steer.operation_id.as_deref();
+    let mut steer = steer;
+    let operation_id = steer.operation_id.take();
+    let request_json = stored_payload(&steer)?;
     let (fleet, workspace) = (&fleet, &owned.workspace);
     let steering = services.steering();
     // One ledger statement decides ownership, a repeat, the fleet's status and
@@ -152,7 +155,13 @@ pub(crate) async fn steer<D: TenantPlane>(
     // a retry of a message admitted before the fleet was archived is still answered
     // with its event.
     let appended = steering
-        .append(fleet, workspace, &actor, &request_json, operation_id)
+        .append(
+            fleet,
+            workspace,
+            &actor,
+            &request_json,
+            operation_id.as_deref(),
+        )
         .await;
     clock.mark(SteerStage::Admit);
     let steered = appended.map_err(refuse_steer)?;
@@ -198,12 +207,8 @@ async fn announce_admitted(
 /// CALLER names its retry — and not something the fleet reads, so putting it in
 /// the body would hand every run a field it has no use for and change the bytes
 /// a replay re-appends. The ledger holds it where it belongs, as `producer_key`.
-fn stored_payload(message: &str) -> Result<String, Refusal> {
-    serde_json::to_string(&SteerRequest {
-        message: Cow::Borrowed(message),
-        operation_id: None,
-    })
-    .map_err(|_unencodable| Refusal::malformed(DETAIL_MALFORMED_JSON))
+fn stored_payload(steer: &SteerRequest<'_>) -> Result<String, Refusal> {
+    serde_json::to_string(steer).map_err(|_unencodable| Refusal::malformed(DETAIL_MALFORMED_JSON))
 }
 
 /// The 409 a new message meets on a fleet that will not take work.
@@ -257,6 +262,8 @@ fn refuse_steer(error: afd_turns::view::Error) -> Refusal {
         Refusal::coded(error_code::AGENTSFLEET_NOT_FOUND, DETAIL_FLEET_NOT_FOUND)
     } else if let Some(status) = error.not_runnable() {
         not_runnable(status)
+    } else if let Some(model) = error.image_model() {
+        Refusal::coded_sentence(error.code(), format!("Model {model} cannot receive images"))
     } else if error.is_operation_conflict() {
         Refusal::conflict_at(EVENT_STEER, STATE_ADMITTED)(error)
     } else {

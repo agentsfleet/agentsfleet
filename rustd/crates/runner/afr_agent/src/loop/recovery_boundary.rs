@@ -29,6 +29,7 @@ pub(super) fn prepare_root<'run>(
     scrub: &Scrub,
     mut opening: Vec<Message>,
     message: &str,
+    image_input: bool,
 ) -> Result<RootSetup<'run>> {
     if (run.recovered_durable_task.is_some() && run.recovered_turn.is_some())
         || (run.run.turn_resume.is_some() && run.recovered_turn.is_none())
@@ -66,7 +67,11 @@ pub(super) fn prepare_root<'run>(
         }
         Loaded::recover(run.memory, std::mem::take(&mut saved.memory), scrub)?
     } else {
-        opening.push(Message::User(format!("{}{finished}", scrub.text(message))));
+        let images = super::message_images::current(run.run, image_input)?;
+        opening.push(Message::user_with_images(
+            format!("{}{finished}", scrub.text(message)),
+            images,
+        ));
         Loaded::new(run.memory)
     };
     Ok(RootSetup {
@@ -127,6 +132,7 @@ impl<'run> Harness<'_, 'run> {
             memory: self.shared.run.memory.snapshot().await?,
             pinned: self.context.pinned,
             folds: self.folded_inputs.clone(),
+            task_source: self.shared.run.task_source.lock().await.clone(),
         };
         // Checked as a restore will check it, so a checkpoint whose children
         // could not come back is skipped rather than saved.

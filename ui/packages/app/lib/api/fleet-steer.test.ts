@@ -37,6 +37,14 @@ afterEach(() => {
 });
 
 describe("postSteer", () => {
+  it("sends an image without changing the message's retry identity", async () => {
+    const images = [{media_type: "image/png", data: "iVBORw=="}];
+    fetchMock.mockResolvedValueOnce(answer(HTTP_ACCEPTED, ACCEPTED));
+    await postSteer(WORKSPACE, FLEET, MESSAGE, OPERATION_ID, new AbortController().signal, images);
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({message: MESSAGE, operation_id: OPERATION_ID, images});
+  });
+
   it("POSTs one JSON steer to the same-origin route under the caller's signal, and reads the 202", async () => {
     fetchMock.mockResolvedValueOnce(answer(HTTP_ACCEPTED, ACCEPTED));
     const signal = new AbortController().signal;

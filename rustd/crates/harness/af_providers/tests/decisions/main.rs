@@ -15,3 +15,4 @@ mod preflight_failures;
 mod protocol;
 mod responses;
 mod trace_fixture;
+mod web;

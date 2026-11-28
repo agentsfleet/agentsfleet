@@ -97,6 +97,8 @@ let rated: RatedLine = Rater::new(&book, posture, window).rate(&line)?;
 | Tokens | each category at its rate per million, each rounded up on its own | nothing; you pay your provider |
 | Unknown price | tokens counted in `unpriced_token_count`, never charged | not applicable |
 
+The runtime fee covers web search and page extraction for either model posture. Before each paid vendor dispatch, the daemon commits a reservation in `thread.run_web_calls` for the run, vendor and operation. A search that falls back from Parallel to Exa reserves each call separately. A crash after reservation can leave an unused count. These counts bound attempted calls and add no customer billing line.
+
 A posture is either `platform` or `self_managed`; [models](./models.md) explains which a fleet gets.
 Token categories are input, cache read, the three cache-write classes and output.
 Rounding each category up means the platform never under-bills and over-bills by at most one nano per category per line.

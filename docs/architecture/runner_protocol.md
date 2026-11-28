@@ -89,7 +89,7 @@ A run whose payload would exceed the frame is never sent. The daemon fails its t
 
 The runner opens with `Hello`, naming the runs it still holds and its idle worker count. The daemon answers with `Welcome` and the runner's assigned policy.
 
-The protocol has one version, `af_wire::protocol::VERSION`, today `agentsfleet.runner.v6`. A runner naming any other version is refused at hello with `UZ-RUN-023` and gets no run.
+The protocol has one version, `af_wire::protocol::VERSION`, today `agentsfleet.runner.v7`. A runner naming any other version is refused at hello with `UZ-RUN-023` and gets no run.
 
 ### Run lease and renewal
 
@@ -138,9 +138,16 @@ Every `Down::Run` carries one turn of a fleet's thread. Its payload holds the fl
 
 The field `inputs_waiting` says whether a later message is already queued. When false, the run skips the fold request before its first model call.
 
+An image message enters through the assignment with its attachments in `event.request_json`. Chat history carries each earlier turn's `actor`, `event_type` and optional `images`.
+The runner keeps the attached images with their message and scales an image beyond 2,048 pixels on either side before sending it to an image-capable provider.
+
 A chat run reads and saves its thread's compacted context on the work stream, under its fence ([context lifecycle](context_lifecycle.md)). The runner makes every model call; the daemon makes none.
 
 Some run verbs stay HTTP routes under `/v1/runners/me/runs/{run_id}`, fenced by the run's token. They include access requests, trigger rows, task bindings and full tool records ([API resources](api_resources.md)).
+
+A run sends one `POST /searches` or `POST /extracts` under that same run URL for each web tool call. Both carry `fencing_token` and `call_number`. Only a public fleet may use them. Each physical vendor dispatch has a committed reservation. The daemon has a 12-second budget across all attempts. A lost response has an unknown outcome and the runner does not resend it.
+
+A temporary extract failure permits one credential-free local read only when its 502 or 503 problem carries both `UZ-WEB-009` and `local_read_permitted: true`. The runner uses the remaining tool deadline and checks network policy on every hop.
 
 ### Refusals
 

@@ -18,8 +18,8 @@ use af_providers::Connect;
 use af_secrets::Scrub;
 use af_wire::policy::ExecutionPolicy;
 use afr_tools::{Backends, Catalog, Selection};
+use guffbolt::Transcript;
 use guffbolt::agents::{Agents, Children};
-use guffbolt::{Hosted, Transcript};
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument as _;
 
@@ -98,13 +98,20 @@ impl AgentEngine for Loop {
 
     async fn run(&self, run: AgentRun<'_>) -> Result<RunOutput> {
         let policy = &run.run.policy;
-        let names = crate::offer::names(run.run);
-        let selection = self.catalog.select(&names)?;
         let provider = self.connect.connect(run.run)?;
+        let image_input = provider.accepts_images();
+        let mut names = crate::offer::names(run.run);
+        if !image_input {
+            names.retain(|name| *name != afr_tools::catalog::IMAGE.name());
+        }
+        let selection = self.catalog.select(&names)?;
         let scrub = Scrub::new(policy)?;
         let span = spans::invoke_agent(policy);
-        let mut prompt = Prompt::new(run.run, &run.memory);
+        let mut prompt = Prompt::new(run.run, &run.memory, selection.needs_sandbox(), image_input);
         prompt.instructions = scrub.clean(prompt.instructions).into_inner();
+        prompt.task_context = prompt
+            .task_context
+            .map(|context| scrub.clean(context).into_inner());
         if let Some(prepared) = run.prepared_durable_task {
             let native = serde_json::json!({ "current_durable_task": prepared.inputs.current_durable_task,
                 "accepted_interpretation": prepared.inputs.current_interpretation,
@@ -127,18 +134,38 @@ impl AgentEngine for Loop {
         } else {
             None
         };
-        let opening =
-            construction::opening(&scrub, saved.as_mut(), &run.run.history, !names.is_empty())?;
+        let opening = construction::opening(
+            &scrub,
+            saved.as_mut(),
+            &run.run.history,
+            !names.is_empty(),
+            image_input,
+        )?;
         let recovery_boundary::RootSetup {
             opening,
             memory,
             state,
-        } = recovery_boundary::prepare_root(&run, &scrub, opening, &prompt.message)?;
+        } = recovery_boundary::prepare_root(&run, &scrub, opening, &prompt.message, image_input)?;
         // The run's state outlives its tools: the tools a run builds over its
         // memory, verbs, guard, sandbox and children borrow it, and every loop
         // borrows them. A recovered root brings its children back from its
         // saved state.
-        let tools_run = shared::run_state(&run, memory, provider.as_ref(), self.limits);
+        let mut tools_run = shared::run_state(&run, memory, provider.as_ref(), self.limits);
+        let event = &run.run.event;
+        let chat_person = event.event_type == af_wire::turn::TurnKind::Chat
+            && event.actor != "steer:api"
+            && !event.actor.starts_with("fleet:");
+        let initial =
+            (chat_person || event.actor.starts_with("slack:")).then(|| afr_tools::TaskSource {
+                turn_id: event.turn_id.to_string(),
+                bytes: af_wire::turn::message_of(&event.request_json).len(),
+            });
+        *tools_run.task_source.get_mut() = match state.as_ref() {
+            Some(saved) if saved.task_source.is_some() || !saved.folds.is_empty() => {
+                saved.task_source.clone()
+            }
+            _ => initial,
+        };
         let caps = self.limits.caps;
         let (registry, requests) = state.as_ref().map_or_else(
             || Agents::new(caps),
@@ -202,6 +229,8 @@ pub(crate) struct Harness<'s, 'run> {
     pub(crate) shared: &'s Shared<'run>,
     /// The child this loop is a turn of: zero for the root.
     pub(crate) id: u64,
+    /// Tools the parent gave this child. The root uses the complete offer.
+    child_tools: Option<Vec<String>>,
     /// How many loops this one is inside: zero for the root.
     pub(crate) depth: u8,
     /// Cancelled when this loop is to end: the run's token for the root, a
@@ -211,7 +240,7 @@ pub(crate) struct Harness<'s, 'run> {
     pub(crate) selection: &'s Selection<'run>,
     /// Every tool this loop holds, and how a call reaches one.
     router: Router<'s, 'run>,
-    hosted: Vec<Hosted>,
+
     live: Live<'s>,
     checkpoints: Checkpoints,
     context: context::State,
@@ -267,6 +296,7 @@ mod durable_task_evidence;
 mod durable_task_replies;
 mod durable_task_slice;
 mod finish;
+mod message_images;
 mod observe;
 mod publication;
 mod recovery_boundary;
@@ -286,6 +316,9 @@ mod budget_tests;
 
 #[cfg(test)]
 mod history_tests;
+
+#[cfg(test)]
+mod guidance_tests;
 
 #[cfg(test)]
 mod provider_failure_tests;

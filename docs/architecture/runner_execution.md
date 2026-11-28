@@ -104,11 +104,12 @@ A call to a name outside the policy returns a tool error, and the run continues.
 
 | Tool | Runs in | Notes |
 |---|---|---|
-| `http_request`, `web_fetch` | Supervisor, through the run's egress guard | The network policy applies; credentials go only in `Authorization` |
+| `http_request` | Supervisor, through the run's egress guard | Credentials go only in `Authorization` |
+| `web_fetch` | Supervisor or daemon | Hosts named in the run policy are read locally. A public fleet sends other HTTPS pages to Parallel Extract. |
 | `notify` | Supervisor | Needs an approved `pushover` secret whose `host` is `api.pushover.net` |
-| `web_search` | The model provider | Needs a provider that offers it |
+| `web_search` | Daemon, through a fenced run verb | Every model uses the same function tool. A public fleet searches through Parallel Fast first, with Exa as fallback. |
 | `memory_store`, `memory_recall`, `memory_list`, `memory_forget` | Supervisor | Only an explicit `core` category is pinned into later prompts |
-| `request_access` | Supervisor, through a fenced run verb | Ends the run waiting on an approval card unless a grant already covers it |
+| `request_access` | Supervisor, through a fenced run verb | A new request pauses the asking turn. An existing pending request or an already approved grant lets the turn continue. |
 | `ask_user` | Supervisor | Ends the run waiting on a question; a checkpoint is saved first |
 | `trigger_add`, `trigger_list`, `trigger_remove` | Supervisor, through fenced run verbs | Needs a connected provider and a signing secret ([wakes on](user_flow.md#wakes-on)) |
 | `task_start`, `task_input` | Supervisor, through the task binding verb | Only on a task-capable runner, and only from a person's message |
@@ -121,6 +122,8 @@ A call to a name outside the policy returns a tool error, and the run continues.
 | `git` | Sandbox, on a clone the supervisor made | Remote subcommands (`push`, `fetch`, `pull`, `remote`, `clone`) are refused |
 | `file_read`, `file_write`, `file_edit`, `apply_patch` | Sandbox | Confined to `/workspace`; `file_edit` writes nothing when one edit fails |
 | `image` | Sandbox file read, attached to the next model turn | Source at most 8 MiB, shown at most 5 MiB, scaled to 2,048 pixels |
+
+Successful `web_search` and `web_fetch` calls record their sources with the tool result. The dashboard can reload them from the saved turn. Source URLs omit credentials, query strings and fragments. A local read that follows a redirect can also cite the confirmed final origin. A vendor read cites the requested page.
 
 Unread command output is kept as a 512 KiB head and tail, and the middle is counted. A command that never ends returns `interrupted` with its output so far.
 
@@ -186,7 +189,9 @@ At boot the runner builds one table and tears it down. A host that fails reports
 
 A fleet's two network toggles decide what its HTTP tools reach under that ceiling. `http_egress` is `restricted` or `public`, and `package_domains` adds the package registries; both start off.
 
-Restricted mode reaches only approved secrets' hosts, plus GitHub under an approved GitHub grant. Public mode reaches any public HTTPS host. Both modes refuse private and reserved addresses.
+Restricted mode admits approved web hosts, approved secrets' hosts, configured package registries and GitHub under an approved GitHub grant. A fleet can ask for a new web host with `request_access {host}`. Approval adds that host to future policies. Credentials require a separate grant. Restricted fleets cannot search or use vendor extraction.
+
+Public mode reaches public HTTPS hosts. Both modes refuse private and reserved addresses on local reads and repeat admission at every redirect. A restricted fleet that encounters a redirect to an unapproved host can request that hostname and retry the page after approval. Search and extraction credentials belong to the daemon and are read from `PLATFORM_ADMIN_WORKSPACE_ID`.
 
 The toggles never widen the runner's policy. Only a signed-in person changes them; an API key gets `403`.
 
@@ -205,7 +210,7 @@ A write grant that publishes an event draft binds one repository and one branch,
 
 A locked rule admits no other key and no query string. A write grant with no branch or several repositories refuses the run.
 
-`http_request` follows at most three redirects, and only for a bodyless GET ([redirects](../../rustd/crates/harness/af_egress/src/redirect/mod.rs)). Each hop repeats the egress check, and a change of origin drops every credential header.
+`http_request` follows up to 20 redirects by default, and only for a bodyless GET ([redirects](../../rustd/crates/harness/af_egress/src/redirect/mod.rs)). Each hop repeats the egress check, and a change of origin drops every credential header.
 
 ### Model calls
 

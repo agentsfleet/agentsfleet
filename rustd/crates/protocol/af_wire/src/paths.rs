@@ -66,6 +66,10 @@ pub const RUN_TRIGGERS_SUFFIX: &str = "triggers";
 /// Trailing segment of the per-run access sub-resource: a request for one
 /// secret or integration a person approves. See [`RUN_ITEMS_SUFFIX`].
 pub const RUN_ACCESS_SUFFIX: &str = "access";
+/// A held run's searches through the platform web vendors.
+pub const RUN_SEARCHES_SUFFIX: &str = "searches";
+/// A held run's vendor page reads.
+pub const RUN_EXTRACTS_SUFFIX: &str = "extracts";
 
 /// Trailing segment of one schedule's runs: its history, and where a run is
 /// created to fire it now. Bare, beneath `{RUN_SCHEDULES_SUFFIX}/{schedule_id}`.
@@ -118,6 +122,10 @@ pub const RUN_TRIGGER: &str = concatcp!(RUN_TRIGGERS, "/{trigger_id}");
 
 /// `POST` — the held fleet asks for one secret or integration.
 pub const RUN_ACCESS: &str = concatcp!(RUN, RUN_ACCESS_SUFFIX);
+/// Search the web for a held run.
+pub const RUN_SEARCHES: &str = concatcp!(RUN, RUN_SEARCHES_SUFFIX);
+/// Read a web page for a held run.
+pub const RUN_EXTRACTS: &str = concatcp!(RUN, RUN_EXTRACTS_SUFFIX);
 
 /// `POST` — a line said to the held event's thread.
 pub const RUN_MESSAGES: &str = concatcp!(RUN, RUN_MESSAGES_SUFFIX);

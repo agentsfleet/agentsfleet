@@ -129,6 +129,9 @@ const RETIRED_SETUP_ROUTES: usize = 7;
 /// removes; and the run's request for a secret or an integration.
 const FLEET_SELF_SERVICE_ADDITIONS: usize = 5;
 
+/// Fenced searches and page extracts through platform web vendors.
+const RUN_WEB_ADDITIONS: usize = 2;
+
 /// What this daemon's union must carry.
 const RUST_ROUTE_COUNT: usize = PINNED_ROUTE_COUNT - DECLARED_DIVERGENCES
     + VERB_SPLITS
@@ -143,6 +146,7 @@ const RUST_ROUTE_COUNT: usize = PINNED_ROUTE_COUNT - DECLARED_DIVERGENCES
     + FLEET_TO_FLEET_ADDITIONS
     + STOP_ADDITIONS
     + FLEET_SELF_SERVICE_ADDITIONS
+    + RUN_WEB_ADDITIONS
     - RETIRED_WEBHOOK_ROUTES
     - RETIRED_RUNNER_HTTP_ROUTES
     - RETIRED_CATALOGUE_ROUTES

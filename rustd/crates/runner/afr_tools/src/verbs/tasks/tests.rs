@@ -120,6 +120,50 @@ async fn a_task_start_posts_one_new_work_item_under_its_digest() {
     );
 }
 
+#[tokio::test]
+async fn task_start_without_a_span_takes_the_whole_newest_message() {
+    let verbs = RecordingVerbs::answering(Ok(String::new()), Ok(true))
+        .binding(Ok(answered(DurableTaskInputAction::NewWork, false)));
+    let run = run_with(&verbs);
+    *run.task_source.lock().await = Some(crate::TaskSource {
+        turn_id: SOURCE.to_owned(),
+        bytes: "Fix café".len(),
+    });
+    let tool = Typed::boxed(TaskStart);
+    let arguments = json!({
+        "title": "Fix café",
+        "target": {"kind": "api_only"},
+        "statements": checks_green()
+    });
+    let output = call(&*tool, &run, arguments).await;
+    assert_eq!(output.error_code, None);
+    let asked = verbs.asked();
+    assert!(
+        matches!(
+            asked.as_slice(),
+            [Asked::Bindings(binding)] if binding.source_turn_id == SOURCE
+                && matches!(
+                    binding.items.as_slice(),
+                    [DurableTaskBindingItem::NewWork { source_start: 0, source_end: 9, .. }]
+                )
+        ),
+        "one binding covering the whole message, got {asked:?}"
+    );
+
+    let outside = json!({
+        "title": "Fix café",
+        "target": {"kind": "api_only"},
+        "statements": checks_green(),
+        "source_end": 10,
+    });
+    let refusal = call(&*tool, &run, outside).await;
+    assert_eq!(
+        refusal.error_code,
+        Some(ToolErrorCode::InvalidArguments.into())
+    );
+    assert_eq!(verbs.asked(), asked, "the invalid span was not posted");
+}
+
 /// A start the daemon refuses — a machine's turn, or the unfinished-task cap
 /// reached — reaches the model as its kind and the registry code's sentence.
 #[tokio::test]

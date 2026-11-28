@@ -1,16 +1,15 @@
 #![expect(
     clippy::unwrap_used,
-    clippy::indexing_slicing,
     clippy::panic,
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
-use crate::{Call, Hosted, Message, Replay, Request, ToolSpec};
+use crate::{Call, Message, Replay, Request, ToolSpec};
 use rig_core::completion::CompletionRequest;
 use rig_core::message::{
     AssistantContent, AssistantMessage, Message as RigMessage, ToolName, UserContent,
 };
-use serde_json::{Value, json};
+use serde_json::json;
 
 use super::request;
 
@@ -71,19 +70,13 @@ pub(super) fn conversation() -> Vec<Message> {
     ]
 }
 
-/// `messages` over `wire`, offering `tools` and `hosted`, as rig sends it.
-pub(super) fn built(
-    wire: Wire,
-    messages: &[Message],
-    tools: &[ToolSpec<'_>],
-    hosted: &[Hosted],
-) -> CompletionRequest {
+/// `messages` over `wire`, offering `tools`, as rig sends it.
+pub(super) fn built(wire: Wire, messages: &[Message], tools: &[ToolSpec<'_>]) -> CompletionRequest {
     let turn = Request {
         model: MODEL,
         instructions: INSTRUCTIONS,
         messages,
         tools,
-        hosted,
         cache_key: CACHE_KEY,
         max_output_tokens: None,
         single_attempt: false,
@@ -103,7 +96,7 @@ fn user_text(content: &UserContent) -> Option<&str> {
 fn should_lead_with_the_instructions_and_answer_each_call_under_its_tool() {
     let messages = conversation();
 
-    let sent = built(Wire::Chat, &messages, &[], &[]);
+    let sent = built(Wire::Chat, &messages, &[]);
 
     assert_eq!(sent.model.as_deref(), Some(MODEL));
     assert_eq!(sent.system_instructions(), Some(INSTRUCTIONS));
@@ -153,7 +146,7 @@ fn should_hand_the_replay_back_ahead_of_the_turns_text() {
         said(PREAMBLE, Vec::new(), replay),
     ];
 
-    let sent = built(Wire::Messages, &messages, &[], &[]);
+    let sent = built(Wire::Messages, &messages, &[]);
 
     let Some(RigMessage::Assistant(turn)) = sent.chat_history.last().map(AsRef::as_ref) else {
         panic!("the turn ends the history: {:?}", sent.chat_history);
@@ -175,7 +168,7 @@ fn should_drop_an_assistant_turn_with_nothing_in_it() {
         Message::User(FOLLOW_UP.to_owned()),
     ];
 
-    let sent = built(Wire::Chat, &messages, &[], &[]);
+    let sent = built(Wire::Chat, &messages, &[]);
 
     assert!(
         !sent
@@ -202,7 +195,6 @@ fn should_refuse_a_result_that_answers_no_call() {
         instructions: INSTRUCTIONS,
         messages: &messages,
         tools: &[],
-        hosted: &[],
         cache_key: CACHE_KEY,
         max_output_tokens: None,
         single_attempt: false,
@@ -226,7 +218,7 @@ fn should_offer_each_function_as_its_spec_describes_it() {
         parameters: &parameters,
     }];
 
-    let sent = built(Wire::Responses, &conversation(), &tools, &[]);
+    let sent = built(Wire::Responses, &conversation(), &tools);
 
     let [offered] = sent.tools.as_slice() else {
         panic!("one function: {:?}", sent.tools);
@@ -238,21 +230,34 @@ fn should_offer_each_function_as_its_spec_describes_it() {
 }
 
 #[test]
-fn should_offer_web_search_as_each_wire_spells_it_and_chat_not_at_all() {
-    let hosted = |wire| {
-        let sent = built(wire, &conversation(), &[], &[Hosted::WebSearch]);
-        sent.additional_params.map(|params| params["tools"].clone())
+fn every_wire_offers_web_search_as_a_function() {
+    let parameters =
+        json!({"type":"object","properties":{"query":{"type":"string"}},"required":["query"]});
+    let spec = ToolSpec {
+        name: "web_search",
+        description: "Search the web",
+        parameters: &parameters,
     };
-
-    let messages = hosted(Wire::Messages).unwrap();
-    let responses = hosted(Wire::Responses).unwrap();
-
-    assert_eq!(
-        messages,
-        json!([{"type": "web_search_20250305", "name": Hosted::WebSearch.name()}])
-    );
-    assert_eq!(responses, json!([{"type": Hosted::WebSearch.name()}]));
-    assert_eq!(hosted(Wire::Chat), None::<Value>);
+    for wire in [
+        Wire::Messages,
+        Wire::Responses,
+        Wire::Chat,
+        Wire::Gemini,
+        Wire::Ollama,
+    ] {
+        let sent = built(wire, &conversation(), std::slice::from_ref(&spec));
+        let [offered] = sent.tools.as_slice() else {
+            panic!("one function on {wire:?}")
+        };
+        assert_eq!(offered.name.as_str(), spec.name);
+        assert_eq!(offered.parameters, parameters);
+        assert!(
+            sent.additional_params
+                .as_ref()
+                .and_then(|params| params.get("tools"))
+                .is_none()
+        );
+    }
 }
 
 #[test]
@@ -270,7 +275,6 @@ fn should_refuse_a_call_that_names_no_tool() {
         instructions: INSTRUCTIONS,
         messages: &messages,
         tools: &[],
-        hosted: &[],
         cache_key: CACHE_KEY,
         max_output_tokens: None,
         single_attempt: false,
@@ -300,7 +304,6 @@ fn should_refuse_to_offer_a_function_that_has_no_name() {
         instructions: INSTRUCTIONS,
         messages: &messages,
         tools: &tools,
-        hosted: &[],
         cache_key: CACHE_KEY,
         max_output_tokens: None,
         single_attempt: false,
@@ -327,7 +330,6 @@ fn should_refuse_a_replay_it_cannot_read_rather_than_send_the_turn_without_it() 
         instructions: INSTRUCTIONS,
         messages: &messages,
         tools: &[],
-        hosted: &[],
         cache_key: CACHE_KEY,
         max_output_tokens: None,
         single_attempt: false,
@@ -351,7 +353,7 @@ fn should_hand_back_a_written_replay_exactly_as_rig_recorded_it() {
         said(PREAMBLE, Vec::new(), replay),
     ];
 
-    let sent = built(Wire::Messages, &messages, &[], &[]);
+    let sent = built(Wire::Messages, &messages, &[]);
 
     let Some(RigMessage::Assistant(turn)) = sent.chat_history.last().map(AsRef::as_ref) else {
         panic!("the turn ends the history: {:?}", sent.chat_history);

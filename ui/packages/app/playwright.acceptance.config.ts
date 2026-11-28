@@ -63,6 +63,8 @@ const PRIME_SPECS = "**/prime-*.spec.ts";
 // Woken by GitHub and Slack themselves, which deliver to a deployed stack and
 // never to one a machine started for itself: post-deploy only.
 const DEPLOYED_ONLY_SPECS = ["**/prime-watch-dog.spec.ts", "**/prime-chatty-parrot.spec.ts"];
+// Verifies the actual vendor reservations in this worktree's private Postgres.
+const LOCAL_LEDGER_SPECS = ["**/prime-curious-otter.spec.ts"];
 
 // ── Suite groups ─────────────────────────────────────────────────────────────
 // preflight  — environment prerequisites + auth wire (_smoke). Everything else
@@ -145,7 +147,7 @@ export default defineConfig({
         FETCH_AUDIT_SPEC,
         SOAK_SPEC,
         ...SOAK_LOCAL_SPECS,
-        ...(POST_DEPLOY ? [] : DEPLOYED_ONLY_SPECS),
+        ...(POST_DEPLOY ? LOCAL_LEDGER_SPECS : DEPLOYED_ONLY_SPECS),
       ],
       grepInvert: FRAME_BUDGET,
       dependencies: [PROJECT_PREFLIGHT],

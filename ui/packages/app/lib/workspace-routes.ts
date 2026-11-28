@@ -9,7 +9,7 @@ export const WORKSPACE_ROUTE_PREFIX = "/w";
 export const DEFAULT_WORKSPACE_SUBPATH = "fleets/new";
 
 /**
- * Dashboard root (`app/(dashboard)/page.tsx`) — the single place that resolves
+ * Dashboard root (`app/(entry)/page.tsx`) — the single place that resolves
  * the "default workspace" and redirects to New fleet. It is also the
  * post-auth landing target: Clerk's `signInFallbackRedirectUrl` /
  * `signUpFallbackRedirectUrl` point here so a completed sign-in flows through

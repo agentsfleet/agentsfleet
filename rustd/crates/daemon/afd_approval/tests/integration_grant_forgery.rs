@@ -52,7 +52,10 @@ async fn question_naming_the_service(lane: &Lane) -> Uuid7 {
         .bind(&lane.workspace)
         .bind(&action)
         .bind(GATE_TYPE_QUESTION)
-        .bind(format!("{{\"service\":\"{GITHUB}\"}}"))
+        .bind(
+            serde_json::json!({"kind": GrantKind::Integration.as_str(), "service": GITHUB})
+                .to_string(),
+        )
         .bind(QUESTION_WINDOW)
         .bind(afd_api_wire::approval::status::PENDING)
         .bind(&turn)

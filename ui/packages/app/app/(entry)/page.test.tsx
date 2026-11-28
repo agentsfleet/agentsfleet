@@ -7,6 +7,7 @@ import { ApiError } from "@/lib/api/errors";
 import { ACCOUNT_ROLE } from "@/lib/api/workspaces-types";
 import { ERROR_CODE } from "@/lib/errors";
 import { workspacePath } from "@/lib/workspace-routes";
+import { FLEET_DETAIL } from "@/tests/helpers/fleet-fixtures";
 import { AccountSetup } from "./AccountSetup";
 import DashboardIndexPage from "./page";
 
@@ -82,7 +83,7 @@ describe("dashboard entry — an account still opening", () => {
   ])("waits on account setup when a token with no tenant is refused %s", async (_where, status, code) => {
     network.mockResolvedValueOnce(problem(status, code));
     const entry = await DashboardIndexPage();
-    expect(entry.type).toBe(AccountSetup);
+    expect(entry.props.children.type).toBe(AccountSetup);
   });
 
   it("sends a refused token that already carries a tenant to the error page: waiting cannot help it", async () => {
@@ -112,20 +113,32 @@ describe("dashboard entry — an opened account", () => {
     clerk.claims = OPENED_CLAIMS;
   });
 
-  it("lists workspaces with the session token and redirects once to the owned workspace's new fleet page", async () => {
+  it.each([
+    { items: [], destination: "fleets/new" },
+    { items: [FLEET_DETAIL], destination: `fleets/${FLEET_DETAIL.id}` },
+  ])("opens $destination directly with only the two selection reads", async ({ items, destination }) => {
     network.mockResolvedValueOnce(workspacePage([OWNED_WORKSPACE]));
+    network.mockResolvedValueOnce(Response.json({ items, total: null, next_cursor: null }));
     const thrown = await DashboardIndexPage().then(() => null, (error: unknown) => error);
-    expect(redirectTarget(thrown)).toBe(workspacePath(WORKSPACE, "fleets"));
-    expect(network).toHaveBeenCalledTimes(1);
-    const [input, init] = network.mock.calls[0] ?? [""];
-    const target = input instanceof Request ? input.url : input.toString();
-    expect(new URL(target).pathname).toBe("/v1/tenants/me/workspaces");
-    expect(new Headers(init?.headers).get("authorization")).toBe(`Bearer ${clerk.token}`);
+    expect(redirectTarget(thrown)).toBe(workspacePath(WORKSPACE, destination));
+    expect(network.mock.calls.map(([input]) => {
+      const url = new URL(input instanceof Request ? input.url : input.toString());
+      return url.pathname + url.search;
+    })).toEqual(["/v1/tenants/me/workspaces", `/v1/workspaces/${WORKSPACE}/fleets?limit=1`]);
+    for (const [, init] of network.mock.calls) {
+      expect(new Headers(init?.headers).get("authorization")).toBe(`Bearer ${clerk.token}`);
+    }
+  });
+
+  it("propagates a fleet-list failure to the retry boundary", async () => {
+    network.mockResolvedValueOnce(workspacePage([OWNED_WORKSPACE]));
+    network.mockResolvedValueOnce(problem(503, "UZ-INTERNAL-003"));
+    await expect(DashboardIndexPage()).rejects.toMatchObject({ status: 503 });
   });
 
   it("shows the create-workspace empty state only for a successful empty list", async () => {
     network.mockResolvedValueOnce(workspacePage([]));
     const entry = await DashboardIndexPage();
-    expect(entry.type).toBe(NoWorkspaceEmptyState);
+    expect(entry.props.children.type).toBe(NoWorkspaceEmptyState);
   });
 });

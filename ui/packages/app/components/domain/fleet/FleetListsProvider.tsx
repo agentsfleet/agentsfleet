@@ -1,7 +1,7 @@
 "use client";
 
-import type { Dispatch, ReactNode, SetStateAction } from "react";
-import type { FleetGrant, FleetTrigger } from "@/lib/api/fleet-detail";
+import type { ReactNode } from "react";
+import type { FleetGrant, FleetTrigger, NativeFleetDetail } from "@/lib/api/fleet-detail";
 import type { PinnedMemory } from "@/lib/api/fleet-client";
 import type { Schedule } from "@/lib/api/schedule-types";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
@@ -11,6 +11,7 @@ import { deleteSchedule, syncSchedule } from "@/lib/api/schedule-controls";
 
 /** One list beside the chat: read, or not readable right now. */
 export type ListResource<T> = {kind: "loading"} | {kind: "ready"; items: readonly T[]} | {kind: "failed"; message: string};
+export type FleetListSeed = Partial<Pick<NativeFleetDetail, "schedules" | "triggers" | "grants">>;
 export type Removal = {kind: "schedule"; schedule: Schedule} | {kind: "trigger"; trigger: FleetTrigger}
   | {kind: "grant"; grant: FleetGrant} | {kind: "memory"; memory: PinnedMemory};
 export type FleetLists = {
@@ -42,51 +43,64 @@ export function useReloadListsAfter(settledTurns: number): void {
   }, [settledTurns, reload]);
 }
 
-/** Reads the fleet's schedules, triggers, grants and pinned memory once per reload; the page never asks for a draft or a setup. */
-export function FleetListsProvider({workspace, fleet, children}: {workspace: string; fleet: string; children: ReactNode}) {
-  const [schedules, setSchedules] = useState<ListResource<Schedule>>(LOADING);
-  const [triggers, setTriggers] = useState<ListResource<FleetTrigger>>(LOADING);
-  const [grants, setGrants] = useState<ListResource<FleetGrant>>(LOADING);
-  const [pinned, setPinned] = useState<ListResource<PinnedMemory>>(LOADING);
+/** Opens with the lists on the fleet detail. Pinned memory lives on its own route; a reload reads all four. */
+export function FleetListsProvider({workspace, fleet, initial, children}: {workspace: string; fleet: string; initial?: FleetListSeed; children: ReactNode}) {
+  const [schedules, loadSchedules, setSchedules] = useFleetList(initial?.schedules);
+  const [triggers, loadTriggers, setTriggers] = useFleetList(initial?.triggers);
+  const [grants, loadGrants, setGrants] = useFleetList(initial?.grants);
+  const [pinned, loadPinned, setPinned] = useFleetList<PinnedMemory>();
   const [revision, setRevision] = useState(0);
+  const readScheduleList = revision > 0 || initial?.schedules === undefined;
+  const readTriggerList = revision > 0 || initial?.triggers === undefined;
+  const readGrantList = revision > 0 || initial?.grants === undefined;
   const owner = useRef(new AbortController());
   useEffect(() => {
     const controller = new AbortController();
     owner.current = controller;
-    const {signal} = controller;
-    void settle(readSchedules(workspace, fleet, signal), setSchedules, signal);
-    void settle(readTriggers(workspace, fleet, signal), setTriggers, signal);
-    void settle(readGrants(workspace, fleet, signal), setGrants, signal);
-    void settle(readPinnedMemory(workspace, fleet, signal), setPinned, signal);
     return () => controller.abort();
-  }, [workspace, fleet, revision]);
+  }, [workspace, fleet]);
+  useEffect(() => {
+    const controller = new AbortController();
+    const {signal} = controller;
+    if (readScheduleList) void loadSchedules(readSchedules(workspace, fleet, signal), signal);
+    if (readTriggerList) void loadTriggers(readTriggers(workspace, fleet, signal), signal);
+    if (readGrantList) void loadGrants(readGrants(workspace, fleet, signal), signal);
+    void loadPinned(readPinnedMemory(workspace, fleet, signal), signal);
+    return () => controller.abort();
+  }, [workspace, fleet, revision, readScheduleList, readTriggerList, readGrantList, loadSchedules, loadTriggers, loadGrants, loadPinned]);
   const reload = useCallback(() => setRevision(value => value + 1), []);
   const remove = useCallback(async (removal: Removal): Promise<string | null> => {
     try {
-      const left = await removeRemotely(workspace, fleet, removal, owner.current.signal);
+      const {signal} = owner.current;
+      const left = await removeRemotely(workspace, fleet, removal, signal);
+      signal.throwIfAborted();
       dropRow(removal, left, {setSchedules, setTriggers, setGrants, setPinned});
       return null;
     } catch (cause) {
       return requestErrorMessage(cause);
     }
-  }, [workspace, fleet]);
+  }, [workspace, fleet, setSchedules, setTriggers, setGrants, setPinned]);
   const retrySchedule = useCallback(async (schedule: Schedule): Promise<string | null> => {
     try {
-      const row = await syncSchedule(workspace, schedule, owner.current.signal);
+      const {signal} = owner.current;
+      const row = await syncSchedule(workspace, schedule, signal);
+      signal.throwIfAborted();
       setSchedules(current => replace(current, item => item.schedule_id === row.schedule_id, row));
       return null;
     } catch (cause) {
       return requestErrorMessage(cause);
     }
-  }, [workspace]);
+  }, [workspace, setSchedules]);
   const value = useMemo(() => ({schedules, triggers, grants, pinned, reload, remove, retrySchedule}),
     [schedules, triggers, grants, pinned, reload, remove, retrySchedule]);
   return <Context value={value}>{children}</Context>;
 }
 
+type Change<T> = (resource: ListResource<T>) => ListResource<T>;
+
 type Setters = {
-  setSchedules: Dispatch<SetStateAction<ListResource<Schedule>>>; setTriggers: Dispatch<SetStateAction<ListResource<FleetTrigger>>>;
-  setGrants: Dispatch<SetStateAction<ListResource<FleetGrant>>>; setPinned: Dispatch<SetStateAction<ListResource<PinnedMemory>>>;
+  setSchedules: (change: Change<Schedule>) => void; setTriggers: (change: Change<FleetTrigger>) => void;
+  setGrants: (change: Change<FleetGrant>) => void; setPinned: (change: Change<PinnedMemory>) => void;
 };
 
 // A 200 from a schedule's delete is a removal the scheduler has yet to confirm, answered with the row; only a 204 means it is gone.
@@ -108,13 +122,27 @@ function dropRow(removal: Removal, left: Schedule | null, lists: Setters): void 
   }
 }
 
-async function settle<T>(read: Promise<readonly T[]>, publish: (resource: ListResource<T>) => void, signal: AbortSignal): Promise<void> {
-  try {
-    const items = await read;
-    if (!signal.aborted) publish({kind: "ready", items});
-  } catch (cause) {
-    if (!signal.aborted) publish({kind: "failed", message: requestErrorMessage(cause)});
-  }
+/** A GET can finish after a confirmed change. Apply those changes to its answer as well as the visible rows. */
+function useFleetList<T>(initial?: readonly T[]) {
+  const [resource, publish] = useState<ListResource<T>>(() => initial ? {kind: "ready", items: initial} : LOADING);
+  const pending = useRef<Change<T>[] | null>(null);
+  const load = useCallback(async (read: Promise<readonly T[]>, signal: AbortSignal) => {
+    const changes: Change<T>[] = [];
+    pending.current = changes;
+    try {
+      const items = await read;
+      if (!signal.aborted) publish(changes.reduce<ListResource<T>>((value, change) => change(value), {kind: "ready", items}));
+    } catch (cause) {
+      if (!signal.aborted) publish({kind: "failed", message: requestErrorMessage(cause)});
+    } finally {
+      if (pending.current === changes) pending.current = null;
+    }
+  }, []);
+  const update = useCallback((change: Change<T>) => {
+    pending.current?.push(change);
+    publish(change);
+  }, []);
+  return [resource, load, update] as const;
 }
 
 function replace<T>(current: ListResource<T>, matches: (row: T) => boolean, next: T | null): ListResource<T> {

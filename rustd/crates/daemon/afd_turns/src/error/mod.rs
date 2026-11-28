@@ -43,6 +43,17 @@ pub(crate) enum ErrorKind {
     NotRunnable {
         status: afd_fleet_lifecycle::FleetStatus,
     },
+    /// The model the fleet would run on cannot take an attached image.
+    #[error("the fleet model cannot receive an attached image")]
+    ImageModel { model: String },
+    /// The image capability could not be read.
+    #[error("the fleet model could not be resolved")]
+    Credential {
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
+        code: ErrorCode,
+        unavailable: bool,
+    },
     /// The pool would not give a connection.
     ///
     /// The retryable refusal: nothing was committed, and a producer that
@@ -94,6 +105,20 @@ pub(crate) enum ErrorKind {
 }
 
 impl Error {
+    /// Preserves the provider lookup's classification and cause.
+    pub fn image_model_lookup(
+        source: impl std::error::Error + Send + Sync + 'static,
+        code: ErrorCode,
+        unavailable: bool,
+    ) -> Self {
+        ErrorKind::Credential {
+            source: Box::new(source),
+            code,
+            unavailable,
+        }
+        .into()
+    }
+
     /// The code and the sentence, decided together — see the module note.
     fn answer(&self) -> (ErrorCode, &'static str) {
         match self.kind() {
@@ -105,6 +130,11 @@ impl Error {
                 error_code::AGENTSFLEET_NOT_ACTIVE,
                 af_core::problem::Problem::of(error_code::AGENTSFLEET_NOT_ACTIVE).title(),
             ),
+            ErrorKind::ImageModel { .. } => (
+                error_code::MESSAGE_IMAGE_UNSUPPORTED,
+                af_core::problem::Problem::of(error_code::MESSAGE_IMAGE_UNSUPPORTED).title(),
+            ),
+            ErrorKind::Credential { code, .. } => (*code, DETAIL_DATABASE_ERROR),
             ErrorKind::Datastore { .. }
             | ErrorKind::OverBudget { .. }
             | ErrorKind::Exhausted { .. }
@@ -147,8 +177,10 @@ impl Error {
             | ErrorKind::OverBudget { .. }
             | ErrorKind::Exhausted { .. }
             | ErrorKind::TimedOut { .. } => true,
+            ErrorKind::Credential { unavailable, .. } => *unavailable,
             ErrorKind::FleetAbsent
             | ErrorKind::NotRunnable { .. }
+            | ErrorKind::ImageModel { .. }
             | ErrorKind::Query { .. }
             | ErrorKind::Entropy { .. } => false,
         }
@@ -166,12 +198,24 @@ impl Error {
         match self.kind() {
             ErrorKind::NotRunnable { status } => Some(*status),
             ErrorKind::FleetAbsent
+            | ErrorKind::ImageModel { .. }
+            | ErrorKind::Credential { .. }
             | ErrorKind::Datastore { .. }
             | ErrorKind::Query { .. }
             | ErrorKind::OverBudget { .. }
             | ErrorKind::Exhausted { .. }
             | ErrorKind::TimedOut { .. }
             | ErrorKind::Entropy { .. } => None,
+        }
+    }
+
+    /// The name a caller can use to identify the incompatible model.
+    #[must_use]
+    pub fn image_model(&self) -> Option<&str> {
+        if let ErrorKind::ImageModel { model } = self.kind() {
+            Some(model)
+        } else {
+            None
         }
     }
 
@@ -183,6 +227,8 @@ impl Error {
             ErrorKind::OverBudget { .. } | ErrorKind::Exhausted { .. } => true,
             ErrorKind::FleetAbsent
             | ErrorKind::NotRunnable { .. }
+            | ErrorKind::ImageModel { .. }
+            | ErrorKind::Credential { .. }
             | ErrorKind::Datastore { .. }
             | ErrorKind::Query { .. }
             | ErrorKind::TimedOut { .. }

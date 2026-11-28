@@ -17,7 +17,7 @@ import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY, SECOND_WORKSPACE_NAME } from "./fixtures/constants";
 import { getDefaultWorkspaceId, ensureSecondWorkspace } from "./fixtures/seed";
-import { expectSelectedWorkspace, gotoWorkspace, openWorkspaceMenu, workspaceUrlPattern } from "./fixtures/nav";
+import { expectSelectedWorkspace, expectWorkspaceEntry, gotoWorkspace, openWorkspaceMenu, workspaceUrlPattern } from "./fixtures/nav";
 
 const SWITCH_TIMEOUT_MS = 10_000;
 
@@ -26,11 +26,13 @@ test.describe("workspace in the URL", () => {
     const primary = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
     await signInAs(page, FIXTURE_KEY.regular);
 
-    await page.goto("/");
-    // The entry redirect lands on `/w/<first-owned>/…`, never a bare `/`.
-    await expect(page).toHaveURL(new RegExp(`/w/${primary}(/|$|\\?)`), {
-      timeout: SWITCH_TIMEOUT_MS,
+    const documents: string[] = [];
+    page.on("request", request => {
+      if (request.isNavigationRequest()) documents.push(new URL(request.url()).pathname);
     });
+    await page.goto("/");
+    await expectWorkspaceEntry(page, primary);
+    expect(documents).not.toContain(`/w/${primary}/fleets`);
     await expect(page.getByTestId("workspace-switcher")).toBeVisible();
   });
 

@@ -20,6 +20,7 @@ test-util = [
   "afd_auth/test-util",
   "af_core/test-util",
   "af_crypto/test-util",
+  "af_providers/test-util",
   "afd_db/test-util",
   # The capturing metric reader the run suite reads the runs-started
   # counter back through.
@@ -43,6 +44,7 @@ afd_bus.workspace = true
 # The one reader of a host an access request's secret names, as the runner's
 # egress guard reads it.
 af_egress.workspace = true
+af_providers.workspace = true
 # Shared boundary validation for private checkpoint storage configuration.
 af_validate.workspace = true
 afd_vault.workspace = true
@@ -152,6 +154,8 @@ garde.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]
+# Scripted HTTP vendors observe the committed reservation before replying.
+axum = { workspace = true, features = ["json"] }
 # Parse SDK batch-delete XML and verify the local GitHub App exchange signature.
 quick-xml = { version = "=0.41.0", features = ["serialize"] }
 jsonwebtoken.workspace = true

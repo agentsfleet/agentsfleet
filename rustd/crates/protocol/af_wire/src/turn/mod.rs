@@ -78,6 +78,8 @@ mod steer;
 pub use self::answer::QuestionAnswer;
 
 pub use self::message::{MESSAGE, message_of};
+mod image;
+pub use self::image::{MessageImage, has_images, images_of};
 
 pub use self::entry::{ENTRY_FIELD_COUNT, Entry};
 

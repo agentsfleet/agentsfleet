@@ -93,7 +93,6 @@ impl Harness<'_, '_> {
             instructions: &instructions,
             messages: &messages,
             tools: &[],
-            hosted: &[],
             cache_key: self.shared.fleet_id,
             max_output_tokens: Some(tokens),
             single_attempt: true,
@@ -122,7 +121,9 @@ impl Harness<'_, '_> {
 
 fn evidence(message: &Message) -> serde_json::Value {
     match message {
-        Message::User(text) => serde_json::json!({ "role": "user", "text": text }),
+        Message::User(text) | Message::UserImages { text, .. } => {
+            serde_json::json!({ "role": "user", "text": text })
+        }
         Message::Assistant { text, calls, .. } => {
             serde_json::json!({ "role": "assistant", "text": text,
             "calls": calls.iter().map(|call| serde_json::json!({ "name": call.name, "arguments": call.arguments })).collect::<Vec<_>>() })

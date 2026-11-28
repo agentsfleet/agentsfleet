@@ -21,6 +21,9 @@ af_core::error_shell!(
 /// Every way this crate fails.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ErrorKind {
+    /// A stored attachment cannot be sent on the assigned model's wire.
+    #[error("the run cannot send its image attachment")]
+    MessageImage(ErrorCode),
     /// A private root cannot be restored without changing its meaning.
     #[error("run recovery is incompatible: {reason}")]
     RecoveryInvalid { reason: &'static str },
@@ -140,6 +143,7 @@ impl Error {
     #[must_use]
     pub const fn code(&self) -> ErrorCode {
         match self.kind() {
+            ErrorKind::MessageImage(code) => *code,
             ErrorKind::RecoverySource { .. }
             | ErrorKind::RecoveryInvalid { .. }
             | ErrorKind::RecoveryBounds { .. }
@@ -169,6 +173,7 @@ impl Error {
     #[must_use]
     pub fn unhosted(&self) -> Option<Unhosted<'_>> {
         match self.kind() {
+            ErrorKind::MessageImage(_) => None,
             ErrorKind::RecoverySource { .. }
             | ErrorKind::RecoveryInvalid { .. }
             | ErrorKind::RecoveryBounds { .. }

@@ -175,6 +175,16 @@ impl Error {
         }
     }
 
+    /// The selected model when an image message was refused.
+    #[must_use]
+    pub fn image_model(&self) -> Option<&str> {
+        if let ErrorKind::TurnWrite { source } = self.kind() {
+            source.image_model()
+        } else {
+            None
+        }
+    }
+
     /// Whether a steer reused an operation id with a different message.
     ///
     /// The handler's question: this refusal is a 409 that names the state the

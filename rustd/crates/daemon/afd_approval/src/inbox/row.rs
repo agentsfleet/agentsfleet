@@ -147,6 +147,10 @@ pub struct Resolved {
     /// `Some` for an answered question and for an approved or denied access
     /// card; a denied question continues nothing.
     pub continuation_turn_id: Option<Uuid7>,
+    /// Host of a resolved host grant, retained to resume the asking turn.
+    pub(super) approved_host: Option<String>,
+    /// Tool whose redirect was refused, when the runner recorded one.
+    pub(super) refused_tool: Option<String>,
 }
 
 /// One inbox row as the page and the by-id read return it.
@@ -213,6 +217,8 @@ pub(super) struct StoredResolution {
     detail: String,
     turn_id: Option<Uuid7>,
     gate_type: String,
+    approved_host: Option<String>,
+    refused_tool: Option<String>,
 }
 
 impl From<StoredResolution> for Resolved {
@@ -229,6 +235,8 @@ impl From<StoredResolution> for Resolved {
             turn_id: stored.turn_id,
             gate_type: stored.gate_type,
             continuation_turn_id: None,
+            approved_host: stored.approved_host,
+            refused_tool: stored.refused_tool,
         }
     }
 }

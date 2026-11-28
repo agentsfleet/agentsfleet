@@ -1,6 +1,7 @@
 // A workspace proxy is a route whitelist, never a general credentialed tunnel.
 
 import { z } from "zod";
+import { CHAT_BODY_LIMIT_BYTES } from "../body-limits";
 
 export const PROXY_METHOD = {get: "GET", post: "POST", patch: "PATCH", delete: "DELETE"} as const;
 const RESOURCE = {models: "models", fleets: "fleets"} as const;
@@ -13,7 +14,7 @@ const uuid = z.uuidv7();
 // fetch and steer the minted token at another path.
 const MEMORY_KEY = /^(?!\.*$)/;
 /** `bodyless`: a POST action that takes no body, so the proxy forwards none and asks for no JSON media type. */
-type MatchedRoute = {readonly query: readonly string[]; readonly bodyless?: boolean};
+type MatchedRoute = {readonly query: readonly string[]; readonly bodyless?: boolean; readonly bodyLimit?: number};
 const ORDINARY: MatchedRoute = {query: []};
 const BODYLESS_ACTION: MatchedRoute = {query: [], bodyless: true};
 const PAGED: MatchedRoute = {query: PAGE};
@@ -21,6 +22,7 @@ const MODELS: MatchedRoute = {query: [...PAGE, "purpose"]};
 // The fleet list alone also takes `name`: an addressed chat message finds the
 // fleet it names through it. Every other list keeps the shared page keys.
 const FLEET_LIST: MatchedRoute = {query: [...PAGE, "name"]};
+const FLEET_CREATE: MatchedRoute = {query: [], bodyLimit: CHAT_BODY_LIMIT_BYTES};
 // The lists beside a fleet's chat, read whole and trimmed one row at a time.
 const LISTS: ReadonlyMap<string | undefined, MatchedRoute> = new Map([
   [SUFFIX.schedules, ORDINARY], [SUFFIX.triggers, ORDINARY], [SUFFIX.grants, ORDINARY], [SUFFIX.memories, PAGED],
@@ -32,7 +34,7 @@ export function matchWorkspaceRoute(workspace: string, parts: readonly string[],
   const [resource, id, child, member] = parts;
   if (resource === RESOURCE.models && parts.length === 1 && method === PROXY_METHOD.get) return MODELS;
   if (resource !== RESOURCE.fleets) return undefined;
-  if (parts.length === 1) return method === PROXY_METHOD.get ? FLEET_LIST : method === PROXY_METHOD.post ? ORDINARY : undefined;
+  if (parts.length === 1) return method === PROXY_METHOD.get ? FLEET_LIST : method === PROXY_METHOD.post ? FLEET_CREATE : undefined;
   if (!uuid.safeParse(id).success) return undefined;
   if (parts.length === 2) return method === PROXY_METHOD.get || method === PROXY_METHOD.patch ? ORDINARY : undefined;
   if (parts.length === 3) return method === PROXY_METHOD.get ? LISTS.get(child) : undefined;

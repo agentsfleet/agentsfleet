@@ -48,8 +48,10 @@ pub struct UpdatePlan;
 
 impl Handler for UpdatePlan {
     const NAME: &'static str = "update_plan";
-    const DESCRIPTION: &'static str =
-        "Record your plan as steps with their status, and update it as you work.";
+    const DESCRIPTION: &'static str = "Record a plan the person can see and return its steps and statuses. Use it when several \
+        dependent steps or a decision need tracking. For a short answer, reply directly.";
+    const EXAMPLES: &'static [&'static str] =
+        &[r#"{"plan":[{"step":"Read the failing test","status":"in_progress"}]}"#];
     type Arguments = Plan;
 
     fn run(

@@ -281,9 +281,10 @@ export function dismissPendingSend(scope: LedgerScope, operationId: string): voi
 
 /** How the send ended without an acknowledgement — unless it was dismissed
  * meanwhile, in this tab or another, and then it stays dismissed. */
-export function failPendingSend(scope: LedgerScope, operationId: string, state: PendingSendOutcome): void {
+export function failPendingSend(scope: LedgerScope, operationId: string, state: PendingSendOutcome, errorDetail?: string): void {
   end(scope, operationId, (entries) => entries.map((entry) =>
-    entry.operationId === operationId && entry.state !== PENDING_SEND_STATE.DISMISSED ? { ...entry, state } : entry));
+    entry.operationId === operationId && entry.state !== PENDING_SEND_STATE.DISMISSED
+      ? { ...entry, state, ...(errorDetail === undefined ? {} : {errorDetail}) } : entry));
 }
 
 // A send's ending, written while the send is still this document's own — a

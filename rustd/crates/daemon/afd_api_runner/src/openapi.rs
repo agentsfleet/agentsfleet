@@ -61,6 +61,8 @@ afd_http::plane_collector! {
         crate::handler::runner::trigger::list,
         crate::handler::runner::trigger::remove,
         crate::handler::runner::access::request,
+        crate::handler::runner::web::search,
+        crate::handler::runner::web::extract,
         crate::handler::runner::self_record::handle,
         crate::handler::runner::stream::handle,
     )

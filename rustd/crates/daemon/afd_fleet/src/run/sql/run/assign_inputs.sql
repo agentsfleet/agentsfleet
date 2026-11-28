@@ -58,18 +58,20 @@ WITH fleet AS MATERIALIZED (
 ), ahead AS MATERIALIZED (
     -- The conversation's next messages: an addressed conversation by equality,
     -- the unaddressed one by NULL, each in the index's own order.
-    SELECT w.id, w.sequence, w.durable_task_id, w.durable_task_generation, w.producer, w.actor, w.workspace_id
+    SELECT w.id, w.sequence, w.durable_task_id, w.durable_task_generation, w.producer, w.actor, w.workspace_id, w.has_images
     FROM run
     CROSS JOIN instant i
     CROSS JOIN LATERAL (
-        (SELECT a.id, a.sequence, a.durable_task_id, a.durable_task_generation, a.producer, a.actor, a.workspace_id
+        (SELECT a.id, a.sequence, a.durable_task_id, a.durable_task_generation, a.producer, a.actor, a.workspace_id,
+                a.request_json ? 'images' AS has_images
          FROM thread.turns a
          WHERE run.reply_provider IS NOT NULL AND a.thread_id = run.fleet_id
            AND a.reply_provider = run.reply_provider AND a.reply_address = run.reply_address
            AND a.settled_at IS NULL AND a.sequence > GREATEST(run.head_sequence, $5)
          ORDER BY a.sequence)
         UNION ALL
-        (SELECT a.id, a.sequence, a.durable_task_id, a.durable_task_generation, a.producer, a.actor, a.workspace_id
+        (SELECT a.id, a.sequence, a.durable_task_id, a.durable_task_generation, a.producer, a.actor, a.workspace_id,
+                a.request_json ? 'images' AS has_images
          FROM thread.turns a
          WHERE run.reply_provider IS NULL AND a.thread_id = run.fleet_id
            AND a.reply_provider IS NULL AND a.reply_address IS NULL
@@ -83,7 +85,8 @@ WITH fleet AS MATERIALIZED (
     FROM (
         SELECT id, sequence,
                durable_task_id IS NULL AND durable_task_generation IS NULL AND CASE
-                   WHEN producer = $6 THEN actor <> $7 AND actor LIKE $8
+                   -- An image message needs a whole run to deliver its attachments.
+                   WHEN producer = $6 THEN actor <> $7 AND actor LIKE $8 AND NOT has_images
                    WHEN producer = $9 THEN COALESCE(
                        connector.slack_person_allowed(workspace_id, actor, $10, $11, $12), false)
                    ELSE false

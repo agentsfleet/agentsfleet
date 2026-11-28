@@ -51,7 +51,8 @@ impl Held {
             .bind(vec![ItemKind::ToolCall.as_str()])
             .bind(vec!["shell"])
             .bind(vec![ItemStatus::Succeeded.as_str()])
-            .bind(vec![None::<String>])
+            .bind(vec![None::<String>]) // changes
+            .bind(vec![None::<String>]) // sources
             .execute(post)
             .await
             .expect("the post's item is written");

@@ -38,7 +38,8 @@ export function ApprovalActions({gate, onStart, onNext, onResolved}: Props) {
     <p className={cn("wrap-anywhere text-label leading-label", access ? "font-semibold" : "font-medium")}>{title}</p>
     {gate.blast_radius ? <p className="break-words text-label leading-label text-muted-foreground">{gate.blast_radius}</p> : null}
     {access ? <AccessRequest gate={gate} /> : null}
-    {gate.status === APPROVAL_STATUS.TIMED_OUT && !outcome ? <p className="text-label leading-label text-muted-foreground">Deadline passed</p> : null}
+    {gate.hostAccess && gate.expires_at && !outcome ? <p className="text-eyebrow text-muted-foreground">Respond by <Time value={gate.expires_at} /></p> : null}
+    {!gate.hostAccess && gate.status === APPROVAL_STATUS.TIMED_OUT && !outcome ? <p className="text-label leading-label text-muted-foreground">Deadline passed</p> : null}
     {expandedControls ? (
       <ApprovalRequestDetails gate={gate} title={title} pending={pending} decided={outcome !== null} reason={reason} onReasonChange={setReason} />
     ) : <>

@@ -113,18 +113,11 @@ fn should_name_the_first_unhosted_tool_when_several_are() {
 }
 
 #[test]
-fn a_provider_hosted_tool_needs_no_handler_and_is_no_function() {
+fn web_search_is_a_supervisor_function() {
     let catalog = catalog();
-
-    let selection = catalog.select(&["web_search", "update_plan"]).unwrap();
-
-    assert!(selection.hosts("web_search"));
-    assert_eq!(selection.hosted(), [&WEB_SEARCH]);
-    assert_eq!(
-        names(&selection),
-        ["update_plan"],
-        "the provider sends its own spec"
-    );
+    let selected = catalog.select(&["web_search", "update_plan"]).unwrap();
+    assert_eq!(names(&selected), ["web_search", "update_plan"]);
+    assert_eq!(WEB_SEARCH.runtime(), Runtime::Supervisor);
 }
 
 #[test]
@@ -135,8 +128,7 @@ fn a_name_the_policy_repeats_is_offered_once() {
         .select(&["update_plan", "update_plan", "web_search", "web_search"])
         .unwrap();
 
-    assert_eq!(names(&selection), ["update_plan"]);
-    assert_eq!(selection.hosted().len(), 1);
+    assert_eq!(names(&selection), ["update_plan", "web_search"]);
 }
 
 #[test]
@@ -242,11 +234,7 @@ fn guffbolts_subagent_tools_are_offered_by_their_own_names() {
 fn every_published_handler_entry_is_hosted() {
     let (transport, _sent) = crate::testing::replying(200, "");
     let catalog = Catalog::hosted(transport);
-    let served: Vec<&str> = PUBLISHED
-        .iter()
-        .filter(|entry| entry.runtime() != Runtime::Provider)
-        .map(|entry| entry.name())
-        .collect();
+    let served: Vec<&str> = PUBLISHED.iter().map(|entry| entry.name()).collect();
 
     let unhosted: Vec<&str> = served
         .iter()
@@ -254,11 +242,7 @@ fn every_published_handler_entry_is_hosted() {
         .filter(|name| catalog.select(&[*name]).is_err())
         .collect();
 
-    assert_eq!(
-        served.len(),
-        PUBLISHED.len() - 1,
-        "one entry is the provider's"
-    );
+    assert_eq!(served.len(), PUBLISHED.len());
     assert!(
         unhosted.is_empty(),
         "published but not hosted: {unhosted:?}"
@@ -335,7 +319,6 @@ fn every_backed_entry_is_published_and_built_by_its_run() {
 
     for entry in BACKED {
         assert_eq!(published(entry.name()), Some(entry));
-        assert_ne!(entry.runtime(), Runtime::Provider, "{}", entry.name());
         assert!(
             tools.tool(entry.name()).is_some(),
             "{} is built",

@@ -45,7 +45,6 @@ const fn request(messages: &[Message]) -> Request<'_> {
         instructions: "Use the complete conversation.",
         messages,
         tools: &[],
-        hosted: &[],
         cache_key: "fleet-context-proof",
         max_output_tokens: None,
         single_attempt: false,

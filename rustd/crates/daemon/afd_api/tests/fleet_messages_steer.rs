@@ -17,6 +17,7 @@ use crate::harness::{code_of, field_of};
 
 use af_core::error_code;
 use afd_auth::scope::{Scope, ScopeSet};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use http::{Method, StatusCode};
 
 use self::harness::{Fleet, OWNED_WORKSPACE};
@@ -102,6 +103,33 @@ async fn a_body_that_is_not_a_message_is_refused() {
             "{body}: an unreadable body is a bad request"
         );
     }
+}
+
+#[tokio::test]
+async fn a_message_image_past_the_wire_bounds_is_refused() -> Result<(), Box<dyn std::error::Error>>
+{
+    const RED_PIXEL: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
+    let mut png = STANDARD.decode(RED_PIXEL)?;
+    png.resize(6 * 1024 * 1024, 0);
+    let oversized_base64 = STANDARD.encode(png);
+    for (media_type, data) in [
+        ("image/png", oversized_base64.as_str()),
+        ("image/tiff", "SUkqAA=="),
+        ("image/png", "iVBORw0KGgo="),
+    ] {
+        let body = serde_json::json!({
+            "message": "What colour is this?",
+            "images": [{"media_type": media_type, "data": data}],
+        })
+        .to_string();
+        let response = steering(&body).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(
+            code_of(response).await,
+            error_code::MESSAGE_IMAGE_INVALID.as_str()
+        );
+    }
+    Ok(())
 }
 
 /// An empty message is refused, and is told apart from an empty body.

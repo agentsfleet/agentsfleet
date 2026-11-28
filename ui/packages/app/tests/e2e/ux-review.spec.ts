@@ -1,4 +1,5 @@
 import {expect, test} from "@playwright/test";
+import keenHawk from "../../../../../tests/fixtures/fleets/keen-hawk.json";
 
 const review = (view: string) => new URL(`../../../../../docs/ux.html#${view}`, import.meta.url).href;
 
@@ -13,7 +14,7 @@ test("the populated navigation lists fleet chats and keeps credits in the footer
   await expect(page.getByRole("link", {name: /tightening review/i})).toHaveCount(0);
   await expect(page.getByRole("button", {name: "Model proposal"})).toHaveCount(0);
   expect(await page.locator(".review-links button[data-view]").evaluateAll(buttons =>
-    buttons.slice(0, 3).map(button => button.textContent))).toEqual(["App loading", "New fleet", "Fleet handoff"]);
+    buttons.slice(0, 3).map(button => button.textContent))).toEqual(["App loading", "New fleet", "Conversation"]);
   const geometry = await nav.evaluate(rail => {
     const {right, bottom} = rail.getBoundingClientRect();
     const footer = rail.querySelector(".rail-bottom")!.getBoundingClientRect();
@@ -24,6 +25,71 @@ test("the populated navigation lists fleet chats and keeps credits in the footer
   expect(new Set(geometry.edges).size).toBe(1);
   expect(geometry.edges[0]).toBeLessThan(geometry.right);
   expect(geometry.footerBottom).toBeLessThan(geometry.bottom);
+});
+
+test("the Conversation tab covers every sample fleet chat", async ({page}) => {
+  await page.goto(review("empty"));
+  const tabs = page.locator(".review-links");
+  const conversation = tabs.getByRole("button", {name: "Conversation", exact: true});
+  await conversation.click();
+  await expect(page).toHaveURL(review("conversation"));
+  await expect(tabs.getByRole("button", {name: /^(Fleet handoff|Activity|Error|Wake-up|Web search)$/})).toHaveCount(0);
+
+  const nav = page.getByRole("navigation", {name: "Main navigation"});
+  const fleets = nav.getByRole("button", {name: "Your Fleets", exact: true});
+  for (const [view, fleet] of [
+    ["chief", "Chief of Staff"],
+    ["bob", "Bob"],
+    ["activity", "Launch review"],
+    ["failure", "Deploy monitor"],
+    ["scheduled", "Merge watch"],
+    ["curious-otter", "curious-otter"],
+    ["conversation", "Release watch"],
+  ] as const) {
+    if (await fleets.getAttribute("aria-expanded") === "false") await fleets.click();
+    await nav.getByRole("button", {name: fleet, exact: true}).click();
+    await expect(page).toHaveURL(review(view));
+    await expect(page.locator("#page-title")).toHaveText(fleet);
+    await expect(conversation).toHaveAttribute("aria-current", "page");
+  }
+});
+
+test("the public search conversation keeps the page read and the other search result in Sources", async ({page}) => {
+  await page.goto(review("empty"));
+  const conversation = page.getByRole("button", {name: "Conversation", exact: true});
+  await conversation.click();
+  const fleets = page.getByRole("button", {name: "Your Fleets", exact: true});
+  if (await fleets.getAttribute("aria-expanded") === "false") await fleets.click();
+  await page.getByRole("navigation", {name: "Main navigation"}).getByRole("button", {name: "curious-otter", exact: true}).click();
+  await expect(conversation).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("button", {name: "Web search", exact: true})).toHaveCount(0);
+  await expect(page).toHaveURL(/#curious-otter$/);
+  const chat = page.getByRole("region", {name: "Fleet conversation"});
+  await expect(chat.getByText(/Find IANA’s official documentation/)).toBeVisible();
+  const firstPage = "https://www.iana.org/help/example-domains";
+  await expect(chat.getByRole("link", {name: "Example Domains", exact: true})).toHaveAttribute("href", firstPage);
+  await chat.getByText("Searched the web and read a page", {exact: true}).click();
+  const steps = chat.getByRole("list", {name: "Tool activity"}).getByRole("listitem");
+  await expect(steps.nth(0).locator("summary")).toHaveText("Searched the web IANA example domains documentation");
+  await expect(steps.nth(1).locator("summary")).toHaveText(`Read page ${firstPage}`);
+  await page.mouse.move(0, 0);
+  for (const [theme, caption] of [["light", "rgb(102, 112, 123)"], ["dark", "rgb(133, 139, 149)"]] as const) {
+    await page.evaluate(value => {document.documentElement.dataset.theme = value;}, theme);
+    await expect(chat.getByText("Searched the web and read a page", {exact: true})).toHaveCSS("color", caption);
+    await expect(steps.nth(1).locator("summary")).toHaveCSS("font-weight", "400");
+    await expect(steps.nth(1).getByText(firstPage, {exact: true})).toHaveCSS("color", caption);
+    await expect(chat.getByRole("link", {name: "Example Domains", exact: true})).not.toHaveCSS("color", caption);
+  }
+  await steps.nth(1).locator("summary").click();
+  await expect(steps.nth(1).locator(".trace-detail")).toContainText(firstPage);
+  await chat.getByRole("button", {name: "Quote response"}).click();
+  await expect(page.getByRole("textbox", {name: "Message curious-otter"})).toHaveValue(/IANA reserves example\.com[\s\S]+iana\.org\/help\/example-domains/);
+  await page.reload();
+  const links = page.getByRole("region", {name: "Sources", exact: true}).getByRole("link");
+  await expect(links).toHaveText(["Example Domains", "IANA-managed Reserved Domains"]);
+  await expect(links.nth(0)).toHaveAttribute("href", firstPage);
+  await expect(links.nth(1)).toHaveAttribute("href", "https://www.iana.org/domains/reserved");
+  await expect(page.getByRole("switch", {name: "Allow all"})).toBeChecked();
 });
 
 test("the reference opens a fleet chat from its first message", async ({page}) => {
@@ -40,6 +106,25 @@ test("the reference opens a fleet chat from its first message", async ({page}) =
   await expect(page.getByRole("region", {name: "Remembers"})).toContainText("Nothing pinned yet");
   await expect(page.getByRole("switch", {name: "Allow all"})).not.toBeChecked();
   await expect(page.getByRole("switch", {name: "Packages"})).not.toBeChecked();
+});
+
+test("the reference keeps an attached image beside the first message", async ({page}) => {
+  await page.emulateMedia({reducedMotion: "reduce"});
+  await page.goto(review("empty"));
+  await expect(page.locator("#file-input")).toHaveAttribute("accept", "image/png,image/jpeg,image/gif,image/webp");
+  const [chooser] = await Promise.all([
+    page.waitForEvent("filechooser"),
+    page.getByRole("button", {name: "Attach an image", exact: true}).click(),
+  ]);
+  await chooser.setFiles({name: "picture.png", mimeType: "image/png", buffer: Buffer.from(keenHawk.image_png, "base64")});
+  await expect(page.getByRole("button", {name: "Remove picture.png"})).toBeVisible();
+  await page.locator("#message").fill("Describe the attached picture.");
+  await page.getByRole("button", {name: "Send message", exact: true}).click();
+  await expect(page).toHaveURL(/#fleet-1$/);
+  const chat = page.getByRole("region", {name: "Fleet conversation"});
+  await expect(chat.getByText("picture.png", {exact: true})).toBeVisible();
+  await expect(chat.getByText("Describe the attached picture.", {exact: true})).toBeVisible();
+  await expect(page.getByRole("button", {name: "Attach an image or preview file"})).toBeVisible();
 });
 
 test("the reference keeps a refused first message and its model for Resend", async ({page}) => {

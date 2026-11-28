@@ -23,7 +23,12 @@ export const SCOPE = {
   MODEL_ADMIN: "model:admin",
   /** Edit a fleet — among others, its shared-memory grants (`PATCH …/memory-access`). */
   FLEET_WRITE: "fleet:write",
-
+  /** Read a fleet's details and triggers. */
+  FLEET_READ: "fleet:read",
+  /** Read a fleet's schedules. */
+  SCHEDULE_READ: "schedule:read",
+  /** Read a fleet's approved and pending access. */
+  GRANT_READ: "grant:read",
 } as const;
 
 // Downward closure of the `read < write < admin` ladder — a verbatim mirror of
@@ -38,6 +43,7 @@ export const SCOPE = {
 const SCOPE_INCLUDES: Readonly<Record<string, readonly string[]>> = {
   "fleet:admin": ["fleet:write", "fleet:read"],
   "fleet:write": ["fleet:read"],
+  "schedule:write": ["schedule:read"],
   "secret:write": ["secret:read"],
   "apikey:admin": ["apikey:write", "apikey:read"],
   "apikey:write": ["apikey:read"],

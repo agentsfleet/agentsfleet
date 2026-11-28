@@ -1,5 +1,6 @@
 import { Effect, Redacted } from "effect";
 import { readSteeredWork } from "./steer-work.ts";
+import { messageImage, type MessageImage } from "./message-image.ts";
 import { resolveSteerTarget } from "./steer-target.ts";
 import {
   DETAIL_STEER_INTERRUPTED,
@@ -90,6 +91,7 @@ const failUnreadableResponse = (): CliError =>
 
 export interface SteerOptions {
   readonly forceTty?: boolean;
+  readonly image?: string | undefined;
 }
 
 // Subscribe before send: the activity channel has no replay, so the tail must
@@ -103,17 +105,18 @@ export const steerTurnEffect = (
   token: Redacted.Redacted<string>,
   streamGet: StreamGetFn,
   signal?: AbortSignal,
+  image?: MessageImage,
 ): Effect.Effect<void, CliError, TurnServices> =>
   Effect.acquireUseRelease(
     openTurnTail(wsId, fleetId, token, streamGet, signal),
-    (tail) => steerTurnWithTail(wsId, fleetId, message, token, tail, signal),
+    (tail) => steerTurnWithTail(wsId, fleetId, {message, ...(image === undefined ? {} : {images: [image]})}, token, tail, signal),
     (tail) => Effect.promise(() => tail.close()),
   );
 
 const steerTurnWithTail = (
   wsId: string,
   fleetId: string,
-  message: string,
+  body: {message: string; images?: MessageImage[]},
   token: Redacted.Redacted<string>,
   tail: TurnTailHandle,
   signal?: AbortSignal,
@@ -132,7 +135,7 @@ const steerTurnWithTail = (
     const answer = yield* http.request<unknown>({
       path: wsFleetMessagesPath(wsId, fleetId),
       method: "POST",
-      body: { message },
+      body,
       token,
       signal,
     }).pipe(
@@ -253,12 +256,17 @@ export const steerEffectFromArgs = (
       );
     }
 
+    const interactive = shouldEnterSteerRepl(stdin, message, options.forceTty === true);
+    if (interactive && options.image !== undefined) {
+      return yield* Effect.fail(new ValidationError({ detail: "--image requires a single message", suggestion: "Supply a message argument or pipe it from stdin." }));
+    }
+    const image = options.image === undefined ? undefined : yield* messageImage(options.image);
     const wsId = yield* requireWorkspaceId;
     const token = yield* resolveAuthToken;
     // Once, before any tail opens: the prompt's every turn and a single message
     // both go to the fleet a `@name` names.
     const target = yield* resolveSteerTarget(wsId, fleetId, token);
-    if (shouldEnterSteerRepl(stdin, message, options.forceTty === true)) {
+    if (interactive) {
       return yield* promptTurns(
         (line, signal) => steerTurnEffect(wsId, target, line, token, streamGet, signal),
         readFleetAddress(fleetId)?.name,
@@ -276,5 +284,5 @@ export const steerEffectFromArgs = (
       );
     }
 
-    yield* steerTurnEffect(wsId, target, singleMessage, token, streamGet);
+    yield* steerTurnEffect(wsId, target, singleMessage, token, streamGet, undefined, image);
   });

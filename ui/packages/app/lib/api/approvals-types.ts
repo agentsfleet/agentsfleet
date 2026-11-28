@@ -29,7 +29,7 @@ export const APPROVAL_STATUS = {
 // A `question` gate is a fleet run asking the person something; its
 // `proposed_action` holds the question, and it takes an answer, not approval.
 // An `integration_grant` gate is an access card: the fleet asked for a secret
-// or an integration, named by its evidence's `service`, and Approve or Deny
+// or an integration or host, named by its evidence's `service`, and Approve or Deny
 // resumes the run that asked (`afd_approval::request::KIND_INTEGRATION_GRANT`).
 export const APPROVAL_GATE_TYPE = {
   QUESTION: "question",

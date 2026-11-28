@@ -12,11 +12,13 @@
 use dashmap::DashMap;
 
 use af_egress::Egress;
+use af_wire::access_verb::{Hostname, RedirectEvidence, RefusedTool};
 use afr_executor::Sizes;
 use afr_memory::Loaded;
 use tokio::sync::Mutex;
 
 use guffbolt::tools::{Limits, Sessions};
+use serde::{Deserialize, Serialize};
 
 use crate::generic::RunMemory;
 use crate::sandbox::Checkout;
@@ -33,6 +35,8 @@ pub struct Run<'run> {
     /// and the credentials it has minted; held to admit or mask, never across
     /// a send.
     pub egress: Mutex<Egress<'run>>,
+    /// Current minted-token matcher for a synchronous tool observer.
+    pub minted_mask: af_egress::MintedMask,
     /// The processes the run's calls keep open across calls; the run's end
     /// closes whatever is left.
     pub sessions: Sessions,
@@ -51,6 +55,17 @@ pub struct Run<'run> {
     pub verbs: &'run dyn RunVerbs,
     /// Each open call's number in the run, which an effect names its item by.
     pub calls: CallNumbers,
+    /// The most recent human input the run received, before secret masking.
+    pub task_source: Mutex<Option<TaskSource>>,
+}
+
+/// The data needed to name a message and its byte span at the task boundary.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskSource {
+    /// The message's turn.
+    pub turn_id: String,
+    /// The byte length of the original message.
+    pub bytes: usize,
 }
 
 /// Each open call's number in its run, by the provider's id for the call.
@@ -59,23 +74,27 @@ pub struct Run<'run> {
 /// ends; a message, schedule or cron call sends its number so `agentsfleetd`
 /// keys the effect by the call's item, and a retry lands once.
 #[derive(Debug, Default)]
-pub struct CallNumbers(DashMap<String, u64>);
+pub struct CallNumbers {
+    numbers: DashMap<String, u64>,
+    /// Destination-indexed evidence from calls in this run, retained after those calls close.
+    refused_redirects: DashMap<String, RedirectEvidence>,
+}
 
 impl CallNumbers {
     /// Call `call_id` opened as the run's `number`th.
     pub fn open(&self, call_id: &str, number: u64) {
-        self.0.insert(call_id.to_owned(), number);
+        self.numbers.insert(call_id.to_owned(), number);
     }
 
     /// Call `call_id` ended.
     pub fn close(&self, call_id: &str) {
-        self.0.remove(call_id);
+        self.numbers.remove(call_id);
     }
 
     /// The number of open call `call_id`, if one is open under it.
     #[must_use]
     pub fn of(&self, call_id: &str) -> Option<u64> {
-        self.0.get(call_id).map(|number| *number)
+        self.numbers.get(call_id).map(|number| *number)
     }
 }
 
@@ -88,6 +107,7 @@ impl<'run> Run<'run> {
         Self {
             run_id: egress.run_id(),
             memory: RunMemory::new(memory),
+            minted_mask: egress.minted_mask(),
             egress: Mutex::new(egress),
             sessions: Sessions::default(),
             limits: Limits::DEFAULT,
@@ -96,7 +116,33 @@ impl<'run> Run<'run> {
             image_input: false,
             verbs,
             calls: CallNumbers::default(),
+            task_source: Mutex::new(None),
         }
+    }
+
+    /// Record the adjacent hosts of a refused web-fetch redirect for this run.
+    /// Discard calls that have already closed and inputs that cannot be host grants.
+    pub(crate) fn record_web_redirect(&self, call_id: &str, from_host: &str, to_host: &str) {
+        if self.calls.of(call_id).is_some()
+            && let (Ok(from_host), Ok(to_host)) =
+                (Hostname::parse(from_host), Hostname::parse(to_host))
+        {
+            self.calls.refused_redirects.insert(
+                to_host.as_str().to_owned(),
+                RedirectEvidence {
+                    tool: RefusedTool::WebFetch,
+                    from_host,
+                    to_host,
+                },
+            );
+        }
+    }
+
+    pub(crate) fn refused_redirect(&self, host: &Hostname) -> Option<RedirectEvidence> {
+        self.calls
+            .refused_redirects
+            .get(host.as_str())
+            .map(|entry| entry.clone())
     }
 
     /// The same run, whose workspace holds `checkouts`.

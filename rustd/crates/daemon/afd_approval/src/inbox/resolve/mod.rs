@@ -1,11 +1,6 @@
-//! Answering a gate, and everything one answer sets off.
-//!
-//! Split from [`super`] on the seam between READING the queue and MOVING a
-//! row. The read half is two statements and a decoder; this half is one
-//! guarded UPDATE plus the two things that follow from it — the tail is told,
-//! and an answer a waiting run is owed lands as its answer turn. They belong
-//! together because they share one invariant: the row moved first, so neither
-//! may turn a durable decision back into a retry.
+//! Resolve an approval gate and deliver its answer to the turn that asked.
+//! A retried decision repairs a missing continuation and preserves the
+//! attribution of the person who resolved the gate.
 
 use std::borrow::Cow;
 
@@ -87,13 +82,28 @@ impl Continues {
     /// The answer turn's body, for the gate `resolved` that kept `turn_id`
     /// waiting.
     fn body(self, resolved: &Resolved, turn_id: &Uuid7) -> serde_json::Value {
-        let message = match self {
-            Self::Answer => resolved.detail.as_str(),
-            Self::Access { approved: true } => ACCESS_APPROVED,
-            Self::Access { approved: false } => ACCESS_DENIED,
+        let message = match (self, resolved.approved_host.as_deref()) {
+            (Self::Answer, _) => Cow::Borrowed(resolved.detail.as_str()),
+            (Self::Access { approved }, Some(host)) => {
+                let tool = resolved
+                    .refused_tool
+                    .as_deref()
+                    .unwrap_or("the original web read");
+                if approved {
+                    Cow::Owned(format!(
+                        "Access to {host} approved. Retry {tool} under the current network policy."
+                    ))
+                } else {
+                    Cow::Owned(format!(
+                        "Access to {host} denied. Explain why {tool} could not proceed."
+                    ))
+                }
+            }
+            (Self::Access { approved: true }, None) => Cow::Borrowed(ACCESS_APPROVED),
+            (Self::Access { approved: false }, None) => Cow::Borrowed(ACCESS_DENIED),
         };
         serde_json::json!(af_wire::turn::QuestionAnswer {
-            message: Cow::Borrowed(message),
+            message,
             asked_turn_id: Cow::Borrowed(turn_id.as_str()),
         })
     }
@@ -148,6 +158,7 @@ impl Inbox {
             .bind(GRANT_REVOKED)
             .bind(KIND_INTEGRATION_GRANT)
             .bind(afd_fleet_lifecycle::FleetStatus::Archived.as_str())
+            .bind(afd_api_wire::grant::grant_type::HOST)
             .fetch_optional(&mut *connection)
             .await
             .map_err(error::query(CONTEXT_RESOLVE))?;
@@ -164,6 +175,7 @@ impl Inbox {
         let existing = sqlx::query_as::<_, StoredLoss>(sql::SELECT_GATE_BY_ACTION)
             .bind(action)
             .bind(scope)
+            .bind(afd_api_wire::grant::grant_type::HOST)
             .fetch_optional(&mut *connection)
             .await
             .map_err(error::query(CONTEXT_RESOLVE))?;

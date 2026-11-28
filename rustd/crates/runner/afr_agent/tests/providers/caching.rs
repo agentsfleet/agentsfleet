@@ -83,7 +83,6 @@ async fn turn(connector: &impl Connect, provider: &str) -> Vec<af_providers::Res
         instructions: INSTRUCTIONS,
         messages: &messages,
         tools: &tools,
-        hosted: &[],
         cache_key: FLEET,
         max_output_tokens: None,
         single_attempt: false,
@@ -267,7 +266,10 @@ async fn test_history_prefix_is_byte_identical_on_the_wire() {
     for (wire, fixed, grows) in CACHING {
         let earlier = first_request(wire, ASKED, Vec::new()).await;
         let turn = Turn {
+            images: Vec::new(),
             sequence: 1,
+            actor: "steer:fixture".into(),
+            event_type: Some(af_wire::turn::TurnKind::Chat),
             message: ASKED.into(),
             calls: Vec::new(),
             answer: ANSWER.into(),

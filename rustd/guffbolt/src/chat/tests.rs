@@ -120,6 +120,10 @@ impl Note {
 }
 
 impl Describe for Note {
+    fn guidance(&self) -> &'static str {
+        "Use note to record a requested line."
+    }
+
     fn spec(&self) -> ToolSpec<'_> {
         ToolSpec {
             name: "note",
@@ -200,11 +204,15 @@ async fn a_chat_runs_a_tool_and_answers_with_its_output() {
         Some(messages.len()),
         "the answer follows the tool's result"
     );
-    let offered = lock(&sent)
-        .iter()
-        .map(|(_, names)| names.clone())
-        .collect::<Vec<_>>();
-    assert_eq!(offered, [["note"], ["note"]], "every call offers the tool");
+    let expected = (
+        format!("{INSTRUCTIONS}\n\nUse note to record a requested line."),
+        vec!["note".to_owned()],
+    );
+    assert_eq!(
+        *lock(&sent),
+        [expected.clone(), expected],
+        "both requests carry the offered tool and its guidance"
+    );
 }
 
 #[tokio::test]
@@ -304,7 +312,6 @@ fn the_chat_model_measures_and_reads_images_as_its_own() {
         instructions: INSTRUCTIONS,
         messages,
         tools: &[],
-        hosted: &[],
         cache_key: "",
         max_output_tokens: None,
         single_attempt: false,

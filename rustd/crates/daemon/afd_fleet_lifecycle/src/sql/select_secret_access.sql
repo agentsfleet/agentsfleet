@@ -4,10 +4,11 @@
 -- signing secret and a textual reference grant nothing here.
 --
 -- $1 workspace · $2 the runnable fleet status · $3 the approved grant status
-SELECT g.service AS secret_name, f.id AS fleet_id, f.name AS fleet_name
+SELECT DISTINCT g.service AS secret_name, f.id AS fleet_id, f.name AS fleet_name
   FROM fleet.fleets f
   JOIN connector.integration_grants g ON g.fleet_id = f.id
  WHERE f.workspace_id = $1
    AND f.status = $2
    AND g.status = $3
+   AND g.grant_type IN ($4, $5)
  ORDER BY secret_name, fleet_name, fleet_id

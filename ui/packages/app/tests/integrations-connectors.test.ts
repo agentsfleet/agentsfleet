@@ -284,11 +284,12 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
 
     fireEvent.click(screen.getByRole("button", { name: "Disconnect GitHub" }));
 
-    await waitFor(() =>
-      expect(within(screen.getByTestId("integration-github")).getByRole("alert")).toBeTruthy(),
-    );
-    expect(screen.getByTestId("integration-github").textContent).toContain("Connected");
-    expect(screen.getByRole("button", {name: "Disconnect GitHub"}).hasAttribute("aria-disabled")).toBe(false);
+    const row = within(screen.getByTestId("integration-github"));
+    await waitFor(() => {
+      expect(row.getByRole("alert")).toBeTruthy();
+      expect(row.getByRole("button", {name: "Disconnect GitHub"}).hasAttribute("aria-disabled")).toBe(false);
+    });
+    expect(row.getByText("Connected")).toBeTruthy();
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(routerRefresh).not.toHaveBeenCalled();
   });

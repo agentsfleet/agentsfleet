@@ -50,6 +50,26 @@ const daemonLike = (all: ReadonlyArray<Record<string, unknown>>): MockRoutes => 
 });
 
 describe("approvals commands", () => {
+  test("a host approval names the destination and its advisory response date", async () => {
+    await authedScope(async () => {
+      const name = "support.vendor.example";
+      const host = gate({gate_type: "integration_grant", evidence: {kind: "host", service: name}, proposed_action: `reach ${name}`});
+      const routes = {...daemonLike([host]), [`GET ${APPROVALS}/${GATE_ID}`]: () => jsonResponse(200, host)};
+      await withMockApi(routes, async apiUrl => {
+        for (const args of [["list"], ["show", GATE_ID]]) {
+          const out = bufferStream();
+          expect(await runCli(["fleet", "approvals", ...args], {
+            stdout: out.stream, stderr: bufferStream().stream, env: cliEnv({AGENTSFLEET_API_URL: apiUrl}),
+          })).toBe(0);
+          const text = out.read();
+          expect(text).toContain(name);
+          expect(text).toContain("host");
+          if (args.length === 2) expect(text).toContain("respond_by");
+        }
+      });
+    });
+  });
+
   test("approvals list renders every gate with its kind and status", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {

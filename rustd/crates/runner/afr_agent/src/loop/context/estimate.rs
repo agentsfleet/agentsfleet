@@ -28,8 +28,13 @@ impl TokenEstimator for Estimator<'_, '_, '_> {
             messages: self.source.retained(summary, groups)?,
             max_output_tokens: Some(self.harness.shared.output_tokens),
         };
-        let specs = self.harness.router.specs();
-        self.measure(self.harness.request(&window, &specs))
+        let specs = self.harness.offered();
+        let request = self.harness.request(&window, &specs);
+        let instructions = self.harness.instructions(&request);
+        self.measure(Request {
+            instructions: &instructions,
+            ..request
+        })
     }
     fn compaction(&mut self, task: &Compaction) -> af_context::Result<u64> {
         let shared = self.harness.shared;
@@ -39,7 +44,6 @@ impl TokenEstimator for Estimator<'_, '_, '_> {
             instructions: af_context::SUMMARY_INSTRUCTIONS,
             messages: &messages,
             tools: &[],
-            hosted: &[],
             cache_key: shared.fleet_id,
             max_output_tokens: Some(task.output_tokens),
             single_attempt: true,

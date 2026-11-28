@@ -24,6 +24,7 @@ fn each_backend_a_named_tool_lacks_is_named() {
         ("file_read", Backend::Env),
         ("shell", Backend::Env),
         ("web_fetch", Backend::Outbound),
+        ("web_search", Backend::Search),
         ("memory_store", Backend::Memory),
         ("schedule", Backend::Scheduler),
         ("message", Backend::Channel),

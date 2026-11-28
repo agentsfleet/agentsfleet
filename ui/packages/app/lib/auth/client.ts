@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
-import { useClerk, useUser, ClerkProvider, SignIn, SignUp } from "@clerk/nextjs";
+import type { ComponentProps, RefObject } from "react";
+import { createContext, createElement, useCallback, useContext, useEffect, useLayoutEffect, useRef } from "react";
+import { useClerk, useSession, useUser, ClerkProvider, SignIn, SignUp } from "@clerk/nextjs";
 
 // The in-browser SDK keeps only the `__session` cookie fresh. Every dashboard
 // read and mutation resolves its bearer server-side (`credential.ts`), so
@@ -12,68 +13,117 @@ import { useClerk, useUser, ClerkProvider, SignIn, SignUp } from "@clerk/nextjs"
 // after the cookie expires; POST cannot complete Clerk's redirect handshake.
 const SESSION_REFRESH_INTERVAL_MS = 45_000;
 
-/**
- * A fresh session token on demand, and whose session it is.
- *
- * `refresh` mints the next token through Clerk's `user.reload()`, which
- * refreshes the `__session` cookie without returning token bytes to this
- * module. A call while one is in flight joins nothing and returns at once.
- * `signedInUserId` is null until a signed-in session has loaded.
- */
-export function useSessionRefresh(): {
-  signedInUserId: string | null;
-  refresh: () => Promise<void>;
-} {
-  const { isLoaded, isSignedIn, user } = useUser();
-  const refreshInFlight = useRef(false);
-  // Clerk re-instantiates the User resource after every reload(), so a
-  // callback keyed on the object identity would change once per refresh, and
-  // an effect depending on it would re-arm and fire again, doubling every FAPI
-  // call. The ref tracks the live resource; `refresh` stays one function.
-  const userRef = useRef(user);
-  useLayoutEffect(() => {
-    userRef.current = user;
-  }, [user]);
+// Retry a failed proactive refresh within the remaining minute of token lifetime.
+const EXPIRY_HEADROOM_MS = 15_000;
 
-  const refresh = useCallback(async (): Promise<void> => {
-    if (refreshInFlight.current) return;
-    refreshInFlight.current = true;
+type RefreshState = {
+  sessionId: string;
+  userId: string;
+  dueAt: number;
+  expiresAt?: number;
+  pending?: Promise<number>;
+};
+
+// The mounted provider shares one refresh across the keeper and onboarding.
+const RefreshContext = createContext<RefObject<RefreshState | undefined> | null>(null);
+
+function refreshCookie(
+  active: RefObject<RefreshState | undefined>,
+  session: NonNullable<ReturnType<typeof useSession>["session"]>,
+  force: boolean,
+): Promise<number> {
+  const user = session.user;
+  const now = Date.now();
+  if (active.current?.sessionId !== session.id || active.current.userId !== user.id) {
+    active.current = { sessionId: session.id, userId: user.id, dueAt: 0 };
+  }
+  const state = active.current;
+  // The SDK may have renewed its cookie independently. Only the public expiry
+  // claim matters here. Missing metadata leaves the existing 45-second cadence.
+  const exp = session.lastActiveToken?.jwt?.claims.exp;
+  const expiresAt = typeof exp === "number" && Number.isFinite(exp) ? exp : undefined;
+  if (expiresAt !== state.expiresAt) {
+    state.expiresAt = expiresAt;
+    state.dueAt = expiresAt === undefined ? 0 : expiresAt * 1000 - EXPIRY_HEADROOM_MS;
+  }
+  if (state.pending) return state.pending;
+  if (!force && now < state.dueAt) return Promise.resolve(state.dueAt);
+  const attempt = async () => {
     try {
-      await userRef.current?.reload();
+      await user.reload();
+      // A token observed during this reload can have its own, earlier deadline.
+      if (state.expiresAt === expiresAt || state.expiresAt === undefined) {
+        state.dueAt = now + SESSION_REFRESH_INTERVAL_MS;
+      }
+      return state.dueAt;
     } catch {
-      // Offline and transient Clerk failures retry on the caller's next tick;
-      // never leak an unhandled promise rejection.
-    } finally {
-      refreshInFlight.current = false;
+      // An online, visibility or focus signal can retry sooner than the timer.
+      state.dueAt = 0;
+      return Date.now() + EXPIRY_HEADROOM_MS;
     }
-  }, []);
+  };
+  state.pending = attempt().finally(() => { state.pending = undefined; });
+  return state.pending;
+}
 
-  const signedInUserId = isLoaded && isSignedIn ? user.id : null;
+function useBrowserSession() {
+  const { isSignedIn, session } = useSession();
+  const provider = useContext(RefreshContext);
+  const local = useRef<RefreshState>(undefined);
+  const active = provider ?? local;
+  const current = isSignedIn ? session : null;
+  const live = useRef(current);
+  // Clerk can replace the resource on every reload. Track its identity and
+  // expiry separately so a replacement alone never restarts the keeper.
+  useLayoutEffect(() => {
+    live.current = current;
+    return () => { live.current = null; };
+  }, [current]);
+  const reload = useCallback((force: boolean) => {
+    const resource = live.current;
+    return resource
+      ? refreshCookie(active, resource, force)
+      : Promise.resolve(Date.now() + EXPIRY_HEADROOM_MS);
+  }, [active]);
+  return { sessionId: current?.id, signedInUserId: current?.user.id ?? null,
+    expiresAt: current?.lastActiveToken?.jwt?.claims.exp, reload };
+}
+
+/** Refresh even a recently minted cookie so onboarding can observe a new tenant claim. */
+export function useSessionRefresh(): { signedInUserId: string | null; refresh: () => Promise<void> } {
+  const { signedInUserId, reload } = useBrowserSession();
+  const refresh = useCallback(async () => { await reload(true); }, [reload]);
   return { signedInUserId, refresh };
 }
 
 export function AuthSessionKeeper(): null {
-  const { signedInUserId, refresh } = useSessionRefresh();
+  const { signedInUserId, sessionId, expiresAt, reload } = useBrowserSession();
 
   useEffect(() => {
-    if (signedInUserId === null) return;
-
-    const refreshWhenVisible = (): void => {
-      if (document.visibilityState === "visible") void refresh();
+    if (!signedInUserId) return;
+    let stopped = false;
+    let timer: number | undefined;
+    const refreshWhenVisible = () => {
+      window.clearTimeout(timer);
+      if (document.visibilityState !== "visible") return;
+      void reload(false).then(dueAt => {
+        if (stopped) return;
+        window.clearTimeout(timer);
+        timer = window.setTimeout(refreshWhenVisible, Math.max(0, dueAt - Date.now()));
+      });
     };
-
-    void refresh();
-    const interval = window.setInterval(refreshWhenVisible, SESSION_REFRESH_INTERVAL_MS);
+    refreshWhenVisible();
     window.addEventListener("focus", refreshWhenVisible);
     window.addEventListener("online", refreshWhenVisible);
     document.addEventListener("visibilitychange", refreshWhenVisible);
     return () => {
-      window.clearInterval(interval);
+      stopped = true;
+      window.clearTimeout(timer);
       window.removeEventListener("focus", refreshWhenVisible);
       window.removeEventListener("online", refreshWhenVisible);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
-  }, [signedInUserId, refresh]);
+  }, [signedInUserId, sessionId, expiresAt, reload]);
 
   return null;
 }
@@ -105,7 +155,11 @@ export function useCurrentUser(): {
 //
 // Personal settings use account-client.ts for app-owned profile/session shapes;
 // server-side credential and personal-session authority stay in credential.ts.
-export const AuthProvider = ClerkProvider;
+export function AuthProvider(props: ComponentProps<typeof ClerkProvider>) {
+  const refresh = useRef<RefreshState>(undefined);
+  return createElement(ClerkProvider, props,
+    createElement(RefreshContext.Provider, { value: refresh }, props.children));
+}
 export { SignOutButton as AuthSignOutButton } from "@clerk/nextjs";
 export const AuthSignIn = SignIn;
 export const AuthSignUp = SignUp;

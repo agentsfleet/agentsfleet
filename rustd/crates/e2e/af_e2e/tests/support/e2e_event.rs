@@ -45,6 +45,18 @@ pub(crate) async fn enqueue_over(
     workspace: &Uuid7,
     event_type: TurnKind,
 ) -> Uuid7 {
+    enqueue_body(booted, bus, fleet, workspace, event_type, REQUEST_JSON).await
+}
+
+/// Admits the actual customer message for a scripted run.
+pub(crate) async fn enqueue_body(
+    booted: &Booted,
+    bus: afd_bus::Handle,
+    fleet: &Uuid7,
+    workspace: &Uuid7,
+    event_type: TurnKind,
+    request_json: &str,
+) -> Uuid7 {
     let admitted = Turns::for_tests(booted.database.clone(), bus)
         .admit(IncomingTurn {
             producer: Producer::Steer,
@@ -53,7 +65,7 @@ pub(crate) async fn enqueue_over(
             workspace,
             actor: ACTOR,
             event_type,
-            request_json: REQUEST_JSON,
+            request_json,
             reply: afd_turns::Reply::None,
         })
         .await

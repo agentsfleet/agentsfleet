@@ -74,7 +74,9 @@ pub(super) async fn open_runtime(
         schedule_client: clients.schedule,
     });
     #[cfg(feature = "test-util")]
-    let plane = plane.with_connector_endpoint(config.connector_endpoint());
+    let plane = plane
+        .with_connector_endpoint(config.connector_endpoint())
+        .with_web_clients(config.web_clients.as_deref().cloned());
     Ok(Runtime {
         database,
         live: observed,

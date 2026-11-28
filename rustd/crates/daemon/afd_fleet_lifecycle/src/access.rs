@@ -50,6 +50,8 @@ impl Fleets {
             .bind(workspace)
             .bind(FleetStatus::Active.as_str())
             .bind(APPROVED)
+            .bind(afd_api_wire::grant::grant_type::SECRET)
+            .bind(afd_api_wire::grant::grant_type::INTEGRATION)
             .fetch_all(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_ACCESS))?;
