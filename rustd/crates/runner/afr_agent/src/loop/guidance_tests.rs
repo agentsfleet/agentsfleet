@@ -10,7 +10,11 @@ use guffbolt::agents::{SPAWN_AGENT, WAIT_AGENT};
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
-use super::{Loop, context::digests, tests::drive};
+use super::{
+    Loop,
+    context::digests,
+    tests::{drive, drive_with_memory},
+};
 use crate::fixture::{Script, call, decision_assignment, payload, say, unbounded};
 use crate::prompt::Prompt;
 
@@ -102,12 +106,28 @@ async fn a_child_given_fewer_tools_is_told_about_fewer() {
         unbounded(),
     );
     run.decision = Some(Box::new(decision_assignment()));
-    drive(&hosted(&script), &run, &CancellationToken::new()).await;
+    let window = [af_wire::memory::MemoryDelta {
+        key: "source".into(),
+        content: "Quote the release notes.".into(),
+        category: "core".into(),
+        visibility: af_wire::memory::Visibility::Fleet,
+    }];
+    drive_with_memory(
+        &hosted(&script),
+        &run,
+        afr_memory::Seed::window(&window),
+        &CancellationToken::new(),
+    )
+    .await;
     let sent = script.sent();
     let (child, root): (Vec<_>, Vec<_>) =
         sent.iter().partition(|request| request.tools == ["shell"]);
     assert_eq!(child.len(), 1);
     assert_eq!(root.len(), 3);
+    assert!(root.iter().all(|request| matches!(
+        (request.instructions.find("## Tool guidance"), request.instructions.find("## Pinned memory")),
+        (Some(guidance), Some(memory)) if guidance < memory
+    )));
     for line in ["Use memory_store", "Use task_start", "## Durable tasks"] {
         assert!(
             child

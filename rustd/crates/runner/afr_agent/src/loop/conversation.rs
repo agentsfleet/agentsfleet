@@ -143,12 +143,18 @@ impl guffbolt::Conversation for Harness<'_, '_> {
             .filter_map(|spec| self.router.guidance_for(spec.name))
             .peekable();
         if lines.peek().is_some() {
-            let text = instructions.to_mut();
+            let (fixed, blocks) = request
+                .instructions
+                .split_at_checked(self.shared.guidance_at)
+                .unwrap_or((request.instructions, ""));
+            let mut text = fixed.to_owned();
             text.push_str("\n\n## Tool guidance");
             for line in lines {
                 text.push('\n');
                 text.push_str(line);
             }
+            text.push_str(blocks);
+            instructions = std::borrow::Cow::Owned(self.shared.scrub.clean(text).into_inner());
         }
         if request
             .tools

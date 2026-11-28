@@ -51,7 +51,7 @@ impl<H: Handler> Typed<H> {
 }
 
 impl<H: Handler> Describe for Typed<H> {
-    fn guidance(&self) -> &str {
+    fn guidance(&self) -> &'static str {
         H::GUIDANCE
     }
 

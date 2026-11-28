@@ -43,7 +43,7 @@ impl<'b> Generic<'b> {
 }
 
 impl Describe for Generic<'_> {
-    fn guidance(&self) -> &str {
+    fn guidance(&self) -> &'static str {
         self.tool.guidance()
     }
 

@@ -52,7 +52,7 @@ impl<'s, 'run> Router<'s, 'run> {
     }
 
     /// The prompt line contributed by a tool the model was offered.
-    pub(crate) fn guidance_for(&self, name: &str) -> Option<&str> {
+    pub(crate) fn guidance_for(&self, name: &str) -> Option<&'static str> {
         self.tools.guidance_for(name)
     }
 
@@ -119,7 +119,7 @@ impl<'s> Routed<'s> {
 }
 
 impl Describe for Routed<'_> {
-    fn guidance(&self) -> &str {
+    fn guidance(&self) -> &'static str {
         self.handler.guidance()
     }
 

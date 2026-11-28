@@ -180,7 +180,7 @@ impl<H: Handler> Describe for Typed<H> {
         self.schema.spec(H::NAME)
     }
 
-    fn guidance(&self) -> &str {
+    fn guidance(&self) -> &'static str {
         H::GUIDANCE
     }
 }

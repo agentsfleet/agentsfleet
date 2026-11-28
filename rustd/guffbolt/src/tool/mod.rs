@@ -27,7 +27,7 @@ pub trait Describe: Send + Sync + fmt::Debug {
     fn spec(&self) -> ToolSpec<'_>;
 
     /// Instructions this tool contributes while it is offered to the model.
-    fn guidance(&self) -> &str {
+    fn guidance(&self) -> &'static str {
         ""
     }
 
@@ -57,7 +57,7 @@ impl<T: Describe + ?Sized> Describe for Box<T> {
         (**self).spec()
     }
 
-    fn guidance(&self) -> &str {
+    fn guidance(&self) -> &'static str {
         (**self).guidance()
     }
 
@@ -121,7 +121,7 @@ impl<T: Describe + ?Sized> Tools<T> {
     /// The named tool's nonempty guidance, for a request that offers it.
     /// This also finds a deferred tool once it appears in the request.
     #[must_use]
-    pub fn guidance_for(&self, name: &str) -> Option<&str> {
+    pub fn guidance_for(&self, name: &str) -> Option<&'static str> {
         self.find(name)
             .map(Describe::guidance)
             .filter(|text| !text.is_empty())

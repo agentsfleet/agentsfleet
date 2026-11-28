@@ -120,7 +120,7 @@ impl Note {
 }
 
 impl Describe for Note {
-    fn guidance(&self) -> &str {
+    fn guidance(&self) -> &'static str {
         "Use note to record a requested line."
     }
 
