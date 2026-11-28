@@ -61,6 +61,9 @@ pub struct BootConfig {
     /// A test boot's connector vendor boundary; never an environment option.
     #[cfg(feature = "test-util")]
     pub(super) connector_endpoint: Option<String>,
+    /// Web vendor clients supplied by a live test's local listeners.
+    #[cfg(feature = "test-util")]
+    pub(crate) web_clients: Option<Box<(af_providers::web::Parallel, af_providers::web::Exa)>>,
 }
 
 /// Where product events go, when this deployment sends any.

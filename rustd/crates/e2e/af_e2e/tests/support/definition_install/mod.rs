@@ -39,7 +39,7 @@ use crate::e2e::{
     DATABASE_LANE_KNOB, EPHEMERAL, SCENARIOS, Scenario, daemon_environment, lane, unique_ids,
 };
 use crate::e2e_db::scenario_database;
-use crate::e2e_event::enqueue;
+use crate::e2e_event::enqueue_body;
 use crate::e2e_seed::{DEEP_POOL, seed_model_rate, seed_platform_default, seed_wallet};
 use crate::e2e_seed_keys::seed_provider_key;
 use agentsfleetd::test_util::install_subscriber;
@@ -105,6 +105,22 @@ pub(super) async fn install_with(
     install_subscriber();
     let exclusive = SCENARIOS.lock().await;
     let booted = boot_minting(supervisor, provider_base, extra).await;
+    install_on(
+        booted,
+        exclusive,
+        (fleet_name, secrets, channel),
+        crate::e2e::REQUEST_JSON,
+    )
+    .await
+}
+
+/// Installs a corpus definition on a daemon with its own vendor boundaries.
+pub(crate) async fn install_on(
+    booted: Booted,
+    exclusive: tokio::sync::MutexGuard<'static, ()>,
+    (fleet_name, secrets, channel): (&str, &[Secret], Option<&str>),
+    request_json: &str,
+) -> Scenario {
     let now = af_core::clock::now();
     let (_unused, workspace, tenant) = unique_ids();
     seed_workspace(&booted, &workspace, &tenant, now).await;
@@ -115,7 +131,15 @@ pub(super) async fn install_with(
     seal_credentials(&booted, &workspace, secrets, now).await;
     let fleet = install(&booted, &workspace, &tenant, fleet_name, now, channel).await;
     let enrolled = enrol(&booted, &fleet, now).await;
-    let turn_id = enqueue(&booted, &fleet, &workspace, TurnKind::Chat).await;
+    let turn_id = enqueue_body(
+        &booted,
+        booted.bus.clone(),
+        &fleet,
+        &workspace,
+        TurnKind::Chat,
+        request_json,
+    )
+    .await;
     Scenario {
         base: format!("http://{}", booted.address),
         fleet,

@@ -32,6 +32,9 @@ mod ci;
 #[path = "integration_rust_runner_definitions/redirect/tests.rs"]
 mod redirect;
 
+#[path = "integration_rust_runner_definitions/host_approval/mod.rs"]
+mod host_approval;
+
 /// A settled run's trace and one call's full record are read
 /// back through the tenant routes an operator's thread uses.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

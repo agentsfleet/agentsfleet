@@ -125,6 +125,24 @@ impl Network {
         )
     }
 
+    /// Routes integration requests through an observable loopback DNS boundary.
+    #[cfg(feature = "test-util")]
+    pub(crate) fn observed(
+        roots: impl Iterator<Item = reqwest::Certificate>,
+        resolver: Arc<impl dns::Resolve + 'static>,
+    ) -> Result<Self> {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the test-only resolver maps fixture hostnames to dedicated loopback listeners"
+        )]
+        let builder = roots.fold(Client::builder(), ClientBuilder::add_root_certificate);
+        let limits = Limits::DEFAULT;
+        let client = tool_client(builder, Arc::new(SystemResolver), limits)
+            .dns_resolver(resolver)
+            .build()?;
+        Ok(Self { client, limits })
+    }
+
     fn build(builder: ClientBuilder, resolver: Arc<dyn Resolve>, limits: Limits) -> Result<Self> {
         let client = tool_client(builder, resolver, limits).build()?;
         Ok(Self { client, limits })

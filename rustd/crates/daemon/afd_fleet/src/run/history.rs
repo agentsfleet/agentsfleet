@@ -26,15 +26,18 @@ use af_wire::protocol::MESSAGE_BYTES_MAX;
 use af_wire::run::{ANSWER_FAILED, ANSWER_FAILED_END, ANSWER_NONE, EarlierCall, RunPayload, Turn};
 use af_wire::tool_detail::ItemStatus;
 use af_wire::tool_trace::fenced_call_id;
-use af_wire::turn::{TurnKind, message_of};
+use af_wire::turn::message_of;
 use afd_db::Db;
 use afd_turns::view::Cursor;
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 
 use crate::error::query;
-use crate::run::envelope::Acquired;
 use crate::run::sql::history::{SELECT_CALLS_OF, SELECT_FINISHED_BEFORE};
+
+#[path = "history_assignment.rs"]
+mod assignment;
+pub use assignment::turns_before;
 
 /// The event a chat run issued without its turns is logged under.
 pub(super) const EVENT_HISTORY_UNAVAILABLE: &str = "run_history_unavailable";
@@ -203,58 +206,6 @@ impl Thread for Conversations {
 
     fn page_turns(&self) -> i64 {
         self.page_turns
-    }
-}
-
-/// The turns `acquired`'s run carries: none unless its event is a chat
-/// message, and none when the read fails.
-pub(super) async fn turns(
-    thread: &dyn Thread,
-    acquired: &Acquired,
-    event_type: TurnKind,
-) -> Vec<Turn<'static>> {
-    let at = Cursor {
-        created_at: acquired.turn_created_at,
-        turn_id: acquired.turn_id.clone(),
-    };
-    turns_before(
-        thread,
-        &acquired.workspace_id,
-        &acquired.fleet_id,
-        &at,
-        event_type,
-    )
-    .await
-}
-
-/// `turns`, for the event at `at` in `workspace`'s `fleet`: what a chat
-/// run carries, read through `thread`.
-pub async fn turns_before(
-    thread: &dyn Thread,
-    workspace: &Uuid7,
-    fleet: &Uuid7,
-    at: &Cursor,
-    event_type: TurnKind,
-) -> Vec<Turn<'static>> {
-    if event_type != TurnKind::Chat {
-        return Vec::new();
-    }
-    // Boxed: the page walk holds a row across each call read, and every
-    // issue path awaits this.
-    match Box::pin(read(thread, workspace, fleet, at)).await {
-        Ok((turns, bytes)) => {
-            metrics::carried(bytes);
-            turns
-        }
-        Err(failure) => {
-            metrics::read_failed();
-            let error_code = failure.code().as_str();
-            let fleet_id = fleet.as_str();
-            let agentsfleet_turn_id = at.turn_id.as_str();
-            let event = EVENT_HISTORY_UNAVAILABLE;
-            tracing::warn!(error_code, fleet_id, agentsfleet_turn_id, event);
-            Vec::new()
-        }
     }
 }
 

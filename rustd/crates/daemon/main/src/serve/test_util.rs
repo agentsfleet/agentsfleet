@@ -25,3 +25,19 @@ pub async fn boot_with_connector_boundary<E: EnvSource + Sync + ?Sized>(
     let analytics = open_analytics(config.posthog()).await;
     open(config, analytics, port, supervisor).await
 }
+
+/// Boots the real web verbs with the supplied vendor clients.
+///
+/// # Errors
+/// As [`super::boot`].
+pub async fn boot_with_web_clients<E: EnvSource + Sync + ?Sized>(
+    env: &E,
+    port: u16,
+    supervisor: &mut Supervisor,
+    clients: (af_providers::web::Parallel, af_providers::web::Exa),
+) -> Result<Booted, BootFailure> {
+    let mut config = preflight(env)?;
+    config.web_clients = Some(Box::new(clients));
+    let analytics = open_analytics(config.posthog()).await;
+    open(config, analytics, port, supervisor).await
+}

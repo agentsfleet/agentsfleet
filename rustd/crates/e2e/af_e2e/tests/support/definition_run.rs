@@ -32,7 +32,7 @@ const SETTLE_DEADLINE: Duration = Duration::from_secs(90);
 /// How often the event row is read while waiting.
 const SETTLE_POLL: Duration = Duration::from_millis(250);
 /// The statuses an event ends in (`af_core::turn::status`).
-const SETTLED: [&str; 3] = ["processed", "fleet_error", "gate_blocked"];
+const SETTLED: [&str; 4] = ["processed", "fleet_error", "gate_blocked", "waiting"];
 
 /// A settled event's answer, NULL when no run produced one.
 const ANSWER: &str = "SELECT answer_text FROM thread.turns \

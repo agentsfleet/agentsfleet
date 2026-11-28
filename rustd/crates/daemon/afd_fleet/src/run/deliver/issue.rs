@@ -114,7 +114,7 @@ impl RunService {
             )
             .await?;
         let (history, memory) = future::join(
-            history::turns(self.thread.as_ref(), &checked.acquired, checked.event_type),
+            self.assignment_history(checked, turn_resume.is_some()),
             self.window_for(&checked.acquired),
         )
         .await;

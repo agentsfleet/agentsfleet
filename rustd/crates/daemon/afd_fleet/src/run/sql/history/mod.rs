@@ -11,3 +11,9 @@ pub const SELECT_FINISHED_BEFORE: &str = include_str!("select_finished_before.sq
 ///
 /// `$1` workspace, `$2` fleet, `$3` the turn.
 pub const SELECT_CALLS_OF: &str = include_str!("select_calls_of.sql");
+
+/// A resolved host card's asking turn, bound to the continuation's ledger identity.
+pub(crate) const SELECT_HOST_ASKING_TURN: &str = include_str!("select_host_asking_turn.sql");
+
+/// The ledger's authenticated question-answer producer key.
+pub(crate) const SELECT_ANSWER_KEY: &str = include_str!("select_answer_key.sql");
