@@ -86,6 +86,7 @@ impl Fixture {
     /// A create of [`FIRST_MESSAGE`] under `operation`, on the owner's model.
     pub(super) fn request(&self, operation: &Uuid7) -> CreateFleetRequest {
         CreateFleetRequest {
+            images: Vec::new(),
             message: FIRST_MESSAGE.to_owned(),
             operation_id: operation.to_string(),
             model_ref: Some(self.model.to_string()),

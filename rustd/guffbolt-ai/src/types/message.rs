@@ -54,6 +54,13 @@ impl Replay {
 pub enum Message {
     /// What the model was asked.
     User(String),
+    /// What the model was asked, with images attached to that message.
+    UserImages {
+        /// The person's text.
+        text: String,
+        /// The images sent alongside it.
+        images: Vec<Image>,
+    },
     /// What the model answered and which tools it called.
     Assistant {
         /// The answer text of the step, possibly empty.
@@ -72,4 +79,16 @@ pub enum Message {
         /// An image the call read, for the model to see with the output.
         image: Option<Image>,
     },
+}
+
+impl Message {
+    /// A user message, keeping the plain text representation when it has no images.
+    #[must_use]
+    pub fn user_with_images(text: String, images: Vec<Image>) -> Self {
+        if images.is_empty() {
+            Self::User(text)
+        } else {
+            Self::UserImages { text, images }
+        }
+    }
 }

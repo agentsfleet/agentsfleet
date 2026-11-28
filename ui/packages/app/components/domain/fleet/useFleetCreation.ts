@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { createFleet } from "@/lib/api/fleet-client";
 import { definiteRefusal, RequestFailed, requestErrorMessage } from "@/lib/api/live-request";
 import { fleetMessageText } from "@/lib/chat-message-text";
+import { messageImages, sameMessageImages, type MessageImage } from "@/lib/api/message-images";
 import { mintOperationId } from "@/lib/streaming/operation-id";
 import { workspacePath } from "@/lib/workspace-routes";
 import { PENDING_SEND_STATE } from "../conversation/delivery/useFleetPendingSends";
@@ -23,7 +24,7 @@ export type FleetCreation = {
   dismiss: (operationId: string) => void;
 };
 
-type CreateOperation = {operationId: string; model: string | null};
+type CreateOperation = {operationId: string; model: string | null; images: readonly MessageImage[]};
 type PendingCreation = PendingSend & CreateOperation;
 
 const NO_PENDING: readonly PendingSend[] = [];
@@ -41,15 +42,15 @@ export function useFleetCreation(workspace: string, model: string | null): Fleet
   const onNew = useCallback(async (message: AppendMessage): Promise<void> => {
     const text = fleetMessageText(message);
     if (text.length === 0) return;
-    const operation = operationFor(latest.current, text, model);
+    const operation = operationFor(latest.current, text, model, messageImages(message));
     if (operation === null) {setError(MINT_UNAVAILABLE); throw new MessageNotSentError();}
-    if (!await create(operation, text)) throw new MessageNotSentError();
+    if (!await create(operation, text) && !operation.images.length) throw new MessageNotSentError();
   }, [create, latest, model, setError]);
 
   const resend = useCallback((operationId: string): void => {
     const entry = latest.current;
     if (entry?.operationId !== operationId) return;
-    const sendAs = operationFor(entry, entry.text, model);
+    const sendAs = operationFor(entry, entry.text, model, entry.images);
     if (sendAs === null) {setError(MINT_UNAVAILABLE); return;}
     void create(sendAs, entry.text);
   }, [create, latest, model, setError]);
@@ -79,17 +80,18 @@ function useCreateRequest(workspace: string) {
     return () => controller.abort();
   }, []);
   const remember = useCallback((entry: PendingCreation | null) => {latest.current = entry; setUnsent(entry);}, []);
-  const create = useCallback(async ({operationId, model}: CreateOperation, text: string): Promise<boolean> => {
+  const create = useCallback(async ({operationId, model, images}: CreateOperation, text: string): Promise<boolean> => {
     if (busy.current) return false;
     busy.current = true;
     setCreating(true); setError(null);
     try {
-      const created = await createFleet(workspace, {message: text, operation_id: operationId, ...(model === null ? {} : {model_ref: model})}, owner.current.signal);
+      const created = await createFleet(workspace, {message: text, operation_id: operationId,
+        ...(model === null ? {} : {model_ref: model}), ...(images.length ? {images} : {})}, owner.current.signal);
       remember(null);
       router.replace(workspacePath(workspace, `fleets/${encodeURIComponent(created.fleetId)}`));
       return true;
     } catch (cause) {
-      remember({operationId, model, text, submittedAtMs: Date.now(), state: outcomeOf(cause)});
+      remember({operationId, model, text, images, ...(images.length ? {hasImages: true} : {}), submittedAtMs: Date.now(), state: outcomeOf(cause)});
       setError(requestErrorMessage(cause));
       return false;
     } finally {
@@ -102,9 +104,9 @@ function useCreateRequest(workspace: string) {
 
 // An unconfirmed create may already exist. Replay the model and operation the
 // daemon saw so a switch in the picker keeps the original request recoverable.
-function operationFor(previous: PendingCreation | null, text: string, model: string | null): CreateOperation | null {
-  if (previous?.state === PENDING_SEND_STATE.UNKNOWN && previous.text === text) return previous;
-  try {return {operationId: mintOperationId(), model};} catch {return null;}
+function operationFor(previous: PendingCreation | null, text: string, model: string | null, images: readonly MessageImage[]): CreateOperation | null {
+  if (previous?.state === PENDING_SEND_STATE.UNKNOWN && previous.text === text && sameMessageImages(previous.images, images)) return previous;
+  try {return {operationId: mintOperationId(), model, images};} catch {return null;}
 }
 
 function outcomeOf(cause: unknown): PendingSend["state"] {

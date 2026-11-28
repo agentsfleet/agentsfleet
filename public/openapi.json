@@ -13552,7 +13552,7 @@
           "Fleets"
         ],
         "summary": "Start a fleet with its first message",
-        "description": "Creates an active fleet, its thread and its first turn in one transaction. The fleet runs on `model_ref`, or on the workspace's selected model when it is omitted. It is named `name`, or `fleet-` and the last 12 hex digits of its id. Its answer arrives on `GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/turns/stream`. Retry with the same `operation_id` and body to receive the same fleet with `replayed: true`. The same key with another body answers 409 `UZ-SETUP-005`. A key whose fleet was deleted answers 410 `UZ-SETUP-013`.",
+        "description": "Creates an active fleet, its thread and its first turn in one transaction. The fleet runs on `model_ref`, or on the workspace's selected model when it is omitted. It is named `name`, or `fleet-` and the last 12 hex digits of its id. Its answer arrives on `GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/turns/stream`. Retry with the same `operation_id` and body to receive the same fleet with `replayed: true`. The same key with another body answers 409 `UZ-SETUP-005`. A key whose fleet was deleted answers 410 `UZ-SETUP-013`. Invalid images return 400 `UZ-AGT-026`. A text-only model returns 409 `UZ-AGT-027`.",
         "operationId": "create_fleet",
         "parameters": [
           {
@@ -15435,7 +15435,7 @@
           "Fleets"
         ],
         "summary": "Post a chat message to a fleet",
-        "description": "Sends a message and returns its event identifier. Reuse `operation_id` with the same message and sender to retry without another run or charge. This remains safe after stopping or pausing the fleet.\n\nReusing it with different text or sender returns 409 `UZ-AGT-016`. Each person is one sender; workspace API keys share one sender. Without `operation_id`, every request creates a new message.",
+        "description": "Sends a message and returns its event identifier. Reuse `operation_id` with the same message and sender to retry without another run or charge. This remains safe after stopping or pausing the fleet.\n\nReusing it with different text or sender returns 409 `UZ-AGT-016`. Each person is one sender; workspace API keys share one sender. Without `operation_id`, every request creates a new message. An image message keeps its own turn when a run is active. Invalid images return 400 `UZ-AGT-026`. A text-only model returns 409 `UZ-AGT-027`.",
         "operationId": "post_fleet_message",
         "parameters": [
           {
@@ -20754,6 +20754,13 @@
           "operation_id"
         ],
         "properties": {
+          "images": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MessageImage"
+            },
+            "description": "Images accompanying the first message."
+          },
           "message": {
             "type": "string",
             "description": "What to say to the new fleet: 1 to 1,048,576 characters, with no NUL\ncharacter, counted on the decoded text."
@@ -25350,6 +25357,25 @@
           }
         }
       },
+      "MessageImage": {
+        "type": "object",
+        "description": "An image attached to a person or API client's message.",
+        "required": [
+          "media_type",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "string",
+            "description": "Standard base64; at most 5 MiB when decoded."
+          },
+          "media_type": {
+            "type": "string",
+            "description": "One of `image/png`, `image/jpeg`, `image/gif` and `image/webp`."
+          }
+        },
+        "additionalProperties": false
+      },
       "MessagePosted": {
         "type": "object",
         "description": "What posting a message did.",
@@ -28377,6 +28403,13 @@
           "message"
         ],
         "properties": {
+          "images": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MessageImage"
+            },
+            "description": "Images accompanying the message."
+          },
           "message": {
             "type": "string",
             "description": "What to say to the fleet: 1 to 1,048,576 characters, with no NUL\ncharacter.\n\nCounted on the decoded text, which is what reaches the stream. The\nescaped form a client sends is not what counts against the limit."
@@ -29146,6 +29179,10 @@
           "answer"
         ],
         "properties": {
+          "actor": {
+            "type": "string",
+            "description": "Who or what produced this turn, as stored on the thread."
+          },
           "answer": {
             "type": "string",
             "description": "The fleet's answer, or the fixed text a reply-less or failed run reads as."
@@ -29156,6 +29193,24 @@
               "$ref": "#/components/schemas/EarlierCall"
             },
             "description": "Every tool call the turn's run made, in the order it made them, as\n`thread.items` keeps them; empty for a turn that called none."
+          },
+          "event_type": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TurnKind",
+                "description": "How the turn entered the system. Earlier assignments may omit this field."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "images": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MessageImage"
+            },
+            "description": "Images that accompanied the person's message."
           },
           "message": {
             "type": "string",

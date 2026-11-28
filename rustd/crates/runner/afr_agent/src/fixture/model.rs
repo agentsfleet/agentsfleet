@@ -221,7 +221,7 @@ impl Replay {
     /// its task opens it, the main script's otherwise.
     fn turns_for(&self, first: Option<&Message>) -> &Turns {
         let opening = match first {
-            Some(Message::User(text)) => text
+            Some(Message::User(text) | Message::UserImages { text, .. }) => text
                 .split_once('\n')
                 .filter(|(source, _)| *source == guffbolt::HARNESS_TAG)
                 .map_or("", |(_, body)| body),

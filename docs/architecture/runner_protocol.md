@@ -138,6 +138,9 @@ Every `Down::Run` carries one turn of a fleet's thread. Its payload holds the fl
 
 The field `inputs_waiting` says whether a later message is already queued. When false, the run skips the fold request before its first model call.
 
+An image message enters through the assignment with its attachments in `event.request_json`. Chat history carries each earlier turn's `actor`, `event_type` and optional `images`.
+The runner keeps the attached images with their message and scales an image beyond 2,048 pixels on either side before sending it to an image-capable provider.
+
 A chat run reads and saves its thread's compacted context on the work stream, under its fence ([context lifecycle](context_lifecycle.md)). The runner makes every model call; the daemon makes none.
 
 Some run verbs stay HTTP routes under `/v1/runners/me/runs/{run_id}`, fenced by the run's token. They include access requests, trigger rows, task bindings and full tool records ([API resources](api_resources.md)).

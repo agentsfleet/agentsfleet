@@ -78,16 +78,16 @@ fn should_ask_the_events_message_under_the_fixed_text() {
 }
 
 #[test]
-fn a_runs_prompt_carries_the_turns_date_outside_the_digest() {
+fn a_runs_prompt_carries_the_turns_date_outside_the_digest() -> Result<(), jiff::Error> {
     let mut run = payload(&[], unbounded());
-    run.event.created_at = "2026-11-26T09:00:00Z".parse().expect("a fixture instant");
+    run.event.created_at = "2026-11-26T09:00:00Z".parse()?;
     let today = prompt(&run);
     assert!(
         today
             .instructions
             .ends_with("Today is Thursday, November 26, 2026 (UTC).")
     );
-    run.event.created_at = "2026-11-27T00:00:00Z".parse().expect("a fixture instant");
+    run.event.created_at = "2026-11-27T00:00:00Z".parse()?;
     let tomorrow = prompt(&run);
     assert!(
         tomorrow
@@ -96,6 +96,7 @@ fn a_runs_prompt_carries_the_turns_date_outside_the_digest() {
     );
     assert_eq!(today.fixed, tomorrow.fixed);
     assert!(!today.fixed.contains("Today is"));
+    Ok(())
 }
 
 #[test]

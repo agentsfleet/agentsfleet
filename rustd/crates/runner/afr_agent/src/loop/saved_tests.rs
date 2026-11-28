@@ -57,6 +57,7 @@ fn chat(count: u64) -> RunPayload<'static> {
     let mut run = payload(&[UPDATE_PLAN.name()], unbounded());
     run.history = (1..=count)
         .map(|sequence| Turn {
+            images: Vec::new(),
             sequence,
             actor: "steer:fixture".into(),
             event_type: Some(af_wire::turn::TurnKind::Chat),
@@ -264,7 +265,9 @@ fn texts(messages: &[Message]) -> Vec<&str> {
     messages
         .iter()
         .filter_map(|message| match message {
-            Message::User(text) | Message::Assistant { text, .. } => Some(text.as_str()),
+            Message::User(text)
+            | Message::UserImages { text, .. }
+            | Message::Assistant { text, .. } => Some(text.as_str()),
             Message::ToolResult { .. } => None,
         })
         .collect()

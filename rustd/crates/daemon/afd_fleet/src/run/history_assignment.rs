@@ -86,6 +86,11 @@ impl RunService {
             actor: Cow::Owned(actor),
             event_type: TurnKind::parse(&kind),
             message: Cow::Owned(message_of(&request).into_owned()),
+            images: if TurnKind::parse(&kind) == Some(TurnKind::Chat) {
+                af_wire::turn::images_of(&request)
+            } else {
+                Vec::new()
+            },
             calls,
             answer: Cow::Owned(answer),
         }])

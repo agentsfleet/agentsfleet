@@ -124,12 +124,12 @@ impl Model for FakeModel {
         let results = (request.messages.iter())
             .filter_map(|message| match message {
                 Message::ToolResult { output, .. } => Some(output.clone()),
-                Message::User(_) | Message::Assistant { .. } => None,
+                Message::User(_) | Message::UserImages { .. } | Message::Assistant { .. } => None,
             })
             .collect();
         let user = (request.messages.iter())
             .filter_map(|message| match message {
-                Message::User(text) => Some(text.clone()),
+                Message::User(text) | Message::UserImages { text, .. } => Some(text.clone()),
                 Message::ToolResult { .. } | Message::Assistant { .. } => None,
             })
             .collect();

@@ -28,14 +28,14 @@ type FleetThreadViewportProps = Omit<SteerComposerProps, "inputRef"> & {
 // Memoised: the thread re-renders on every streamed flush, and nothing this
 // shell draws moves with one. The messages below subscribe on their own.
 export const FleetThreadViewport = memo(function FleetThreadViewport({
-  turnsCount, connectionStatus, onRetry, pending, onResend, onDismiss, onRestored, onDraft, turnStop, modelLabel, archived = false,
+  turnsCount, connectionStatus, onRetry, pending, onResend, canResendImage, onDismiss, onRestored, onDraft, turnStop, modelLabel, archived = false,
 }: FleetThreadViewportProps) {
   const draft = useRef<HTMLTextAreaElement>(null);
   return <ChatThread testId="fleet-thread-root" label="Fleet chat" footer={<>
     {archived ? null : <><ChangesStrip /><WakeupStrip /></>}
     <FleetConnectionNotice status={connectionStatus} onRetry={onRetry} focusTarget={draft} />
     {archived ? <p className="flex items-center justify-center gap-md border-t border-border py-xl text-center text-label text-muted-foreground"><ArchiveIcon size={16} aria-hidden="true" />Archived · This fleet is permanently stopped. Its history is available to read.</p>
-      : <SteerComposer inputRef={draft} modelLabel={modelLabel} pending={pending} onResend={onResend} onDismiss={onDismiss} onRestored={onRestored} onDraft={onDraft} turnStop={turnStop} />}
+      : <SteerComposer inputRef={draft} modelLabel={modelLabel} pending={pending} onResend={onResend} canResendImage={canResendImage} onDismiss={onDismiss} onRestored={onRestored} onDraft={onDraft} turnStop={turnStop} />}
   </>}>
     <SettledReplyStatus><ChatHistory turnsCount={turnsCount} connectionStatus={connectionStatus} /></SettledReplyStatus>
   </ChatThread>;

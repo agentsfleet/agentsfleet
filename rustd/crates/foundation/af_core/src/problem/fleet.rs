@@ -277,6 +277,20 @@ pub(super) const FLEET: &[Problem] = &[
         user_message: None,
     },
     Problem {
+        code: error_code::MESSAGE_IMAGE_INVALID,
+        status: 400,
+        title: "Invalid message image",
+        hint: "Attach a valid PNG, JPEG, GIF or WebP of at most 5 MiB per image.",
+        user_message: None,
+    },
+    Problem {
+        code: error_code::MESSAGE_IMAGE_UNSUPPORTED,
+        status: 409,
+        title: "This model cannot receive images",
+        hint: "Choose a model that supports images, or remove the attachment and send again.",
+        user_message: None,
+    },
+    Problem {
         code: error_code::FLEET_STEER_SELF,
         status: 409,
         title: "Fleet cannot steer itself",

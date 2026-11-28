@@ -20,6 +20,8 @@ pub(crate) enum ErrorKind {
     Gone,
     #[error("the requested or selected model is unavailable")]
     Model,
+    #[error("the selected model cannot receive an attached image")]
+    ImageModel { model: String },
     #[error("the first message could not be recorded")]
     TurnWrite {
         #[from]

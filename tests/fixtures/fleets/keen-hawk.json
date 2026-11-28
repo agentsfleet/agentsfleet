@@ -1,0 +1,17 @@
+{
+  "name": "keen-hawk",
+  "journey": "image-message",
+  "about": "Looks at a picture attached to a message and identifies its colour.",
+  "first_message": "You describe images. Acknowledge in one sentence and wait for a picture.",
+  "follow_ups": [
+    "What single colour fills the attached picture?"
+  ],
+  "remembers": [],
+  "asks_for": [],
+  "wakes_on": [],
+  "steers": [],
+  "proves": [
+    "The answering model identifies the colour of the attached image and the turn retains the original image."
+  ],
+  "image_png": "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAb0lEQVR4nO3PAQkAAAyEwO9feoshgnABdLep8QUNyPEFDcjxBQ3I8QUNyPEFDcjxBQ3I8QUNyPEFDcjxBQ3I8QUNyPEFDcjxBQ3I8QUNyPEFDcjxBQ3I8QUNyPEFDcjxBQ3I8QUNyPEFDcjxBQ3IPanc8OLDQitxAAAAAElFTkSuQmCC"
+}

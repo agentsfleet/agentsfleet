@@ -139,7 +139,8 @@ pub(super) fn opening(
     mut saved: Option<&mut context::Saved>,
     history: &[Turn<'_>],
     calls: bool,
-) -> af_context::Result<Vec<Message>> {
+    image_input: bool,
+) -> crate::error::Result<Vec<Message>> {
     let mut messages = Vec::new();
     if let Some(summary) = saved.as_deref().and_then(context::Saved::summary) {
         messages.push(Message::User(summary.context()?));
@@ -149,11 +150,15 @@ pub(super) fn opening(
             continue;
         }
         let start = messages.len();
-        messages.push(Message::User(
-            scrub
-                .clean(turn_message(&turn.message, turn.event_type, &turn.actor))
-                .into_inner(),
-        ));
+        let text = scrub
+            .clean(turn_message(&turn.message, turn.event_type, &turn.actor))
+            .into_inner();
+        let images = if image_input {
+            super::message_images::decode(&turn.images)?
+        } else {
+            Vec::new()
+        };
+        messages.push(Message::user_with_images(text, images));
         let mut answer = String::new();
         for call in &turn.calls {
             if calls {

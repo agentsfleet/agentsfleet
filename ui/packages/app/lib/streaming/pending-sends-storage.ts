@@ -39,6 +39,8 @@ export type PendingSendOutcome =
 const PendingSendSchema = z.object({
   operationId: z.string(),
   text: z.string(),
+  hasImages: z.boolean().optional(),
+  errorDetail: z.string().optional(),
   state: z.enum([
     PENDING_SEND_STATE.SENDING,
     PENDING_SEND_STATE.REFUSED,

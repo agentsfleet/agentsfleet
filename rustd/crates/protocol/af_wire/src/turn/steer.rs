@@ -31,6 +31,11 @@ pub struct SteerRequest<'a> {
     #[garde(length(chars, min = 1, max = TEXT_MAX_CHARS), custom(nul_free))]
     pub message: Cow<'a, str>,
 
+    /// Images accompanying the message.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[garde(skip)]
+    pub images: Vec<super::MessageImage>,
+
     /// Your retry identifier, 1 to 2,647 bytes with no NUL character (U+0000).
     ///
     /// Reuse it with the same message and sender for one run and charge. Reuse with different

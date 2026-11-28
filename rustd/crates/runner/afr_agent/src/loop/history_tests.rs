@@ -31,6 +31,7 @@ fn with_history(turns: &[(&str, &str)]) -> RunPayload<'static> {
     run.history = (1..)
         .zip(turns)
         .map(|(sequence, (message, answer))| Turn {
+            images: Vec::new(),
             sequence,
             actor: "steer:fixture".into(),
             event_type: Some(TurnKind::Chat),

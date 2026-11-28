@@ -41,7 +41,10 @@ const PATCH_SENTENCES: Sentences = Sentences::new(&[("model_ref", DETAIL_MODEL_R
 /// A body that is not the create's shape, and the sentence of the first field
 /// out of its bound; a message past the ceiling answers the ceiling's own.
 pub(super) fn create(bytes: &[u8]) -> Result<Valid<CreateFleetRequest>, Refusal> {
-    let request: CreateFleetRequest = body(bytes)?;
+    // The route bounds the full body by the runner frame. The ordinary fleet
+    // patch parser keeps its smaller text-only envelope.
+    let request: CreateFleetRequest = af_core::json::object_from_slice(bytes)
+        .map_err(|_malformed| Refusal::malformed("Input violates the supported shape or bounds"))?;
     let message_empty = request.message.is_empty();
     let message_nul = nul_free(&request.message, &()).is_err();
     Unvalidated::new(request).validate().map_err(|report| {

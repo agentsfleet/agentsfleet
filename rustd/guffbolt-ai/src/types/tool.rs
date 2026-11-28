@@ -30,6 +30,14 @@ pub enum ImageKind {
 }
 
 impl ImageKind {
+    /// The supported kind for this exact media type.
+    #[must_use]
+    pub fn from_media_type(media_type: &str) -> Option<Self> {
+        [Self::Png, Self::Jpeg, Self::Gif, Self::Webp]
+            .into_iter()
+            .find(|kind| kind.media_type() == media_type)
+    }
+
     /// The media type the kind is named by.
     #[must_use]
     pub const fn media_type(self) -> &'static str {

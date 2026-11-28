@@ -18,7 +18,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Status:** IN_PROGRESS
 
-**Progress:** 20 of 30 dimensions complete. Guidance, sender provenance, date, network and working directory, the stable prefix, task input defaults, text-only model handling the standalone tool changes and the tool description examples passed their tests. [Implementation PR](https://github.com/agentsfleet/agentsfleet/pull/874)
+**Progress:** 25 of 30 dimensions complete. The image message, model refusal, API bounds, dashboard and command-line paths passed their focused checks. Live image acceptance remains open. The browser dimensions depend on M258 and the M259_001 Firecracker spike. [Implementation PR](https://github.com/agentsfleet/agentsfleet/pull/874)
 
 **Priority:** P1, every run is told about tools it may not hold, and a webhook body reads as the person's own message
 
@@ -264,15 +264,15 @@ Neither fix changes a fleet today. `grep` is not in the runner's catalog (`afr_t
 
 `POST F/messages` and `POST W/fleets` take `images`, and the turn's request body keeps them beside `message`, so Postgres holds them. The web composer, `agentsfleet fleet create --image <path>` and `fleet steer --image <path>` send them. The runner puts them in the run's first user message on Messages, Responses, Gemini and Ollama.
 
-A fleet whose model is on the Chat wire refuses the message, since Chat takes text alone. **Implementation default:** the composer attaches an image to the message, and any other file keeps today's preview upload.
+A fleet whose model is on the Chat wire refuses the message, since Chat takes text alone. The composer sends supported image kinds with the message. Other files keep the preview upload. An image message queued during a run starts a turn of its own. The browser keeps image bytes in memory for retry, while the pending-send record retains the operation and the attachment marker across reloads.
 
 **Bounds, each forced by a provider or a transport.** Each image is PNG, JPEG, GIF or WebP, the kinds the wires take (`guffbolt/src/tools/files/image.rs`). Each is at most 5 MiB decoded, the Messages wire's cap (`guffbolt/src/tools/limits.rs:43-45`). The runner scales a side past 2048 pixels, and the route's body limit is the runner frame, 32 MiB (`af_wire/src/protocol/mod.rs:29`).
 
-- **Dimension 9.1** — an image reaches the model → Test `a_message_with_an_image_reaches_the_model` (integration, a fake Messages provider): `POST F/messages {message, images:[a PNG]}` → the turn keeps it. The run's first request carries it as an image block in the user message.
-- **Dimension 9.2** — a model that cannot see is refused → Test `an_image_for_a_model_that_takes_none_is_refused` (integration): a fleet on a Chat-wire model → 409 with the new code naming the model, and no turn.
-- **Dimension 9.3** — the bounds hold → Test `a_message_image_past_the_wire_bounds_is_refused` (integration): a 6 MiB PNG, a TIFF, and bytes that do not decode as their kind → 400 naming the bound, and no turn.
-- **Dimension 9.4** — the web app sends it → Test `the composer sends an attached image` (unit, vitest, `SteerComposer.test.tsx`): attach a PNG and send → one `POST F/messages` whose `images` holds it. A 6 MiB file is refused before sending.
-- **Dimension 9.5** — the CLI sends it → Test `fleet steer --image sends the file` (unit, handler, `cli/test/`): `--image shot.png` → the request's `images` carries it in base64. A missing file → exit 4 and no request.
+- **Dimension 9.1** — DONE. The daemon stores the original PNG in the acknowledged turn in `integration_message_images`. The runner's `a_message_with_an_image_reaches_the_model` checks the first HTTP request to a fake Messages provider for the same PNG in a user image block.
+- **Dimension 9.2** — DONE. `integration_message_images` selects a registered Chat-wire model. A fresh image request returns 409 `UZ-AGT-027` and names the model. The ledger keeps one turn, and an exact retry of the earlier successful operation still returns that turn.
+- **Dimension 9.3** — DONE. The full HTTP harness rejects a 6 MiB PNG, TIFF and corrupt PNG with 400 `UZ-AGT-026` before admission. Test `a_message_image_past_the_wire_bounds_is_refused` in the tenant plane.
+- **Dimension 9.4** — DONE. Desktop and mobile Playwright check the first-message and existing-fleet composers, the 6 MiB refusal before sending, and a retry with the same attachment bytes and operation ID. The app's steer route forwards the attachment.
+- **Dimension 9.5** — DONE. `fleet-steer.integration.test.ts` checks that `--image picture.png` sends the original image in base64 and that a missing file exits 4 before making a request. `fleet create --image` uses the same file reader.
 - **Dimension 9.6** — the real path → Test `prime-keen-hawk.spec.ts` (e2e, `make acceptance`, fixture `keen-hawk`, a Messages-wire model): a person attaches a 64-pixel PNG filled red and asks its colour. The answer names red, and the turn holds the image.
 
 ## Interfaces

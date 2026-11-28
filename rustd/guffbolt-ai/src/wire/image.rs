@@ -27,9 +27,13 @@ const fn media_type(kind: ImageKind) -> ImageMediaType {
 /// `image` as rig carries it inside a tool result: base64, under its media
 /// type, with no detail hint, so each wire applies its own default.
 pub(crate) fn content(image: &Image) -> ToolResultContent {
-    ToolResultContent::Image(rig_core::message::Image {
+    ToolResultContent::Image(encoded(image))
+}
+
+pub(crate) fn encoded(image: &Image) -> rig_core::message::Image {
+    rig_core::message::Image {
         data: DocumentSourceKind::Base64(BASE64_STANDARD.encode(&image.data)),
         media_type: Some(media_type(image.kind)),
         ..rig_core::message::Image::default()
-    })
+    }
 }

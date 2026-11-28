@@ -11,3 +11,5 @@
  * buffers this much of one request body (`proxyClientMaxBodySize`): past it,
  * Next hands the route a truncated body without an error. */
 export const TEXT_BODY_LIMIT_BYTES = 12_599_296;
+/** New and existing fleet messages share the runner frame's 32 MiB body cap. */
+export const CHAT_BODY_LIMIT_BYTES = 32 * 1024 * 1024;

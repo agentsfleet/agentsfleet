@@ -124,6 +124,8 @@ export const ERROR_CODE = {
   /** A steer's operation id already names another message. Mirrors
    * `AGENTSFLEET_OPERATION_CONFLICT` in `rustd/crates/foundation/af_core/src/error_code/fleet.rs`. */
   AGENTSFLEET_OPERATION_CONFLICT: "UZ-AGT-016",
+  MESSAGE_IMAGE_INVALID: "UZ-AGT-026",
+  MESSAGE_IMAGE_UNSUPPORTED: "UZ-AGT-027",
   /** The target fleet is absent from this workspace. Mirrors
    * `AGENTSFLEET_NOT_FOUND` in `rustd/crates/foundation/af_core/src/error_code/fleet.rs`. */
   AGENTSFLEET_NOT_FOUND: "UZ-AGT-009",

@@ -17,6 +17,10 @@ pub struct CreateFleetRequest {
     /// character, counted on the decoded text.
     #[garde(length(chars, min = 1, max = TEXT_MAX_CHARS), custom(nul_free))]
     pub message: String,
+    /// Images accompanying the first message.
+    #[serde(default)]
+    #[garde(skip)]
+    pub images: Vec<af_wire::turn::MessageImage>,
     /// Required retry identifier: a version 7 universally unique identifier
     /// (UUID). A retry with the same `operation_id` and request answers the
     /// first fleet; the same key with other text answers 409 `UZ-SETUP-005`.

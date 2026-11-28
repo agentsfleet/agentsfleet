@@ -5,7 +5,8 @@ import { SteerComposer } from "./SteerComposer";
 import { PENDING_SEND_STATE, type PendingSend } from "../delivery/useFleetPendingSends";
 
 const { composer, aui } = vi.hoisted(() => {
-  const state: {text: string; isEmpty: boolean; quote?: {text: string}} = { text: "", isEmpty: true };
+  const state: {text: string; isEmpty: boolean; quote?: {text: string}; attachments: Array<{type: string}>} =
+    { text: "", isEmpty: true, attachments: [] };
   const setText = vi.fn((text: string) => {
     state.text = text;
     state.isEmpty = text.length === 0;
@@ -201,7 +202,7 @@ describe("SteerComposer", () => {
     expect(composer.setText).toHaveBeenCalledExactlyOnceWith("deploy the canary");
   });
 
-  it("creates a fleet from the first message: its own placeholder and label, an inline mention, and no upload", () => {
+  it("creates a fleet from the first message with its own placeholder, label and inline mention", () => {
     render(<SteerComposer creating pending={[]} onResend={noop} onDismiss={noop} onRestored={noop} onDraft={noop} />);
     expect(screen.getByRole("textbox").getAttribute("placeholder")).toBe("What would you like your fleet to do?");
     expect(screen.getByLabelText("New fleet composer")).toBeTruthy();

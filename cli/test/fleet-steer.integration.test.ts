@@ -6,8 +6,12 @@
 // Part 2 (error paths, poll, REPL) lives in fleet-steer-errors.integration.test.ts.
 
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, unlink, rmdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Effect, Exit } from "effect";
 import { runCli } from "../src/cli.ts";
+import keenHawk from "../../tests/fixtures/fleets/keen-hawk.json" with { type: "json" };
 import { steerEffectFromArgs } from "../src/commands/fleet/steer.ts";
 import {
   KIND_CHUNK,
@@ -52,6 +56,34 @@ describe("steer — empty message validation via CLI (lines 340-345)", () => {
       });
     });
   });
+});
+
+test("fleet steer --image sends the file and a missing file exits 4", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "agentsfleet-keen-hawk-"));
+  const path = join(directory, "picture.png");
+  try {
+    await authedScope(async () => {
+      await withMockApi({}, async (apiUrl, calls) => {
+        const output = bufferStream();
+        const code = await runCli(["fleet", "steer", FLEET_ID, "What colour?", "--image", path],
+          {stdout: output.stream, stderr: output.stream, env: cliEnv({AGENTSFLEET_API_URL: apiUrl})});
+        expect(code).toBe(4);
+        expect(calls).toHaveLength(0);
+      });
+    });
+    await Bun.write(path, Buffer.from(keenHawk.image_png, "base64"));
+    const rec = makeRecorder();
+    const events = [{id: null, type: KIND_TURN_COMPLETE, data: {turn_id: TURN_ID, status: TURN_STATUS.PROCESSED}}];
+    await Effect.runPromise(steerEffectFromArgs(FLEET_ID, "What colour?", {image: path}, {
+      stdin: streamFrom([], false), stdout: nullOutput(), streamGet: eventStream(events),
+    }).pipe(Effect.provide(makeLayer(rec))));
+    expect(rec.requests.find(request => request.method === POST)?.body).toEqual({
+      message: "What colour?", images: [{media_type: "image/png", data: keenHawk.image_png}],
+    });
+  } finally {
+    await unlink(path).catch(() => undefined);
+    await rmdir(directory);
+  }
 });
 
 // ── Unit: undefined fleet_id validation (lines 284-286) ──────────────────

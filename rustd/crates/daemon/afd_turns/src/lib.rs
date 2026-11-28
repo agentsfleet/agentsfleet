@@ -12,6 +12,8 @@ mod backlog;
 pub mod budget;
 mod confirm;
 pub mod error;
+mod image_input;
+pub use image_input::ImageModelLookup;
 mod incoming;
 mod repeat;
 mod run_facts;

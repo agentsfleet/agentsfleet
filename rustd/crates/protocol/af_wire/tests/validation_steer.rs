@@ -23,12 +23,14 @@ use crate::validation::of_len;
 #[test]
 fn a_steer_request_bounds_its_message_and_its_optional_operation_id() {
     let at_limit = SteerRequest {
+        images: Vec::new(),
         message: Cow::Owned(of_len(TEXT_MAX_CHARS)),
         operation_id: Some(Cow::Owned(of_len(OPERATION_ID_MAX_BYTES))),
     };
     assert!(at_limit.validate().is_ok(), "a steer at its limits");
 
     let wide_at_limit = SteerRequest {
+        images: Vec::new(),
         message: Cow::Owned("é".repeat(TEXT_MAX_CHARS)),
         operation_id: None,
     };
@@ -38,36 +40,42 @@ fn a_steer_request_bounds_its_message_and_its_optional_operation_id() {
     );
 
     let absent_id = SteerRequest {
+        images: Vec::new(),
         message: Cow::Borrowed("restart the run"),
         operation_id: None,
     };
     assert!(absent_id.validate().is_ok(), "an absent operation id");
 
     let long_message = SteerRequest {
+        images: Vec::new(),
         message: Cow::Owned(of_len(TEXT_MAX_CHARS + 1)),
         operation_id: None,
     };
     assert!(long_message.validate().is_err(), "a message past its cap");
 
     let empty_message = SteerRequest {
+        images: Vec::new(),
         message: Cow::Borrowed(""),
         operation_id: None,
     };
     assert!(empty_message.validate().is_err(), "an empty message");
 
     let long_id = SteerRequest {
+        images: Vec::new(),
         message: Cow::Borrowed("restart the run"),
         operation_id: Some(Cow::Owned(of_len(OPERATION_ID_MAX_BYTES + 1))),
     };
     assert!(long_id.validate().is_err(), "an operation id past its cap");
 
     let empty_id = SteerRequest {
+        images: Vec::new(),
         message: Cow::Borrowed("restart the run"),
         operation_id: Some(Cow::Borrowed("")),
     };
     assert!(empty_id.validate().is_err(), "a present but empty id");
 
     let nul_id = SteerRequest {
+        images: Vec::new(),
         message: Cow::Borrowed("restart the run"),
         operation_id: Some(Cow::Borrowed("op\u{0}1")),
     };
@@ -90,12 +98,14 @@ fn a_steer_request_refuses_an_unknown_field() {
 fn test_steer_message_holding_nul_is_refused() {
     for message in ["\u{0}", "ship\u{0}it", "ship it\u{0}"] {
         let holding = SteerRequest {
+            images: Vec::new(),
             message: Cow::Borrowed(message),
             operation_id: None,
         };
         assert!(holding.validate().is_err(), "{message:?} holds NUL");
     }
     let clean = SteerRequest {
+        images: Vec::new(),
         message: Cow::Borrowed("ship it \u{2728}"),
         operation_id: None,
     };

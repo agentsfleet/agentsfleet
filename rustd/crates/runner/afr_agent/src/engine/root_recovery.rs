@@ -87,7 +87,9 @@ impl RootRecovery {
 /// that held one is dropped, since its signature cannot survive the edit.
 fn scrubbed(message: &mut Message, scrub: &af_secrets::Scrub, changed: bool) -> Result<()> {
     match message {
-        Message::User(text) | Message::ToolResult { output: text, .. } => {
+        Message::User(text)
+        | Message::UserImages { text, .. }
+        | Message::ToolResult { output: text, .. } => {
             *text = scrub.text(text).into_owned();
         }
         Message::Assistant {

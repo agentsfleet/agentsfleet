@@ -7,7 +7,7 @@
 // a test set `Origin` and `Host`.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { TEXT_BODY_LIMIT_BYTES } from "@/lib/api/body-limits";
+import { CHAT_BODY_LIMIT_BYTES, TEXT_BODY_LIMIT_BYTES } from "@/lib/api/body-limits";
 import { ApiError } from "@/lib/api/errors";
 import { steerMessagesUrl } from "@/lib/api/fleets-types";
 import { ERROR_CODE } from "@/lib/errors";
@@ -135,7 +135,7 @@ describe("steer route — what it refuses before minting", () => {
   });
 
   it("refuses a body larger than the daemon reads, declared or streamed", async () => {
-    const tooLong = "x".repeat(TEXT_BODY_LIMIT_BYTES + 1);
+    const tooLong = "x".repeat(CHAT_BODY_LIMIT_BYTES + 1);
     // Declared: refused on the header, before a byte of the body is read.
     const declared = steerRequest({ headers: { "Content-Length": String(tooLong.length) } });
     await expectRefused(await post(declared), HTTP.TOO_LARGE);
@@ -163,6 +163,14 @@ describe("steer route — what it refuses before minting", () => {
 });
 
 describe("steer route — what it passes on", () => {
+  it("forwards each attachment with the same operation id", async () => {
+    steerFleetMock.mockResolvedValueOnce(ACCEPTED);
+    const message = {...STEER, images: [{media_type: "image/png", data: "iVBORw0KGgo="}]};
+    const response = await post(steerRequest({body: JSON.stringify(message)}));
+    expect(response.status).toBe(HTTP.ACCEPTED);
+    expect(steerFleetMock).toHaveBeenCalledExactlyOnceWith(WS, FLEET, message, TOKEN);
+  });
+
   it("mints the bearer and answers the daemon's 202, uncached", async () => {
     steerFleetMock.mockResolvedValueOnce(ACCEPTED);
     const res = await post(steerRequest({ headers: { "Content-Type": "application/json; charset=utf-8" } }));

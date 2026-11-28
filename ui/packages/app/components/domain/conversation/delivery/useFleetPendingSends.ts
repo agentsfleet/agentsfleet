@@ -24,7 +24,7 @@ export { PENDING_SEND_STATE, type LedgerScope, type PendingSend, type PendingSen
 export type PendingSendWriters = {
   begin: (send: Omit<PendingSend, "state">) => void;
   settle: (operationId: string) => void;
-  fail: (operationId: string, state: PendingSendOutcome) => void;
+  fail: (operationId: string, state: PendingSendOutcome, errorDetail?: string) => void;
   dismiss: (operationId: string) => void;
   /** One entry, read from the ledger rather than from the last render. */
   find: (operationId: string) => PendingSend | undefined;
@@ -49,7 +49,7 @@ export function useFleetPendingSends({ subject, workspaceId, fleetId }: LedgerSc
     () => ({
       begin: (send) => beginPendingSend(scope, send),
       settle: (operationId) => settlePendingSend(scope, operationId),
-      fail: (operationId, state) => failPendingSend(scope, operationId, state),
+      fail: (operationId, state, errorDetail) => failPendingSend(scope, operationId, state, errorDetail),
       dismiss: (operationId) => dismissPendingSend(scope, operationId),
       find: (operationId) => findPendingSend(scope, operationId),
       list: () => getPendingSends(scope),

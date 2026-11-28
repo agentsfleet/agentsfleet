@@ -46,6 +46,7 @@ export type SteerComposerProps = {
   /** The fleet's ledger of unresolved sends; the notice lists every one not in flight. */
   pending: readonly PendingSend[];
   onResend: (operationId: string) => void;
+  canResendImage?: (operationId: string) => boolean;
   onDismiss: (operationId: string) => void;
   /** The composer put this send's text back on mount, so a Send of it unchanged is that send again. */
   onRestored: (operationId: string, text: string) => void;
@@ -58,7 +59,7 @@ export type SteerComposerProps = {
   sendError?: string | null;
 };
 
-export function SteerComposer({ pending, onResend, onDismiss, onRestored, onDraft, turnStop, modelLabel = "Saved model", creating = false, sendError, inputRef }: SteerComposerProps) {
+export function SteerComposer({ pending, onResend, canResendImage, onDismiss, onRestored, onDraft, turnStop, modelLabel = "Saved model", creating = false, sendError, inputRef }: SteerComposerProps) {
   const modelChanging = useFleetModelChoice()?.changing ?? false;
   const unresolved = useMemo(
     () => pending.filter((entry) => !NOT_NOTICED.has(entry.state)),
@@ -75,16 +76,16 @@ export function SteerComposer({ pending, onResend, onDismiss, onRestored, onDraf
       input={<FleetAddressInput inline={creating} inputRef={draftRef} disabled={modelChanging} placeholder={creating ? NEW_FLEET_PLACEHOLDER : PLACEHOLDER} />}
       toolbar={<>
         <div className="flex shrink-0 items-center gap-sm">
-          {creating ? null : <AddUploadPreview />}
+          <AddUploadPreview imageOnly={creating} />
           <FleetMentionButton inline={creating} input={draftRef} disabled={modelChanging} />
         </div>
         <FleetModelSelect label={modelLabel} />
       </>}
       actions={<>{turnStop?.visible ? <ChatStopButton label={STOP_LABEL} disabled={turnStop.stopping} onClick={turnStop.stop} /> : null}<SendButton draftRef={draftRef} /></>}>
         <PendingSendNotices entries={unresolved} onResend={onResend} onDismiss={onDismiss} draftRef={draftRef}
-          retryLabel={creating ? "Resend" : RETRY_LABEL} sendError={sendError} />
+          retryLabel={creating ? "Resend" : RETRY_LABEL} sendError={sendError} canResendImage={canResendImage} />
         <DraftReporter onDraft={onDraft} />
-        {creating ? null : <ComposerUploadAttachments />}
+        <ComposerUploadAttachments />
 
     </ChatComposerFrame>
     <ChatComposerHint />
@@ -109,7 +110,7 @@ function useRestoreRefusedTextOnMount(
     if (restoredFor.current === onRestored) return;
     restoredFor.current = onRestored;
     const newest = unresolved.at(-1);
-    if (newest === undefined) return;
+    if (newest === undefined || newest.hasImages) return;
     const composer = aui.composer();
     if (!composer.getState().isEmpty) return;
     composer.setText(newest.text);
@@ -134,6 +135,8 @@ function useRestoreRefusedTextOnMount(
  */
 function SendButton({ draftRef }: { draftRef: RefObject<HTMLTextAreaElement | null> }) {
   const modelChanging = useFleetModelChoice()?.changing ?? false;
+  const needsText = useAuiState(state => !state.composer.text.trim()
+    && state.composer.attachments.some(file => file.type === "image"));
   return (
     <ComposerPrimitive.Send asChild>
       <Button
@@ -143,7 +146,7 @@ function SendButton({ draftRef }: { draftRef: RefObject<HTMLTextAreaElement | nu
         aria-label={SEND_LABEL}
         className="shrink-0 self-end rounded-full disabled:border-transparent disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100 pointer-coarse:min-h-11 pointer-coarse:min-w-11 [&_svg]:size-4.5"
         onClick={() => draftRef.current?.focus({preventScroll: true})}
-        {...(modelChanging ? { disabled: true } : {})}
+        {...(modelChanging || needsText ? { disabled: true } : {})}
       >
         <ArrowUpIcon size={18} aria-hidden="true" />
       </Button>
@@ -166,7 +169,7 @@ function useComposerPayload(): string {
   return useMemo(() => fleetComposerText({text, quote}), [text, quote]);
 }
 
-type NoticeProps = Pick<SteerComposerProps, "onResend" | "onDismiss"> & {
+type NoticeProps = Pick<SteerComposerProps, "onResend" | "canResendImage" | "onDismiss"> & {
   draftRef: RefObject<HTMLTextAreaElement | null>;
   retryLabel: string;
   sendError?: string | null;
@@ -198,10 +201,11 @@ function PendingSendNotices({ entries, ...actions }: { entries: readonly Pending
 // the first, and nothing answered for the second. A conflict's id is spent, so
 // its button sends the text as a new message rather than offering a Resend
 // that could only be refused again.
-function PendingSendNotice({ entry, onResend, onDismiss, draftRef, retryLabel, sendError }: { entry: PendingSend } & NoticeProps) {
+function PendingSendNotice({ entry, onResend, canResendImage, onDismiss, draftRef, retryLabel, sendError }: { entry: PendingSend } & NoticeProps) {
   const aui = useAui();
   const draftMatches = useComposerPayload() === entry.text;
   const modelChanging = useFleetModelChoice()?.changing ?? false;
+  const imagesUnavailable = entry.hasImages && canResendImage?.(entry.operationId) === false;
   const textId = useId();
   // Sign-in returns to this fleet, where the notice's Resend is waiting.
   const pathname = usePathname();
@@ -230,7 +234,8 @@ function PendingSendNotice({ entry, onResend, onDismiss, draftRef, retryLabel, s
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-lg gap-y-xs">
         <span className="min-w-0">
           <span className="block">{sentenceFor(entry)}</span>
-          {sendError ? <span className="block wrap-anywhere">{sendError}</span> : null}
+          {entry.errorDetail || sendError ? <span className="block wrap-anywhere">{entry.errorDetail ?? sendError}</span> : null}
+          {imagesUnavailable ? <span className="block">The attachment is unavailable in this tab.</span> : null}
           <span id={textId} className={draftMatches ? "sr-only" : "block truncate text-foreground"}>{entry.text}</span>
         </span>
         {entry.state === PENDING_SEND_STATE.SESSION ? (
@@ -238,10 +243,10 @@ function PendingSendNotice({ entry, onResend, onDismiss, draftRef, retryLabel, s
             <Link href={signInPath(pathname)}>{SIGN_IN_LABEL}</Link>
           </Button>
         ) : null}
-        <Button type="button" variant="link" size="sm" className="min-h-8 px-sm text-primary pointer-coarse:min-h-11"
+        {imagesUnavailable ? null : <Button type="button" variant="link" size="sm" className="min-h-8 px-sm text-primary pointer-coarse:min-h-11"
           disabled={modelChanging} onClick={resend} aria-describedby={textId}>
           {conflict ? SEND_AS_NEW_LABEL : <><ClockClockwiseIcon size={16} aria-hidden="true" />{retryLabel}</>}
-        </Button>
+        </Button>}
       </div>
     </Alert>
   );

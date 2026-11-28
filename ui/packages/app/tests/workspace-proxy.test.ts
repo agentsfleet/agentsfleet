@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { matchWorkspaceRoute } from "@/lib/api/workspace-proxy/path";
-import { TEXT_BODY_LIMIT_BYTES } from "@/lib/api/body-limits";
+import { CHAT_BODY_LIMIT_BYTES } from "@/lib/api/body-limits";
 import { PROXY_DETAIL, PROXY_REQUEST_ID_HEADER } from "@/lib/api/workspace-proxy/response";
 import { APP_ORIGIN, FLEET_ID, GRANT_ID, SCHEDULE_ID, TRIGGER_ID, TURN_ID, WORKSPACE, response } from "./helpers/fleet-fixtures";
 
@@ -51,8 +51,8 @@ describe("workspace proxy", () => {
   });
   it("refuses a non-JSON or oversized mutation before minting", async () => {
     expect((await proxy(["fleets"], {method: METHOD.post, headers: {"Content-Type": "text/plain"}})).status).toBe(415);
-    expect((await proxy(["fleets"], {method: METHOD.post, headers: {"Content-Length": String(TEXT_BODY_LIMIT_BYTES + 1)}})).status).toBe(413);
-    expect((await proxy(["fleets"], {method: METHOD.post, body: "x".repeat(TEXT_BODY_LIMIT_BYTES + 1)})).status).toBe(413);
+    expect((await proxy(["fleets"], {method: METHOD.post, headers: {"Content-Length": String(CHAT_BODY_LIMIT_BYTES + 1)}})).status).toBe(413);
+    expect((await proxy(["fleets"], {method: METHOD.post, body: "x".repeat(CHAT_BODY_LIMIT_BYTES + 1)})).status).toBe(413);
     expect(credential).not.toHaveBeenCalled();
   });
   it("forwards a schedule sync retry with no body and no JSON media type", async () => {

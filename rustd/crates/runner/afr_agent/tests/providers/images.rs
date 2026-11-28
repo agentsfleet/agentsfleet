@@ -1,5 +1,5 @@
 //! An image a tool read rides the next turn inside the call's result, on the
-//! wires that take one; on the chat wire the call is refused before any read.
+//! wires that take one. A person's picture arrives with their own words.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -10,6 +10,7 @@ use afr_agent::Loop;
 use afr_agent::ResultOutcome;
 use afr_tools::Catalog;
 use afr_tools::catalog::IMAGE;
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde_json::json;
 
 use super::support::wires::Wire;
@@ -104,28 +105,40 @@ async fn test_image_attaches_to_next_turn() {
     }
 }
 
-/// Chat completions take no image with a tool result, so the call is refused
-/// before any read and its result goes back as text alone.
+/// The runner withholds image tools from text-only models.
 #[tokio::test]
-async fn an_image_call_on_the_chat_wire_is_refused_before_any_read() {
-    let (_scratch, client) = workspace_with_shot().await;
+async fn the_chat_wire_is_not_offered_the_image_tool() {
     let wire = Wire::Chat;
-    let mut fake = Fake::serve(vec![
-        wire.call(CALL_ID, IMAGE.name(), &json!({"path": SHOT})),
-        wire.answer(ANSWER),
-    ])
-    .await;
+    let mut fake = Fake::serve(vec![wire.answer(ANSWER)]).await;
     let assigned = payload(&wire.provider(), &[IMAGE.name()], "look at the screenshot");
-
-    let (output, _frames) = run_with(&hosting(&fake), &assigned, Some(&client)).await;
-
-    let trace = output.trace.unwrap();
-    assert_eq!(trace.calls[0].status, ToolCallStatus::Failed);
+    let (output, _frames) = run_with(&hosting(&fake), &assigned, None).await;
+    assert!(matches!(output.result.outcome, ResultOutcome::Completed(_)));
     let seen = fake.seen();
-    let results = wire.results(&seen[1].body);
-    assert!(
-        results[0].starts_with("[image_input_unavailable] "),
-        "the refusal goes back as the call's text: {results:?}"
+    assert!(!seen[0].body.to_string().contains("\"name\":\"image\""));
+}
+
+#[tokio::test]
+async fn a_message_with_an_image_reaches_the_model() {
+    let wire = Wire::Messages;
+    let mut fake = Fake::serve(vec![wire.answer(ANSWER)]).await;
+    let mut assigned = payload(&wire.provider(), &[], "What colour is the attached image?");
+    let data = STANDARD.encode(real_image(image::ImageFormat::Png, 0));
+    assigned.event.request_json = json!({
+        "message": "What colour is the attached image?",
+        "images": [{"media_type": "image/png", "data": data}],
+    })
+    .to_string()
+    .into();
+    let (output, _frames) = run_with(&hosting(&fake), &assigned, None).await;
+    assert!(matches!(output.result.outcome, ResultOutcome::Completed(_)));
+    let seen = fake.seen();
+    let message = seen[0].body["messages"].as_array().unwrap().last().unwrap();
+    assert_eq!(message["role"], "user");
+    assert_eq!(
+        message["content"][0]["text"],
+        "What colour is the attached image?"
     );
-    assert_eq!(wire.images(&seen[1].body), [] as [String; 0]);
+    assert_eq!(message["content"][1]["type"], "image");
+    assert_eq!(message["content"][1]["source"]["media_type"], "image/png");
+    assert_eq!(message["content"][1]["source"]["data"], data);
 }

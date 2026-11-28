@@ -116,7 +116,7 @@ function OwnedFleetThread(props: FleetThreadProps) {
                 archived={props.archived}
                 turnsCount={stream.turns.length + previewCount} connectionStatus={connectionStatus}
                 onRetry={stream.retryConnection} pending={ledger.pending} onResend={delivery.resend}
-                onDismiss={ledger.writers.dismiss} onRestored={delivery.noteRestored} onDraft={delivery.noteDraft} turnStop={turnStop} /></FleetConversationLayout>
+                canResendImage={delivery.canResendImage} onDismiss={delivery.dismiss} onRestored={delivery.noteRestored} onDraft={delivery.noteDraft} turnStop={turnStop} /></FleetConversationLayout>
               </FleetDurableTaskProvider>
             </DashboardPanel>
           </SenderNamesProvider>

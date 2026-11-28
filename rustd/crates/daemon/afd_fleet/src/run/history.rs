@@ -272,11 +272,17 @@ pub(super) fn turn(row: FinishedTurn, calls: Vec<CallRow>) -> Option<Turn<'stati
         }
         _unfinished => return None,
     };
+    let event_type = TurnKind::parse(&row.kind);
     Some(Turn {
         sequence: u64::try_from(row.sequence).unwrap_or_default(),
         actor: Cow::Owned(row.actor),
-        event_type: TurnKind::parse(&row.kind),
+        event_type,
         message: Cow::Owned(message_of(&row.request_json).into_owned()),
+        images: if event_type == Some(TurnKind::Chat) {
+            af_wire::turn::images_of(&row.request_json)
+        } else {
+            Vec::new()
+        },
         calls: calls.into_iter().filter_map(call).collect(),
         answer: Cow::Owned(answer),
     })

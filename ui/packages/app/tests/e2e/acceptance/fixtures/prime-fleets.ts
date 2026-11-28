@@ -19,6 +19,7 @@ export const PRIME_FLEET = {
   morningRooster: "morning-rooster",
   carefulSquirrel: "careful-squirrel",
   curiousOtter: "curious-otter",
+  keenHawk: "keen-hawk",
   nightOwl: "night-owl",
   queenBee: "queen-bee",
   busyBee: "busy-bee",
@@ -45,6 +46,7 @@ const PrimeFleetSchema = z.strictObject({
   wakes_on: z.array(Wake), steers: z.array(Text), proves: z.array(Text).min(1),
   // The one repository a fleet that works on GitHub is given, as `owner/name`.
   repository: Text.optional(),
+  image_png: Text.optional(),
 });
 export type PrimeFleet = z.infer<typeof PrimeFleetSchema>;
 type Wake = z.infer<typeof Wake>;

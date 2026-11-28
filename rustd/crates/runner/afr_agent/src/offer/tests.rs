@@ -47,7 +47,8 @@ fn the_offered_tool_specs_match_their_golden_file() {
     }).collect();
 
     assert_eq!(rows.len(), names.len());
-    let canonical = serde_json::to_string_pretty(&rows).unwrap() + "\n";
+    let mut canonical = serde_json::to_string_pretty(&rows).unwrap();
+    canonical.push('\n');
     let bytes = serde_json::to_vec(&rows).unwrap().len();
     eprintln!(
         "{} offered tool specifications use {bytes} JSON bytes",

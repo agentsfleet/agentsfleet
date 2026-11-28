@@ -21,6 +21,7 @@ pub(super) async fn resolve(
     connection: &mut PgConnection,
     tenant: &Uuid7,
     requested: Option<&str>,
+    has_images: bool,
 ) -> Result<String> {
     let reference = match requested {
         Some(reference) => reference.to_owned(),
@@ -31,7 +32,12 @@ pub(super) async fn resolve(
             .await
             .map_err(query(CONTEXT))?,
     };
-    eligible(connection, tenant, &reference).await?;
+    let model = runtime_model(connection, tenant, &reference)
+        .await?
+        .ok_or(ErrorKind::Model)?;
+    if has_images && model.inference.api == af_wire::inference::InferenceApi::Chat {
+        return Err(ErrorKind::ImageModel { model: model.model }.into());
+    }
     Ok(reference)
 }
 

@@ -15,7 +15,7 @@
 -- $1 fleet · $2 the steer's turn · $3 active run status ·
 -- $4 steer producer · $5 machine actor · $6 person actor pattern
 WITH message AS MATERIALIZED (
-    SELECT a.thread_id AS fleet_id, a.sequence
+    SELECT a.thread_id AS fleet_id, a.sequence, a.request_json ? 'images' AS has_images
     FROM thread.turns a
     WHERE a.id = $2 AND a.thread_id = $1
 ), live_run AS MATERIALIZED (
@@ -35,14 +35,14 @@ WITH message AS MATERIALIZED (
 )
 SELECT r.run_turn_id,
        COALESCE(r.durable_task, false) AS run_durable_task,
-       COALESCE(r.unaddressed, false) AS same_conversation,
+       COALESCE(r.unaddressed AND NOT m.has_images, false) AS same_conversation,
        CASE WHEN r.run_turn_id IS NULL THEN EXISTS (
                 SELECT 1 FROM thread.turns a
                 WHERE a.thread_id = m.fleet_id AND a.settled_at IS NULL
                   AND a.sequence < m.sequence)
             ELSE EXISTS (
                 SELECT 1 FROM (
-                    SELECT a.durable_task_id, a.producer, a.actor
+                    SELECT a.durable_task_id, a.producer, a.actor, a.request_json ? 'images' AS has_images
                     FROM thread.turns a
                     WHERE a.thread_id = m.fleet_id
                       AND a.reply_provider IS NULL AND a.reply_address IS NULL
@@ -51,7 +51,7 @@ SELECT r.run_turn_id,
                 ) ahead
                 WHERE NOT (ahead.durable_task_id IS NULL
                            AND ahead.producer = $4 AND ahead.actor <> $5
-                           AND ahead.actor LIKE $6))
+                           AND ahead.actor LIKE $6 AND NOT ahead.has_images))
        END AS earlier_waiting
 FROM message m
 LEFT JOIN live_run r ON true

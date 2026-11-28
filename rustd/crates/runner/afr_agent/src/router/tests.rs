@@ -158,7 +158,7 @@ async fn names_not_offered_are_refused_as_tool_errors() {
         .iter()
         .filter_map(|message| match message {
             Message::ToolResult { output, .. } => Some(output.clone()),
-            Message::User(_) | Message::Assistant { .. } => None,
+            Message::User(_) | Message::UserImages { .. } | Message::Assistant { .. } => None,
         })
         .collect();
     assert_eq!(results.len(), names.len(), "every call answered");

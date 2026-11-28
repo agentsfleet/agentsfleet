@@ -26,7 +26,9 @@ impl Refusable for Error {
 /// Renders the safe domain refusal, retaining recovery context when available.
 #[must_use]
 pub fn setup_refusal(error: Error) -> Refusal {
-    if let Some(etag) = error.etag() {
+    if let Some(model) = error.image_model() {
+        Refusal::coded_sentence(error.code(), format!("Model {model} cannot receive images"))
+    } else if let Some(etag) = error.etag() {
         Refusal::preconditioned(error.code(), error.detail(), etag)
     } else if let Some(state) = error.current_state() {
         Refusal::conflict_at(EVENT, state)(error)

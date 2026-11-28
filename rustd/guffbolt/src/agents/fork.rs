@@ -18,7 +18,7 @@ pub(super) fn forked(history: &[Message], fork: Fork) -> Vec<Message> {
     let starts: Vec<usize> = history
         .iter()
         .enumerate()
-        .filter(|(_, message)| matches!(message, Message::User(_)))
+        .filter(|(_, message)| matches!(message, Message::User(_) | Message::UserImages { .. }))
         .map(|(at, _)| at)
         .collect();
     let first = starts

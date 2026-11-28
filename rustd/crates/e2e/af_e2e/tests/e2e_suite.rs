@@ -54,6 +54,7 @@ use af_providers::testing::scripted as fake_model;
 mod integration_cluster_outcomes;
 #[path = "integration_fleet_list_name.rs"]
 mod integration_fleet_list_name;
+mod integration_message_images;
 #[path = "integration_runner_access.rs"]
 mod integration_runner_access;
 #[path = "integration_runner_activity/mod.rs"]

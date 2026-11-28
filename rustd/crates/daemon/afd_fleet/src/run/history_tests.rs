@@ -471,6 +471,7 @@ async fn test_a_history_past_the_frame_drops_its_oldest_turns() {
     let answer = "c".repeat(1 << 20);
     let history = (1..=TURNS)
         .map(|sequence| Turn {
+            images: Vec::new(),
             sequence,
             actor: "steer:fixture".into(),
             event_type: Some(TurnKind::Chat),

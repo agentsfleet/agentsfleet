@@ -134,13 +134,18 @@ impl AgentEngine for Loop {
         } else {
             None
         };
-        let opening =
-            construction::opening(&scrub, saved.as_mut(), &run.run.history, !names.is_empty())?;
+        let opening = construction::opening(
+            &scrub,
+            saved.as_mut(),
+            &run.run.history,
+            !names.is_empty(),
+            image_input,
+        )?;
         let recovery_boundary::RootSetup {
             opening,
             memory,
             state,
-        } = recovery_boundary::prepare_root(&run, &scrub, opening, &prompt.message)?;
+        } = recovery_boundary::prepare_root(&run, &scrub, opening, &prompt.message, image_input)?;
         // The run's state outlives its tools: the tools a run builds over its
         // memory, verbs, guard, sandbox and children borrow it, and every loop
         // borrows them. A recovered root brings its children back from its
@@ -291,6 +296,7 @@ mod durable_task_evidence;
 mod durable_task_replies;
 mod durable_task_slice;
 mod finish;
+mod message_images;
 mod observe;
 mod publication;
 mod recovery_boundary;

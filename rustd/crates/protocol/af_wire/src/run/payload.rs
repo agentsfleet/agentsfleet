@@ -33,6 +33,9 @@ pub struct Turn<'a> {
     /// The turn's message, as `turn::message_of` reads it.
     #[serde(borrow)]
     pub message: Cow<'a, str>,
+    /// Images that accompanied the person's message.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub images: Vec<crate::turn::MessageImage>,
     /// Every tool call the turn's run made, in the order it made them, as
     /// `thread.items` keeps them; empty for a turn that called none.
     #[serde(borrow, default, skip_serializing_if = "Vec::is_empty")]

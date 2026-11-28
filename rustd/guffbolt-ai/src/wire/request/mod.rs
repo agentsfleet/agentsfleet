@@ -31,7 +31,11 @@ const FIELD_PROMPT_CACHE_KEY: &str = "prompt_cache_key";
 /// A call names no tool, or a result answers no call earlier in the
 /// conversation.
 pub(crate) fn request(wire: Wire, request: &Request<'_>) -> Result<CompletionRequest> {
-    let history = Conversation::default().map(request.messages)?;
+    let history = Conversation {
+        strip_user_images: !wire.carries_images(),
+        ..Conversation::default()
+    }
+    .map(request.messages)?;
     let tools = request
         .tools
         .iter()
@@ -72,6 +76,7 @@ pub(crate) fn request(wire: Wire, request: &Request<'_>) -> Result<CompletionReq
 #[derive(Debug, Default)]
 struct Conversation<'a> {
     tools: HashMap<&'a str, ToolName>,
+    strip_user_images: bool,
 }
 
 impl<'a> Conversation<'a> {
@@ -82,6 +87,14 @@ impl<'a> Conversation<'a> {
         for message in messages {
             match message {
                 Message::User(text) => user(&mut history, UserContent::text(text.clone())),
+                Message::UserImages { text, images } => {
+                    user(&mut history, UserContent::text(text.clone()));
+                    if !self.strip_user_images {
+                        for picture in images {
+                            user(&mut history, UserContent::Image(image::encoded(picture)));
+                        }
+                    }
+                }
                 Message::Assistant {
                     text,
                     calls,

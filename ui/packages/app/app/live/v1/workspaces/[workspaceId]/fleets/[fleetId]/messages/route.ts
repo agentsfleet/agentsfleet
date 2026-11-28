@@ -16,7 +16,7 @@
 // once the answer is final, so timing never changes a status or a body.
 
 import { z } from "zod";
-import { TEXT_BODY_LIMIT_BYTES } from "@/lib/api/body-limits";
+import { CHAT_BODY_LIMIT_BYTES } from "@/lib/api/body-limits";
 import { ApiError } from "@/lib/api/errors";
 import { steerFleet } from "@/lib/api/fleets";
 import type { SteerRequest } from "@/lib/api/fleets-types";
@@ -68,7 +68,10 @@ const REFUSAL = {
 } as const;
 
 // Mirrors the daemon's parser, which refuses unknown fields.
-const SteerBodySchema = z.object({ message: z.string(), operation_id: z.string() }).strict();
+const SteerBodySchema = z.object({
+  message: z.string(), operation_id: z.string(),
+  images: z.array(z.object({media_type: z.string(), data: z.string()}).strict()).optional(),
+}).strict();
 const FORWARDED_QUERY_KEYS = ["starting_after", "limit", "event_type"] as const;
 
 export async function GET(req: Request, {params}: Params): Promise<Response> {
@@ -140,7 +143,7 @@ async function readSteer(req: Request): Promise<SteerRequest | Response> {
 // The body as text, read no further than the daemon would: null past that,
 // whether the length was declared or only found while reading.
 async function boundedText(req: Request): Promise<string | null> {
-  if (Number(req.headers.get("content-length") ?? 0) > TEXT_BODY_LIMIT_BYTES) return null;
+  if (Number(req.headers.get("content-length") ?? 0) > CHAT_BODY_LIMIT_BYTES) return null;
   const reader = req.body?.getReader();
   if (reader === undefined) return "";
   const decoder = new TextDecoder();
@@ -148,7 +151,7 @@ async function boundedText(req: Request): Promise<string | null> {
   let text = "";
   for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
     size += chunk.value.byteLength;
-    if (size > TEXT_BODY_LIMIT_BYTES) {
+    if (size > CHAT_BODY_LIMIT_BYTES) {
       await reader.cancel();
       return null;
     }

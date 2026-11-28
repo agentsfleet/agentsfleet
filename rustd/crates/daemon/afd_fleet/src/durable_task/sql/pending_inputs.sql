@@ -30,7 +30,8 @@ WITH origin AS MATERIALIZED (
                   AND s.last_runner_id = assigned_run.runner_id AND s.fencing_token = assigned_run.fencing_token
             )) AS assignable
     FROM conversation a
-    WHERE ((a.producer = $4 AND a.actor <> $5 AND a.actor LIKE $6)
+    WHERE ((a.producer = $4 AND a.actor <> $5 AND a.actor LIKE $6
+            AND NOT (a.request_json::jsonb ? 'images'))
         OR (a.producer = $14 AND connector.slack_person_allowed($2, a.actor, $15, $16, $17)))
       AND a.id <> $3 AND a.sequence > $7
     ORDER BY a.sequence LIMIT $8

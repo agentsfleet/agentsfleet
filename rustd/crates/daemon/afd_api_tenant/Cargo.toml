@@ -63,6 +63,8 @@ afd_tenant.workspace = true
 afd_vault.workspace = true
 afd_api_wire.workspace = true
 af_wire.workspace = true
+base64.workspace = true
+guffbolt = { workspace = true, features = ["tools"] }
 # The document generator, reachable only under `openapi`. Optional at every
 # member that names it, so the default resolve is unchanged.
 utoipa = { workspace = true, optional = true }
