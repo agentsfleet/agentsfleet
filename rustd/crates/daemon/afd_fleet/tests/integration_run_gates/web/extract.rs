@@ -55,7 +55,7 @@ async fn an_extract_returns_the_pages_markdown() {
     let error = |status| {
         Reply::new(
             StatusCode::OK,
-            json!({"results":[],"errors":[{"url":URL,"http_status_code":status}]}),
+            json!({"results":[],"errors":[{"url":URL,"error_type":"http_error","http_status_code":status}]}),
         )
     };
     let invalid = Reply::new(

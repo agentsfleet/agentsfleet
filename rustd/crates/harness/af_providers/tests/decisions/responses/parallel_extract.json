@@ -1,0 +1,87 @@
+{
+  "observed_utc": "2026-11-28",
+  "vendor_endpoint": "https://api.parallel.ai/v1/extract",
+  "cases": [
+    {
+      "case": "page",
+      "requested_url": "https://httpbingo.org/html",
+      "direct_http_status": 200,
+      "vendor_http_status": 200,
+      "response": {
+        "results": [
+          {
+            "url": "https://httpbingo.org/html",
+            "title": "Fixture page",
+            "full_content": "# Fixture page",
+            "excerpts": [
+              "Excerpt"
+            ]
+          }
+        ],
+        "errors": []
+      },
+      "vendor_rate_limit_header_names": []
+    },
+    {
+      "case": "redirect",
+      "requested_url": "https://httpbingo.org/redirect-to?url=%2Fhtml",
+      "direct_http_status": 302,
+      "vendor_http_status": 200,
+      "response": {
+        "results": [
+          {
+            "url": "https://httpbingo.org/redirect-to?url=%2Fhtml",
+            "title": "Fixture page",
+            "full_content": "# Fixture page",
+            "excerpts": [
+              "Excerpt"
+            ]
+          }
+        ],
+        "errors": []
+      }
+    },
+    {
+      "case": "unreachable",
+      "requested_url": "https://m259-unreachable.invalid/guide",
+      "direct_http_status": null,
+      "vendor_http_status": 200,
+      "response": {
+        "results": [],
+        "errors": [
+          {
+            "url": "https://m259-unreachable.invalid/guide",
+            "content": null,
+            "error_type": "connect_error",
+            "http_status_code": null
+          }
+        ]
+      }
+    },
+    {
+      "case": "page-rate-limited",
+      "requested_url": "https://httpbingo.org/status/429",
+      "direct_http_status": 429,
+      "vendor_http_status": 200,
+      "response": {
+        "results": [],
+        "errors": [
+          {
+            "url": "https://httpbingo.org/status/429",
+            "content": null,
+            "error_type": "http_error",
+            "http_status_code": 429
+          }
+        ]
+      },
+      "vendor_rate_limit_header_names": []
+    }
+  ],
+  "notes": [
+    "Live development calls with one requested URL and advanced_settings.full_content enabled.",
+    "The redirect fixture returned HTTP 302 with Location /html on a direct check.",
+    "The 429 belongs to the requested page. The vendor API answered HTTP 200 in all four cases.",
+    "A repeat request for the successful page and the page-level 429 recorded the vendor response header names containing RateLimit or Rate-Limit and any Retry-After header. No account-level API throttle was induced.",
+    "Text fields are replaced and excerpts reduced to one placeholder. Request and session identifiers are omitted."
+  ]
+}

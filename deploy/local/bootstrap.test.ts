@@ -556,43 +556,73 @@ describe("platform model", () => {
 });
 
 describe("platform web vendor keys", () => {
+  const bags = new Map<string, Record<string, string>>();
+  const noOp = () => expect.unreachable("1Password must not be read");
+  const request = fakeRequest((method, path, body) => {
+    expect(path).toBe(SECRETS_PATH);
+    if (method === "GET") return {secrets: [...bags.keys()].map(name => ({name}))};
+    expect(method).toBe("POST");
+    const bag = SECRET_BAG.parse(body);
+    expect(bags.has(bag.name)).toBe(false);
+    bags.set(bag.name, bag.data);
+    return {};
+  });
+  beforeEach(() => {
+    bags.clear();
+    delete process.env.PARALLEL_API_KEY;
+    delete process.env.EXA_API_KEY;
+    delete process.env.ACCEPTANCE_LOCAL_CONNECTOR_VAULT;
+  });
+
   test("seeds only the platform workspace and keeps the first keys on a retry", async () => {
-    const bags = new Map<string, Record<string, string>>();
-    const request = fakeRequest((method, path, body) => {
-      expect(path).toBe(SECRETS_PATH);
-      if (method === "GET") return {secrets: [...bags.keys()].map(name => ({name}))};
-      const bag = SECRET_BAG.parse(body);
-      expect(bags.has(bag.name)).toBe(false);
-      bags.set(bag.name, bag.data);
-      return {};
-    });
     const first = crypto.randomUUID();
     const second = crypto.randomUUID();
     process.env.PARALLEL_API_KEY = first;
-    delete process.env.EXA_API_KEY;
-    await configureWebVendors(request, FIXTURE_WORKSPACE);
+    await configureWebVendors(request, FIXTURE_WORKSPACE, noOp);
     expect([...bags]).toEqual([["parallel", {api_key: first}]]);
     delete process.env.PARALLEL_API_KEY;
     process.env.EXA_API_KEY = second;
-    await configureWebVendors(request, FIXTURE_WORKSPACE, FIXTURE_WORKSPACE);
+    await configureWebVendors(request, FIXTURE_WORKSPACE, noOp, FIXTURE_WORKSPACE);
     expect([...bags]).toEqual([["parallel", {api_key: first}], ["exa", {api_key: second}]]);
     process.env.PARALLEL_API_KEY = crypto.randomUUID();
     process.env.EXA_API_KEY = crypto.randomUUID();
-    await configureWebVendors(request, FIXTURE_WORKSPACE, FIXTURE_WORKSPACE);
+    await configureWebVendors(request, FIXTURE_WORKSPACE, noOp, FIXTURE_WORKSPACE);
     expect(bags.get("parallel")).toEqual({api_key: first});
     expect(bags.get("exa")).toEqual({api_key: second});
   });
 
+  test("on-demand acceptance reads missing vendor bags from the configured development vault", async () => {
+    process.env.ACCEPTANCE_LOCAL_CONNECTOR_VAULT = "ZMB_CD_DEV";
+    const calls: string[][] = [];
+    const read = async (args: string[]) => {
+      calls.push(args);
+      return `fixture-key-${calls.length}`;
+    };
+    await configureWebVendors(request, FIXTURE_WORKSPACE, read);
+    expect(calls).toEqual([
+      ["read", "--no-newline", "op://ZMB_CD_DEV/parallel/credential"],
+      ["read", "--no-newline", "op://ZMB_CD_DEV/exa/credential"],
+    ]);
+    expect([...bags]).toEqual([["parallel", {api_key: "fixture-key-1"}], ["exa", {api_key: "fixture-key-2"}]]);
+    await configureWebVendors(request, FIXTURE_WORKSPACE, noOp, FIXTURE_WORKSPACE);
+  });
+
+  test("a supplied key takes precedence and an empty vault field leaves its bag uncreated", async () => {
+    process.env.PARALLEL_API_KEY = crypto.randomUUID();
+    process.env.ACCEPTANCE_LOCAL_CONNECTOR_VAULT = "configured-vault";
+    const readEmpty = async (args: string[]) => {
+      expect(args).toEqual(["read", "--no-newline", "op://configured-vault/exa/credential"]);
+      return "";
+    };
+    await expect(configureWebVendors(request, FIXTURE_WORKSPACE, readEmpty)).rejects.toThrow(/EXA_API_KEY/);
+    expect([...bags]).toEqual([["parallel", {api_key: process.env.PARALLEL_API_KEY}]]);
+  });
+
   test("a fresh platform workspace requires Parallel and a different fixture receives neither key", async () => {
-    delete process.env.PARALLEL_API_KEY;
     process.env.EXA_API_KEY = crypto.randomUUID();
-    const empty = fakeRequest((method, path) => {
-      expect(method).toBe("GET");
-      expect(path).toBe(SECRETS_PATH);
-      return {secrets: []};
-    });
-    await expect(configureWebVendors(empty, FIXTURE_WORKSPACE)).rejects.toThrow(/PARALLEL_API_KEY/);
+    await expect(configureWebVendors(request, FIXTURE_WORKSPACE, noOp)).rejects.toThrow(/PARALLEL_API_KEY/);
+    expect(bags.size).toBe(0);
     await configureWebVendors(fakeRequest(() => expect.unreachable("another workspace must receive no read or write")),
-      FIXTURE_WORKSPACE, "operator-workspace");
+      FIXTURE_WORKSPACE, noOp, "operator-workspace");
   });
 });

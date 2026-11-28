@@ -73,11 +73,11 @@ async fn a_fast_search_and_exa_highlights_are_each_a_single_paid_request() {
 #[tokio::test]
 async fn extraction_requires_one_matching_full_content_or_page_status() {
     let full = json!({"url": PAGE, "full_content":"# Migration\nA guide."});
-    let bad = json!({"url": PAGE, "http_status_code":404, "content":"do not echo this"});
+    let bad = json!({"url": PAGE, "error_type":"http_error", "http_status_code":404, "content":"do not echo this"});
     let mut server = Server::start(vec![
         Reply::Json(json!({"results":[full], "errors":[]})),
         Reply::Json(json!({"results":[], "errors":[bad]})),
-        Reply::Json(json!({"results":[], "errors":[{"url":PAGE,"http_status_code":503}]})),
+        Reply::Json(json!({"results":[], "errors":[{"url":PAGE,"error_type":"http_error","http_status_code":503}]})),
         Reply::Json(json!({"results":[full], "errors":[bad]})),
         Reply::Json(json!({"results":[{"url":PAGE, "excerpts":["snippet"]}], "errors":[]})),
         Reply::Json(json!({"results":[{"url":"https://elsewhere.test/?signed=private", "full_content":"wrong"}], "errors":[]})),
@@ -156,8 +156,10 @@ async fn unsafe_rows_and_refusals_expose_only_their_bounded_reason() {
 #[tokio::test]
 async fn positional_arrays_cannot_authorize_a_local_read() {
     let mut server = Server::start(vec![
-        Reply::Json(json!([[], [{"url": PAGE, "http_status_code": 503}]])),
-        Reply::Json(json!({"results": [], "errors": [[PAGE, 503]]})),
+        Reply::Json(
+            json!([[], [{"url": PAGE, "error_type":"http_error", "http_status_code": 503}]]),
+        ),
+        Reply::Json(json!({"results": [], "errors": [[PAGE, "http_error", 503]]})),
         Reply::Json(json!({"results": [[PAGE, null, "page text"]], "errors": []})),
     ])
     .await;
@@ -171,4 +173,65 @@ async fn positional_arrays_cannot_authorize_a_local_read() {
         assert_eq!(server.next().await.path, "/v1/extract");
     }
     server.shutdown().await;
+}
+
+#[tokio::test]
+async fn recorded_parallel_extracts_keep_the_requested_source_and_classify_page_failures() {
+    #[derive(serde::Deserialize)]
+    struct Cases {
+        cases: Vec<Case>,
+    }
+    #[derive(serde::Deserialize)]
+    struct Case {
+        requested_url: String,
+        response: serde_json::Value,
+    }
+    let recording = include_str!("responses/parallel_extract.json");
+    let cases: Cases = serde_json::from_str(recording).expect("sanitized Parallel fixture");
+    let mut server = Server::start(
+        cases
+            .cases
+            .iter()
+            .map(|case| Reply::Json(case.response.clone()))
+            .collect(),
+    )
+    .await;
+    let vendor = parallel(&server);
+    let key = credential();
+    let expected = [
+        Ok(()),
+        Ok(()),
+        Err(WebFailure::Transport),
+        Err(WebFailure::Page { status: 429 }),
+    ];
+    assert_eq!(cases.cases.len(), expected.len());
+    for (case, expected) in cases.cases.iter().zip(expected) {
+        let result = vendor
+            .extract(&key, &case.requested_url, BUDGET)
+            .await
+            .map(|page| {
+                assert_eq!(page.url, case.requested_url);
+                assert_eq!(page.content, "# Fixture page");
+            });
+        assert_eq!(result, expected);
+        assert_eq!(server.next().await.path, "/v1/extract");
+    }
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn incomplete_or_unknown_per_page_errors_keep_fallback_closed() {
+    for item in [
+        json!({"url":PAGE,"http_status_code":503}),
+        json!({"url":PAGE,"error_type":"connect_error"}),
+        json!({"url":PAGE,"error_type":"http_error","http_status_code":null}),
+        json!({"url":PAGE,"error_type":"unknown","http_status_code":null}),
+    ] {
+        let server = Server::start(vec![Reply::Json(json!({"results":[],"errors":[item]}))]).await;
+        let failure = parallel(&server)
+            .extract(&credential(), PAGE, BUDGET)
+            .await
+            .expect_err("no usable error");
+        assert_eq!(failure, WebFailure::InvalidResponse);
+    }
 }

@@ -126,6 +126,9 @@ struct Page {
 #[derive(Deserialize)]
 struct PageError {
     url: String,
+    error_type: String,
+    // Parallel supplies an explicit null when the origin never replied.
+    #[serde(deserialize_with = "Option::deserialize")]
     http_status_code: Option<u16>,
 }
 
@@ -157,12 +160,13 @@ impl ExtractReply {
                 })
             }
             (None, Some(Object(error))) if errors.next().is_none() => {
-                if client::checked_url(&error.url)? == requested_url
-                    && let Some(status @ 400..=599) = error.http_status_code
-                {
-                    Err(WebFailure::Page { status })
-                } else {
-                    Err(WebFailure::InvalidResponse)
+                if client::checked_url(&error.url)? != requested_url {
+                    return Err(WebFailure::InvalidResponse);
+                }
+                match (error.error_type.as_str(), error.http_status_code) {
+                    ("http_error", Some(status @ 400..=599)) => Err(WebFailure::Page { status }),
+                    ("connect_error", None) => Err(WebFailure::Transport),
+                    _ => Err(WebFailure::InvalidResponse),
                 }
             }
             _ => Err(WebFailure::InvalidResponse),
