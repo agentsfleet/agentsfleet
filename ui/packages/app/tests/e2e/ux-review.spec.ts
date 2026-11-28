@@ -28,7 +28,13 @@ test("the populated navigation lists fleet chats and keeps credits in the footer
 
 test("the public search conversation keeps the page read and the other search result in Sources", async ({page}) => {
   await page.goto(review("empty"));
-  await page.getByRole("button", {name: "Web search", exact: true}).click();
+  const conversation = page.getByRole("button", {name: "Conversation", exact: true});
+  await conversation.click();
+  const fleets = page.getByRole("button", {name: "Your Fleets", exact: true});
+  if (await fleets.getAttribute("aria-expanded") === "false") await fleets.click();
+  await page.getByRole("navigation", {name: "Main navigation"}).getByRole("button", {name: "curious-otter", exact: true}).click();
+  await expect(conversation).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("button", {name: "Web search", exact: true})).toHaveCount(0);
   await expect(page).toHaveURL(/#curious-otter$/);
   const chat = page.getByRole("region", {name: "Fleet conversation"});
   await expect(chat.getByText(/Find IANA’s official documentation/)).toBeVisible();
@@ -38,6 +44,14 @@ test("the public search conversation keeps the page read and the other search re
   const steps = chat.getByRole("list", {name: "Tool activity"}).getByRole("listitem");
   await expect(steps.nth(0).locator("summary")).toHaveText("Searched the web IANA example domains documentation");
   await expect(steps.nth(1).locator("summary")).toHaveText(`Read page ${firstPage}`);
+  await page.mouse.move(0, 0);
+  for (const [theme, caption] of [["light", "rgb(102, 112, 123)"], ["dark", "rgb(133, 139, 149)"]] as const) {
+    await page.evaluate(value => {document.documentElement.dataset.theme = value;}, theme);
+    await expect(chat.getByText("Searched the web and read a page", {exact: true})).toHaveCSS("color", caption);
+    await expect(steps.nth(1).locator("summary")).toHaveCSS("font-weight", "400");
+    await expect(steps.nth(1).getByText(firstPage, {exact: true})).toHaveCSS("color", caption);
+    await expect(chat.getByRole("link", {name: "Example Domains", exact: true})).not.toHaveCSS("color", caption);
+  }
   await steps.nth(1).locator("summary").click();
   await expect(steps.nth(1).locator(".trace-detail")).toContainText(firstPage);
   await chat.getByRole("button", {name: "Quote response"}).click();

@@ -13,7 +13,7 @@ export function ToolCallHeader({name, args, state}: {name: string; args: ToolArg
     <Icon aria-hidden="true" data-tool-bullet="" className={cn("size-4 shrink-0", state === CELL_STATE.RUNNING || state === CELL_STATE.SUCCEEDED ? "text-muted-foreground" : status.tone)} />
     <span className="min-w-0" data-chat-loading={state === CELL_STATE.RUNNING}>{toolActivityLabel(activity, true)}
       {(name === TOOL_NAME.WEB_SEARCH || name === TOOL_NAME.WEB_FETCH) && activity.target ?
-        <span className="block wrap-anywhere text-muted-foreground sm:ml-sm sm:inline">{activity.target}</span> : null}
+        <span className="block wrap-anywhere sm:ml-sm sm:inline">{activity.target}</span> : null}
     </span>
     <span className="sr-only">{` ${status.label}`}</span>
   </span>;

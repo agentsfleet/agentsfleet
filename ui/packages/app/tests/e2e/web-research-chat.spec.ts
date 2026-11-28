@@ -19,6 +19,15 @@ test("a customer can follow a research question, both actions, and the cited ans
   const actions = answer.getByRole("list", {name: "Tool activity"});
   await expect(actions.getByRole("button", {name: /Searched the web/})).toContainText(RESEARCH.query);
   await expect(actions.getByRole("button", {name: /Read page/})).toContainText(first.url);
+  await page.mouse.move(0, 0);
+  for (const [theme, caption] of [["light", "rgb(102, 112, 123)"], ["dark", "rgb(133, 139, 149)"]] as const) {
+    await page.evaluate(value => {document.documentElement.dataset.theme = value;}, theme);
+    await expect(group).toHaveCSS("color", caption);
+    await expect(group).toHaveCSS("font-weight", "400");
+    await expect(actions.getByText(RESEARCH.query, {exact: true})).toHaveCSS("color", caption);
+    await expect(actions.getByText(first.url, {exact: true})).toHaveCSS("color", caption);
+    await expect(answer.getByText(RESEARCH.answer, {exact: true})).not.toHaveCSS("color", caption);
+  }
   await question.scrollIntoViewIfNeeded();
   await page.screenshot({path: info.outputPath("research-chat.png"), scale: "css", animations: "disabled"});
   if (isMobile) {
