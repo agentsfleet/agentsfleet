@@ -59,8 +59,10 @@ backed! {
 
 impl Handler for Message<'_> {
     const NAME: &'static str = "message";
-    const DESCRIPTION: &'static str = "Post a short line to the conversation this run was \
-        asked from, before the answer, such as progress or what you are waiting on.";
+    const DESCRIPTION: &'static str = "Post a progress line to the current conversation and return the delivery outcome. Use it \
+        when the person needs an update before your answer. Reply directly for a final answer. \
+        Use notify for a separate alert.";
+    const EXAMPLES: &'static [&'static str] = &[r#"{"text":"The build is running."}"#];
     type Arguments = Say;
 
     async fn run(&self, arguments: Say, context: Context<'_>) -> ToolOutput {

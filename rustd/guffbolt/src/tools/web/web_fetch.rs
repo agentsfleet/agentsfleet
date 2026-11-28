@@ -69,7 +69,11 @@ impl<'a> WebFetch<'a> {
 
 impl Handler for WebFetch<'_> {
     const NAME: &'static str = "web_fetch";
-    const DESCRIPTION: &'static str = "Read one HTTPS page under the run's network policy. Returns text or Markdown. No credential is sent.";
+    const DESCRIPTION: &'static str = "Read one HTTPS page under the network policy and return text or Markdown. Use it for a \
+        page you need to read. Use http_request for an API call or when a credential is \
+        required.";
+    const EXAMPLES: &'static [&'static str] =
+        &[r#"{"url":"https://www.iana.org/help/example-domains"}"#];
     type Arguments = Fetch;
 
     async fn run(&self, arguments: Fetch, context: Context<'_>) -> ToolOutput {

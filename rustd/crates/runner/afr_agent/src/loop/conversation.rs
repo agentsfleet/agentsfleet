@@ -30,7 +30,7 @@ impl Harness<'_, '_> {
         if let Some(last) = assigned.iter().max_by_key(|folded| folded.sequence) {
             self.folded_through = last.sequence;
             *shared.run.task_source.lock().await = Some(afr_tools::TaskSource {
-                turn_id: last.turn_id.to_string(),
+                turn_id: last.turn_id.clone(),
                 bytes: last.text.len(),
             });
         }

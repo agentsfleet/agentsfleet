@@ -169,13 +169,14 @@ agent_tool! {
 
 impl Handler for SpawnAgent {
     const NAME: &'static str = SPAWN_AGENT;
-    const DESCRIPTION: &'static str = "Start a child agent on a well-scoped task. It runs \
-        alongside you over its own history, with your tools or the subset you name, and reaches \
-        what your tools reach. Answers with an agent_id for send_input, followup_task, \
-        wait_agent, close_agent and interrupt_agent. It starts from all of your history unless \
-        fork_turns says none, or a number of your last turns; with none it knows only its task \
-        and may lack what it needs. When its turn ends it stays open with its history until you \
-        close it.";
+    const DESCRIPTION: &'static str = "Start a child agent on a well-scoped task and return an agent_id for wait_agent, \
+        send_input, followup_task, close_agent and interrupt_agent. The child can use only your \
+        tools or the subset you grant, with the same permissions. It cannot acquire capabilities \
+        you do not hold. Use fork_turns none for only the child’s task, a number for that many \
+        of your latest turns, or all for your whole history. Answer directly when the work is \
+        small. Use wait_agent to collect its answer.";
+    const EXAMPLES: &'static [&'static str] =
+        &[r#"{"message":"Summarise the test failure.","tools":["file_read"],"fork_turns":"none"}"#];
     type Arguments = SpawnArguments;
 
     fn run(

@@ -69,7 +69,11 @@ backed! {
 
 impl Handler for NotifyTool<'_> {
     const NAME: &'static str = "notify";
-    const DESCRIPTION: &'static str = "Send a push notification to the person this run works for.";
+    const DESCRIPTION: &'static str = "Send a push notification to the person and return the delivery result. Use it when the \
+        person needs an alert outside the conversation. Use message for progress in the \
+        conversation or reply directly with the final answer.";
+    const EXAMPLES: &'static [&'static str] =
+        &[r#"{"message":"The requested check is complete.","priority":"normal"}"#];
     type Arguments = Notify;
 
     async fn run(&self, arguments: Notify, context: Context<'_>) -> ToolOutput {

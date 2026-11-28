@@ -46,10 +46,12 @@ backed! {
 
 impl Handler for FileEdit<'_> {
     const NAME: &'static str = "file_edit";
-    const DESCRIPTION: &'static str = "Replace texts in a file in the working directory. Each \
-        edit's old_text must match the file exactly and once, as it was before this call, and \
-        no two edits may overlap; nothing is written unless every edit applies. The file must \
-        be text and fit one read.";
+    const DESCRIPTION: &'static str = "Replace exact text in an existing text file and return the changes. Each old_text must \
+        match the original once, and no edits may overlap. All replacements must apply before \
+        anything is written. Use file_write to create or replace the whole file, and apply_patch \
+        for changes across files.";
+    const EXAMPLES: &'static [&'static str] =
+        &[r#"{"path":"notes.md","edits":[{"old_text":"draft","new_text":"ready"}]}"#];
     type Arguments = Edits;
 
     async fn run(&self, arguments: Edits, _context: Context<'_>) -> ToolOutput {

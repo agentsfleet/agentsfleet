@@ -46,12 +46,13 @@ backed! {
 
 impl Handler for HttpRequest<'_> {
     const NAME: &'static str = "http_request";
-    const DESCRIPTION: &'static str = "Send one HTTPS request to a host the network \
-        policy allows, and read back its status and up to 1 MiB of a complete body. \
-        Truncated bodies are omitted with an explicit incomplete-source notice. \
-        Write a credential as ${secrets.NAME.FIELD} in the Authorization header; it is \
-        put in place when the request is sent. All supplied headers are removed \
-        permanently after an origin change; temporary URLs stay private.";
+    const DESCRIPTION: &'static str = "Send one HTTPS request to an allowed host and return its status and up to 1 MiB of a \
+        complete body. Use web_fetch when you need readable page text. Truncated bodies are \
+        omitted with an incomplete-source notice. Put a credential placeholder such as \
+        ${secrets.NAME.FIELD} in the Authorization header. Supplied headers are removed \
+        permanently after an origin change. Temporary URLs stay private.";
+    const EXAMPLES: &'static [&'static str] =
+        &[r#"{"url":"https://api.example.com/v1/status","method":"GET"}"#];
     type Arguments = Request;
 
     fn schema(&self) -> Schema {

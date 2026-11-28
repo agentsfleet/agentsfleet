@@ -119,7 +119,9 @@ backed! {
 
 impl Handler for CronRemove<'_> {
     const NAME: &'static str = "cron_remove";
-    const DESCRIPTION: &'static str = "Delete a schedule.";
+    const DESCRIPTION: &'static str = "Delete a recurring schedule and return the outcome. Use cron_list to find its \
+        schedule_id. Use cron_update to pause it while keeping its definition.";
+    const EXAMPLES: &'static [&'static str] = &[r#"{"schedule_id":"review"}"#];
     type Arguments = Named;
 
     async fn run(&self, arguments: Named, context: Context<'_>) -> ToolOutput {
@@ -138,8 +140,9 @@ backed! {
 
 impl Handler for CronUpdate<'_> {
     const NAME: &'static str = "cron_update";
-    const DESCRIPTION: &'static str = "Change a schedule's expression, zone or message, or \
-        pause and resume it.";
+    const DESCRIPTION: &'static str = "Change a schedule’s expression, zone or message, or pause or resume it, and return the \
+        outcome. Use cron_list to find its schedule_id. Use cron_remove to delete it.";
+    const EXAMPLES: &'static [&'static str] = &[r#"{"schedule_id":"review","paused":true}"#];
     type Arguments = Update;
 
     async fn run(&self, arguments: Update, context: Context<'_>) -> ToolOutput {

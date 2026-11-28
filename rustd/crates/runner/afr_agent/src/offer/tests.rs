@@ -8,7 +8,9 @@ use std::sync::Arc;
 
 use af_egress::testing::RecordingTransport;
 use afr_executor::{ExecutorSlot, Unavailable};
-use afr_tools::catalog::{IMAGE, MEMORY_RECALL, TASK_INPUT, TASK_START, UPDATE_PLAN, WEB_SEARCH};
+use afr_tools::catalog::{
+    IMAGE, MEMORY_RECALL, PUBLISHED, TASK_INPUT, TASK_START, UPDATE_PLAN, WEB_SEARCH,
+};
 use afr_tools::{Backends, Catalog, Run};
 use guffbolt::ToolSpec;
 use guffbolt::agents::{Agents, TOOLS};
@@ -22,6 +24,39 @@ use crate::harness::tests::{drive, engine};
 /// A run with no sandbox, as a supervisor-side run has.
 fn no_sandbox() -> ExecutorSlot<'static> {
     ExecutorSlot::unavailable(Unavailable::NoSandbox)
+}
+
+#[test]
+fn the_offered_tool_specs_match_their_golden_file() {
+    let (transport, _sent) = RecordingTransport::replying(200, "");
+    let catalog = Catalog::hosted(Arc::new(transport));
+    let names: Vec<_> = PUBLISHED
+        .iter()
+        .map(|entry| entry.name())
+        .chain(TOOLS)
+        .collect();
+    let selection = catalog.select(&names).unwrap();
+    let run = Run::default().with_image_input(true);
+    let slot = no_sandbox();
+    let (agents, _requests) = Agents::new(CAPS);
+    let backends = Backends::new(&run, &slot, catalog.transport()).with_agents(&agents);
+    let built = backends.tools(&names).unwrap();
+    let offered = tools(&selection, &built);
+    let rows: Vec<_> = offered.specs().map(|spec| {
+        serde_json::json!({"name": spec.name, "description": spec.description, "parameters": spec.parameters})
+    }).collect();
+
+    assert_eq!(rows.len(), names.len());
+    let canonical = serde_json::to_string_pretty(&rows).unwrap() + "\n";
+    let bytes = serde_json::to_vec(&rows).unwrap().len();
+    eprintln!(
+        "{} offered tool specifications use {bytes} JSON bytes",
+        rows.len()
+    );
+    assert_eq!(
+        include_str!("../../tests/golden/offered_tools.json"),
+        canonical
+    );
 }
 
 #[tokio::test]

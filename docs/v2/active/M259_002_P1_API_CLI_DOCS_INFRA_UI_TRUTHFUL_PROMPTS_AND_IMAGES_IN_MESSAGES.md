@@ -18,7 +18,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Status:** IN_PROGRESS
 
-**Progress:** 17 of 30 dimensions complete. Guidance, sender provenance, date, network and working directory, the stable prefix, task input defaults, text-only model handling and the standalone tool changes passed their tests. [Implementation PR](https://github.com/agentsfleet/agentsfleet/pull/874)
+**Progress:** 20 of 30 dimensions complete. Guidance, sender provenance, date, network and working directory, the stable prefix, task input defaults, text-only model handling the standalone tool changes and the tool description examples passed their tests. [Implementation PR](https://github.com/agentsfleet/agentsfleet/pull/874)
 
 **Priority:** P1, every run is told about tools it may not hold, and a webhook body reads as the person's own message
 
@@ -238,9 +238,9 @@ Each description that leaves a choice open states what it does and returns, when
 | `spawn_agent` | what a child cannot do |
 | `cron_remove`, `cron_update` | the id comes from `cron_list` |
 
-- **Dimension 6.1** — every example parses → Test `every_example_a_tool_gives_parses_as_its_arguments` (unit, guffbolt): each example parses with its tool's `Arguments` (`guffbolt/src/tools/mod.rs:196-204`), and `apply_patch`'s with the patch parser. A planted malformed example fails.
-- **Dimension 6.2** — siblings are named → Test `every_tool_names_the_sibling_it_is_confused_with` (unit, guffbolt): over the declared pairs in the table, each description names its sibling.
-- **Dimension 6.3** — wording changes show in review → Test `the_offered_tool_specs_match_their_golden_file` (unit, `afr_agent`): the offered specs serialise to `tests/golden/offered_tools.json` byte for byte. The test prints their size, so token cost is visible.
+- **Dimension 6.1** — DONE. every example parses → Test `every_example_a_tool_gives_parses_as_its_arguments` (unit, guffbolt): each example parses with its tool's `Arguments` (`guffbolt/src/tools/mod.rs:196-204`), and `apply_patch`'s with the patch parser. A planted malformed example fails.
+- **Dimension 6.2** — DONE. siblings are named → Test `every_tool_names_the_sibling_it_is_confused_with` (unit, guffbolt): over the declared pairs in the table, each description names its sibling.
+- **Dimension 6.3** — DONE. wording changes show in review → Test `the_offered_tool_specs_match_their_golden_file` (unit, `afr_agent`): the offered specs serialise to `tests/golden/offered_tools.json` byte for byte. The test prints their size, so token cost is visible.
 
 ### §7 — A short harness-facts section
 
@@ -405,4 +405,5 @@ The first phrase has one production hit at `679002666`, `afr_agent/src/prompt/mo
 - **Initial implementation evidence, Nov 28.** The agent, runner tool and standalone guffbolt library suites passed 775 tests. Another 59 file-tool API cases passed. The suites exercised the root and narrowed child request, stable summary identity, source labels on real continuations and child task messages, eight default matches, Unicode line shortening, and grep context through one executor call.
 - **Opening decision, Nov 28.** The owner requested this workstream start once M259_001 Dimensions 1.7, 9.1, 9.3 and 9.4 were complete. All four passed on the web-tools branch. The independent prompt and tool changes can proceed there. The engine-dependent dimensions still need merged M258 and the browser capability evidence. [Web-tools PR](https://github.com/agentsfleet/agentsfleet/pull/874) · [Dashboard acceptance](https://github.com/agentsfleet/agentsfleet/actions/runs/46114949902/job/140886570326)
 - **Sender, environment and task input evidence, Nov 28.** 263 runner agent tests, 15 daemon history unit tests, five PostgreSQL history cases and seven task tool tests passed. The delegation journey also passed on the consolidated branch. A later run presents the same webhook message it presented on delivery. The date stays outside the saved summary digest. A judged follow-up preserves its instructions and fills a missing task span from the latest human message.
+- **Tool description evidence, Nov 28.** The tool library passed 268 tests. Examples parsed against the tools’ argument types, including the patch grammar. The golden render matched 45 offered tools and measured 33,628 JSON bytes.
 - **Deferrals and transfers** — none. Each one needs an owner quote below, as `> Owner (<name>, <MMM DD, YYYY HH:MM>): "<quote>" — context: <item, why>`.
