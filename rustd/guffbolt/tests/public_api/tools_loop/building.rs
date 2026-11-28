@@ -59,6 +59,14 @@ fn a_missing_backend_names_the_tool_and_backend_in_words() {
         "exec_command needs a sessions backend, and the builder was given none"
     );
     assert_eq!(Backend::Sessions.to_string(), "sessions");
+    let config = ToolsConfig::new(["web_search"]).expect("a tool name");
+    let missing = Tools::builder()
+        .build(&config)
+        .expect_err("no search backend");
+    assert_eq!(
+        missing.to_string(),
+        "web_search needs a search backend, and the builder was given none"
+    );
 }
 
 /// A family pattern passes over tools whose backend is missing instead of

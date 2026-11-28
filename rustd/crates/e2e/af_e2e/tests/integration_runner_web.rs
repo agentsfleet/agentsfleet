@@ -20,12 +20,19 @@ async fn web_routes_enforce_the_live_fence_and_network_before_reserving() -> Res
         |fence| json!({"fencing_token":fence,"call_number":2,"url":"https://example.org/guide"});
     let unknown =
         json!({"fencing_token":fence,"call_number":3,"query":"guide","api_key":"forbidden"});
+    let blank = json!({"fencing_token":fence,"call_number":3,"query":" \t"});
+    let unknown_extract = json!({"fencing_token":fence,"call_number":4,"url":"https://example.org/guide","local_read_permitted":true});
+    let unnumbered =
+        json!({"fencing_token":fence,"call_number":0,"url":"https://example.org/guide"});
     for (suffix, body, status, expected) in [
         ("searches", query(fence), 403, WEB_NETWORK_RESTRICTED),
         ("extracts", page(fence), 403, WEB_NETWORK_RESTRICTED),
         ("searches", query(fence + 1), 409, RUN_STALE_FENCING_TOKEN),
         ("extracts", page(fence + 1), 409, RUN_STALE_FENCING_TOKEN),
         ("searches", unknown, 400, INVALID_REQUEST),
+        ("searches", blank, 400, INVALID_REQUEST),
+        ("extracts", unknown_extract, 400, INVALID_REQUEST),
+        ("extracts", unnumbered, 400, INVALID_REQUEST),
     ] {
         let path = format!("/v1/runners/me/runs/{}/{suffix}", held.run_id);
         let (actual, problem) = held.call(Method::POST, &path, Some(&body)).await;

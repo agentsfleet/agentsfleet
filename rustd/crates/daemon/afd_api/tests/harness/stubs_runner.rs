@@ -1,6 +1,9 @@
 //! The runner plane's stub: a run plane that by default answers no-work.
 
+use std::sync::Arc;
+
 use af_core::id::Uuid7;
+use af_wire::web::{ExtractResponse, SearchResponse};
 use afd_api_runner::services::RunPlane;
 use jiff::Timestamp;
 
@@ -20,6 +23,7 @@ use jiff::Timestamp;
 pub(crate) struct NoWork {
     refusal: Option<fn() -> afd_fleet::Error>,
     minted: Option<(&'static str, Timestamp)>,
+    web: Option<Arc<(SearchResponse, ExtractResponse)>>,
 }
 
 impl NoWork {
@@ -40,6 +44,24 @@ impl NoWork {
         }
     }
 
+    /// The successful replies the web handlers forward to the runner.
+    pub(crate) fn answering_web(search: SearchResponse, extract: ExtractResponse) -> Self {
+        Self {
+            web: Some(Arc::new((search, extract))),
+            ..Self::default()
+        }
+    }
+
+    fn web_reply<T>(
+        &self,
+        select: impl FnOnce(&(SearchResponse, ExtractResponse)) -> T,
+    ) -> afd_fleet::Result<T> {
+        self.web
+            .as_deref()
+            .map(select)
+            .ok_or_else(self.refusal.unwrap_or(afd_fleet::Error::run_not_found))
+    }
+
     /// The chosen refusal, when there is one; `Ok` lets the verb answer as
     /// a plane with no work would.
     fn refused(&self) -> afd_fleet::Result<()> {
@@ -54,8 +76,8 @@ impl RunPlane for NoWork {
         _run: Uuid7,
         _request: &garde::Valid<af_wire::web::SearchRequest>,
         _deadline: tokio::time::Instant,
-    ) -> impl Future<Output = afd_fleet::Result<af_wire::web::SearchResponse>> + Send {
-        std::future::ready(Err(afd_fleet::Error::run_not_found()))
+    ) -> impl Future<Output = afd_fleet::Result<SearchResponse>> + Send {
+        std::future::ready(self.web_reply(|(search, _)| search.clone()))
     }
 
     fn web_extract(
@@ -64,8 +86,8 @@ impl RunPlane for NoWork {
         _run: Uuid7,
         _request: &garde::Valid<af_wire::web::ExtractRequest>,
         _deadline: tokio::time::Instant,
-    ) -> impl Future<Output = afd_fleet::Result<af_wire::web::ExtractResponse>> + Send {
-        std::future::ready(Err(afd_fleet::Error::run_not_found()))
+    ) -> impl Future<Output = afd_fleet::Result<ExtractResponse>> + Send {
+        std::future::ready(self.web_reply(|(_, extract)| extract.clone()))
     }
 
     /// Mints nothing, and says so with the code a deployment holding no

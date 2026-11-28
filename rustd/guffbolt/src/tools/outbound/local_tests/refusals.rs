@@ -149,3 +149,20 @@ async fn an_unlisted_redirect_host_is_refused_before_lookup() {
     assert_eq!(lookup.asked(), Vec::<String>::new());
     assert_eq!(requests(&seen), ["GET /start"]);
 }
+
+#[tokio::test]
+async fn local_outbound_stops_a_public_redirect_loop_after_twenty_hops() {
+    let again = redirect("/loop");
+    let (address, root, seen) = fake(&[("/loop", &again)]).await;
+    let outbound = LocalOutbound::routed(Arc::new(FixedLookup::default()), PUBLIC, address, root);
+
+    let refused = sent(&outbound, "https://public.test/loop").await;
+    assert_eq!(
+        refused,
+        Err(Refused::new(
+            code::UPSTREAM_UNREACHABLE,
+            "redirect limit exceeded"
+        ))
+    );
+    assert_eq!(requests(&seen), ["GET /loop"; 21]);
+}

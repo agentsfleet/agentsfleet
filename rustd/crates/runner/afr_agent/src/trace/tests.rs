@@ -160,3 +160,22 @@ fn every_call_is_listed_with_its_preview() {
 fn should_finish_with_a_known_empty_trace_when_no_tool_ran() {
     assert_eq!(json!(Trace::default().finish()), json!({"calls": []}));
 }
+
+#[test]
+fn later_calls_and_escaped_citations_count_against_the_remaining_trace_frame() {
+    use af_wire::{protocol::MESSAGE_BYTES_MAX, tool_trace::WebSource};
+    let mut trace = Trace::default();
+    trace.push(1, "web_search", Map::new(), ended("first search"));
+    let first_room = trace.source_room();
+    let page = WebSource {
+        url: "https://docs.test/".into(),
+        title: Some("Guide to \"v2\"".into()),
+    };
+    trace.cite_last(std::slice::from_ref(&page));
+    trace.push(2, "http_request", Map::new(), ended("next call"));
+    let remaining = trace.source_room();
+    assert!(remaining < first_room);
+    let saved = trace.finish();
+    assert_eq!(saved.calls[0].sources, [page]);
+    assert_eq!(remaining + encoded_len(&saved), MESSAGE_BYTES_MAX);
+}

@@ -259,3 +259,27 @@ async fn a_requested_url_containing_a_minted_token_is_never_a_citation() {
     assert_eq!(output.sources(), &[]);
     assert_eq!(output.text, "Read [redacted URL]");
 }
+
+#[tokio::test]
+async fn a_binary_page_without_a_content_type_uses_the_generic_media_name() {
+    let hook = Canned::ok(response(200, "raw\0body"));
+    let output = dispatch(
+        &web(&hook, &["web_fetch"]),
+        "web_fetch",
+        json!({"url":"https://docs.test/download"}),
+    )
+    .await;
+    assert_eq!(output.error_code, Some(code::UNSUPPORTED_MEDIA));
+    assert_eq!(output.text, "[unsupported_media] application/octet-stream");
+    assert_eq!(output.sources(), []);
+}
+
+#[tokio::test]
+async fn a_page_reader_cannot_publish_credentials_from_the_requested_url() {
+    let url = "https://user:private@docs.test/page";
+    let hook = Canned::ok(response(200, &format!("Read {url}")));
+    let output = dispatch(&web(&hook, &["web_fetch"]), "web_fetch", json!({"url":url})).await;
+    assert_eq!(output.error_code, None);
+    assert_eq!(output.text, "Read [redacted URL]");
+    assert_eq!(output.sources(), []);
+}

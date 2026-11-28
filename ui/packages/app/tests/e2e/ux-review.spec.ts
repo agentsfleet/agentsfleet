@@ -26,6 +26,30 @@ test("the populated navigation lists fleet chats and keeps credits in the footer
   expect(geometry.footerBottom).toBeLessThan(geometry.bottom);
 });
 
+test("the public search conversation keeps the page read and the other search result in Sources", async ({page}) => {
+  await page.goto(review("empty"));
+  await page.getByRole("button", {name: "Web search", exact: true}).click();
+  await expect(page).toHaveURL(/#curious-otter$/);
+  const chat = page.getByRole("region", {name: "Fleet conversation"});
+  await expect(chat.getByText(/Find IANA’s official documentation/)).toBeVisible();
+  const firstPage = "https://www.iana.org/help/example-domains";
+  await expect(chat.getByRole("link", {name: "Example Domains", exact: true})).toHaveAttribute("href", firstPage);
+  await chat.getByText("Searched the web and read a page", {exact: true}).click();
+  const steps = chat.getByRole("list", {name: "Tool activity"}).getByRole("listitem");
+  await expect(steps.nth(0).locator("summary")).toHaveText("Searched the web IANA example domains documentation");
+  await expect(steps.nth(1).locator("summary")).toHaveText(`Read page ${firstPage}`);
+  await steps.nth(1).locator("summary").click();
+  await expect(steps.nth(1).locator(".trace-detail")).toContainText(firstPage);
+  await chat.getByRole("button", {name: "Quote response"}).click();
+  await expect(page.getByRole("textbox", {name: "Message curious-otter"})).toHaveValue(/IANA reserves example\.com[\s\S]+iana\.org\/help\/example-domains/);
+  await page.reload();
+  const links = page.getByRole("region", {name: "Sources", exact: true}).getByRole("link");
+  await expect(links).toHaveText(["Example Domains", "IANA-managed Reserved Domains"]);
+  await expect(links.nth(0)).toHaveAttribute("href", firstPage);
+  await expect(links.nth(1)).toHaveAttribute("href", "https://www.iana.org/domains/reserved");
+  await expect(page.getByRole("switch", {name: "Allow all"})).toBeChecked();
+});
+
 test("the reference opens a fleet chat from its first message", async ({page}) => {
   await page.emulateMedia({reducedMotion: "reduce"});
   await page.goto(review("empty"));

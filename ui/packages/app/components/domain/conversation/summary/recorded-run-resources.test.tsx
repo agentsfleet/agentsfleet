@@ -95,11 +95,13 @@ it("records explicit process endings without an exit code and keeps an unknown p
 it("the run summary links only web sources", () => {
   const sources = [{url: "https://docs.example.test/page", title: "Guide"}, {url: "http://support.example.test/"}, {url: "javascript:alert(1)"}, {url: "https://support.example.test/private?sig=hidden", title: "sensitive title"}];
   const complete = {name: "web_search", call_id: "1:1", status: "succeeded", duration_ms: 3, sources};
-  const reloaded = readSavedTrace(JSON.parse(JSON.stringify({calls: [complete]})), 0);
+  const read = {name: "web_fetch", call_id: "1:2", status: "succeeded", duration_ms: 1, sources: [{url: "https://docs.example.test/page"}]};
+  const reloaded = readSavedTrace(JSON.parse(JSON.stringify({calls: [complete, read]})), 0);
   expect(reloaded?.calls[0]?.sources).toEqual(readToolOutcome(complete)?.sources);
   const turn = ev({actor: "operator", role: "user", tools: reloaded?.calls});
   const {rerender} = render(<WorkSources turns={[turn]} />);
   const links = screen.getAllByRole("link");
+  expect(screen.getByRole("link", {name: "Guide"}).getAttribute("href")).toBe("https://docs.example.test/page");
   expect(links.map(link => link.getAttribute("href"))).toEqual(sources.slice(0, 2).map(source => source.url));
   expect(links.every(link => link.getAttribute("rel") === "noopener noreferrer")).toBe(true);
   expect(screen.getByText("javascript:alert(1)").closest("a")).toBeNull();

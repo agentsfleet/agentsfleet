@@ -1,4 +1,5 @@
 import type { FleetSources } from "@/lib/fleet-sources";
+import type { WebSource } from "@/lib/api/turns";
 import type { FleetTurn } from "@/lib/streaming/fleet-stream-row";
 import type { DurableTaskDetails } from "../../tasks/use-task-details";
 import { useMemo } from "react";
@@ -81,7 +82,10 @@ export function ChangesSummary({changes}: {changes: readonly RecordedChange[]}) 
 }
 
 export function WorkSources({sources, files, turns = []}: {turns?: readonly FleetTurn[]; sources?: FleetSources; files?: readonly {id: string; name: string}[]}) {
-  const pages = new Map(turns.flatMap(turn => turn.tools?.flatMap(call => call.sources ?? []) ?? []).map(source => [source.url, source]));
+  const pages = new Map<string, WebSource>();
+  for (const source of turns.flatMap(turn => turn.tools?.flatMap(call => call.sources ?? []) ?? [])) {
+    if (source.title?.trim() || !pages.has(source.url)) pages.set(source.url, source);
+  }
   return <WorkSection title="Sources">
     <WebSources pages={[...pages.values()]} />
     {files?.length ? <AttachedSources files={files} /> : null}

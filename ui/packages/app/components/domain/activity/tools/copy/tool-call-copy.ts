@@ -3,7 +3,7 @@ import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
 import { RUNNER_COPY, TAKES_NO_ARGS, patchRows } from "./tool-call-copy-runner";
 import { lineRows, type DiffRow } from "../diff/tool-call-diff";
 import { ARGS_NOT_RECORDED, TOOL_BODY, TOOL_NAME, plainCopy, type ToolCopy, type Verbs } from "../presentation/tool-call-shape";
-import { CLIP_MARK, clipMarked, compactArgs, linesOf, mayBeClipped, outputLines, pathArg, stringArg } from "../presentation/tool-call-text";
+import { CLIP_MARK, clipMarked, compactArgs, firstLine, linesOf, mayBeClipped, outputLines, pathArg, stringArg } from "../presentation/tool-call-text";
 
 // What a tool call says in the thread: a
 // verb that is `-ing` while the call runs and past tense once it returns, the
@@ -37,6 +37,8 @@ const VERBS = {
   WRITE: { running: "Writing", done: "Wrote" },
   EDIT: { running: "Editing", done: "Edited" },
   REQUEST: { running: "Requesting", done: "Requested" },
+  SEARCH: {running: "Searching the web", done: "Searched the web"},
+  READ_PAGE: {running: "Reading page", done: "Read page"},
   REMEMBER: { running: "Remembering", done: "Remembered" },
   FORGET: { running: "Forgetting", done: "Forgot" },
   RUN: { running: "Running", done: "Ran" },
@@ -66,6 +68,12 @@ const EDITS: ReadonlyMap<string, Verbs> = new Map<string, Verbs>([
 // A Map, not an object literal: a tool named `toString` must read as unknown.
 const COPY: ReadonlyMap<string, (args: ToolArgs) => ToolCopy> = new Map([
   [TOOL_NAME.HTTP_REQUEST, requestCopy],
+  [TOOL_NAME.WEB_SEARCH, args => plainCopy(VERBS.SEARCH, firstLine(stringArg(args, "query") ?? ""))],
+  [TOOL_NAME.WEB_FETCH, args => {
+    const page = URL.parse(stringArg(args, ARG.URL) ?? "");
+    const allowed = page && (page.protocol === "https:" || page.protocol === "http:") && !page.username && !page.password;
+    return plainCopy(VERBS.READ_PAGE, allowed ? clipMarked(page.origin + page.pathname) : "");
+  }],
   [TOOL_NAME.MEMORY_STORE, (args) => plainCopy(VERBS.REMEMBER, clipMarked(stringArg(args, ARG.KEY) ?? ""))],
   [TOOL_NAME.MEMORY_FORGET, (args) => plainCopy(VERBS.FORGET, clipMarked(stringArg(args, ARG.KEY) ?? ""))],
   [TOOL_NAME.EXEC_COMMAND, (args) => commandCopy(stringArg(args, ARG.CMD))],

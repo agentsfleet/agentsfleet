@@ -153,6 +153,11 @@ mod tests {
             (
                 "web_search",
                 "succeeded",
+                json!([{"url":"https://docs.test/o\nne"}]),
+            ),
+            (
+                "web_search",
+                "succeeded",
                 json!([{"url":"https://docs.test/?token=private"}]),
             ),
             (
@@ -176,6 +181,10 @@ mod tests {
                 "{encoded}"
             );
         }
+        let nul = json!({"calls":[{"call_id":"1","name":"web_search","arguments":{},
+            "status":"succeeded","duration_ms":1,"sources":[{"url":"https://docs.test/","title":"a\0b"}]}]}).to_string();
+        let parsed: ToolTrace<'_> = serde_json::from_str(&nul)?;
+        assert_eq!(parsed.validate(), Err(TraceRejection::HoldsNul));
         Ok(())
     }
 }

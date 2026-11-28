@@ -224,6 +224,13 @@ button{font-weight:500}h1,h2,h3{font-weight:650}strong{font-weight:600}
 .brand .nav-label,.address-options button{font-weight:600;color:var(--text)}
 .summary .changes-row-label small{display:block;margin:0}
 .summary .source-row-label :is(strong,small){display:block;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.web-sources,.web-steps{margin:0;padding:0;list-style:none}
+.web-step>summary>span,.web-step .trace-detail{min-width:0;overflow-wrap:anywhere}
+.web-step>summary>i{flex:none}
+.web-step>summary>i:last-child{margin-left:auto;opacity:1}
+.web-sources a{color:inherit;text-decoration:none}
+.web-sources a:hover span,.web-sources a:focus-visible span{text-decoration:underline}
+.reply-citation{color:var(--text);text-decoration:underline;text-underline-offset:2px;overflow-wrap:anywhere}
 .user-turn{width:fit-content}.user-bubble{overflow-wrap:anywhere}
 .compact-table td:first-child { white-space: normal; overflow-wrap: anywhere; }
 @media (max-width: 639px) {
@@ -546,7 +553,7 @@ button{font-weight:500}h1,h2,h3{font-weight:650}strong{font-weight:600}
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
-<div class="review-bar" aria-label="Prototype controls"><span><strong>Visual review</strong><span class="review-caption">Sample data</span><label class="loading-review-picker" id="app-loading-review-picker" hidden>View<select aria-label="App loading preview"><option value="app-loading">Dashboard</option><option value="app-loading-full">Full screen</option><option value="fleet-chat-loading">Fleet conversation</option><option value="sign-in-loading">Sign in</option><option value="sign-up-loading">Sign up</option></select></label></span><div class="review-links"><button data-view="app-loading">App loading</button><button data-view="empty">New fleet</button><button data-view="chief">Fleet handoff</button><button data-view="conversation">Conversation</button><button data-view="activity">Activity</button><button data-view="failure">Error</button><button data-view="scheduled">Wake-up</button><button data-view="usage">Usage</button><button data-view="models">Models</button><button data-view="secrets">Secrets</button><button data-view="team">Team</button><button data-view="security">Security</button><button data-view="cli-sign-in">CLI sign-in</button><button data-view="terminal">Terminal</button><button data-view="review">Sign-off</button><button class="icon-button" id="theme-toggle" aria-label="Switch color theme" title="Switch color theme"><i data-icon="sun"></i></button></div></div>
+<div class="review-bar" aria-label="Prototype controls"><span><strong>Visual review</strong><span class="review-caption">Sample data</span><label class="loading-review-picker" id="app-loading-review-picker" hidden>View<select aria-label="App loading preview"><option value="app-loading">Dashboard</option><option value="app-loading-full">Full screen</option><option value="fleet-chat-loading">Fleet conversation</option><option value="sign-in-loading">Sign in</option><option value="sign-up-loading">Sign up</option></select></label></span><div class="review-links"><button data-view="app-loading">App loading</button><button data-view="empty">New fleet</button><button data-view="chief">Fleet handoff</button><button data-view="conversation">Conversation</button><button data-view="curious-otter">Web search</button><button data-view="activity">Activity</button><button data-view="failure">Error</button><button data-view="scheduled">Wake-up</button><button data-view="usage">Usage</button><button data-view="models">Models</button><button data-view="secrets">Secrets</button><button data-view="team">Team</button><button data-view="security">Security</button><button data-view="cli-sign-in">CLI sign-in</button><button data-view="terminal">Terminal</button><button data-view="review">Sign-off</button><button class="icon-button" id="theme-toggle" aria-label="Switch color theme" title="Switch color theme"><i data-icon="sun"></i></button></div></div>
 <div class="app">
   <nav class="rail" aria-label="Main navigation">
     <button class="brand" data-view="empty" aria-label="agentsfleet home"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0Ij4KICA8dGl0bGU+YWdlbnRzZmxlZXQ8L3RpdGxlPgogIDxyZWN0IHdpZHRoPSI2NCIgaGVpZ2h0PSI2NCIgcng9IjEyIiBmaWxsPSIjMTUxNzE2Ii8+CiAgPGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoOCA4KSBzY2FsZSgyKSIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjYjhmMGNlIiBzdHJva2Utd2lkdGg9IjEuNCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIj4KICAgIDxwYXRoIGQ9Ik0xMiAydjZtMCA4djZNMiAxMmg2bTggMGg2TTQuOTMgNC45M2w0LjI0IDQuMjRtNS42NiA1LjY2IDQuMjQgNC4yNE00LjkzIDE5LjA3bDQuMjQtNC4yNG01LjY2LTUuNjYgNC4yNC00LjI0Ii8+CiAgICA8Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSIxLjUiIGZpbGw9IiNiOGYwY2UiIHN0cm9rZT0ibm9uZSIvPgogIDwvZz4KPC9zdmc+Cg==" width="24" height="24" alt=""><span class="nav-label">agentsfleet</span></button>
@@ -937,7 +944,7 @@ const icon = name => `<i data-icon="${name}"></i>`;
 const appState = {
   view: 'conversation', approved: false, retrying: false, retried: false, schedules: {scheduled:{state:'active',wake:'12:30'}},
   liveUpdates: 'offline', taskDetailsUnavailable: new URLSearchParams(location.search).get('task-details') === 'unavailable',
-  inputs: {}, messages: {}, removed: {}, network: {}, statements: {},
+  inputs: {}, messages: {}, removed: {}, network: {'curious-otter': {public:true, packages:false}}, statements: {},
   memoryAccess: {conversation: {read:true, publish:true}},
   connections: {github:true,slack:true},
   secrets: [
@@ -956,6 +963,7 @@ const workspaceFleets = [
   {view:'bob', name:'Bob', address:'bob'},
   {view:'conversation', name:'Release watch', address:'release-watch'},
   {view:'activity', name:'Launch review', address:'launch-review'},
+  {view:'curious-otter', name:'curious-otter', address:'curious-otter'},
   {view:'failure', name:'Deploy monitor', address:'deploy-monitor'},
   {view:'scheduled', name:'Merge watch', address:'merge-watch'},
 ];
@@ -1150,7 +1158,7 @@ function showView(view, focus=false) {
   const isChat = !!fleetNames[view];
   $('#page-title').textContent=fleetNames[view] || pageTitles[view] || (appLoading ? 'Workspace' : 'agentsfleet');
   $('.fleet-mark i').dataset.icon=({team:'users',models:'cpu',security:'shield',usage:'chart-bar',secrets:'key',connections:'plugs-connected',review:'check-circle',empty:'note-pencil','cli-sign-in':'key',terminal:'terminal-window'})[view] || 'stack';
-  $('#fleet-more').hidden=!isChat; $('#header-state').hidden=!isChat; $('#run-cost').hidden=!isChat;
+  $('#fleet-more').hidden=!isChat; $('#header-state').hidden=!isChat||view==='curious-otter'; $('#run-cost').hidden=!isChat||view==='curious-otter';
   $('#header-state').textContent=view==='activity'?'Ready to review':view==='failure'?(appState.retried?'Connection restored':appState.retrying?'Retrying':'Needs attention'):view==='scheduled'?(scheduleFor().state==='active'?'Scheduled':'Schedule '+scheduleFor().state):view==='conversation' ? (appState.approved ? 'Access approved' : appState.accessDenied ? 'Access denied' : 'Needs approval') : 'Active';
   $('#header-state').classList.toggle('neutral',view==='scheduled'||view==='activity'||appState.approved);
   $('#run-cost').textContent=view==='failure'?'$0.08 this run':view==='scheduled'?'$0.12 this run':'$0.34 this run';
@@ -1211,7 +1219,38 @@ function handoffConversation(view){
   }
   return '<div class="day-marker">Today · Sample conversation</div>'+turns+localMessages(view);
 }
+window.FLEET_ICONS['book-open'] = '<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" fill="currentColor" viewBox="0 0 256 256"><path d="M232,48H160a40,40,0,0,0-32,16A40,40,0,0,0,96,48H24a8,8,0,0,0-8,8V200a8,8,0,0,0,8,8H96a24,24,0,0,1,24,24,8,8,0,0,0,16,0,24,24,0,0,1,24-24h72a8,8,0,0,0,8-8V56A8,8,0,0,0,232,48ZM96,192H32V64H96a24,24,0,0,1,24,24V200A39.81,39.81,0,0,0,96,192Zm128,0H160a39.81,39.81,0,0,0-24,8V88a24,24,0,0,1,24-24h64Z"></path></svg>';
+const exampleDomainPages = [
+  {title:'Example Domains', url:'https://www.iana.org/help/example-domains'},
+  {title:'IANA-managed Reserved Domains', url:'https://www.iana.org/domains/reserved'},
+];
+function searchConversation(view) {
+  const page = exampleDomainPages[0];
+  const answer = 'IANA reserves example.com for documentation, so you can use it in a guide without registering it.';
+  const reply = `${answer}\n\n[${page.title}](${page.url})`;
+  const query = 'IANA example domains documentation';
+  const step = (glyph, label, target, argument) => `<li><details class="trace web-step">
+    <summary>${icon(glyph)}<span>${label} <span class="web-target">${esc(target)}</span></span>${icon('caret-down')}</summary>
+    <div class="trace-detail"><code>${esc(JSON.stringify({[argument]:target}))}</code></div>
+  </details></li>`;
+  const question = 'Find IANA’s official documentation on example domains. Open the first result and check why I can use example.com in a guide. Give me a short answer and link to the page you read.';
+  return `<div class="day-marker">Today · Sample conversation</div>
+    ${userTurn(question,'You · 11:42')}
+    <article class="assistant-turn" data-reply-text="${esc(reply)}">${assistantMeta(view,'11:42')}
+      <details class="work-group">
+        <summary>${icon('check-circle')}<span>Searched the web and read a page</span>${icon('caret-down')}</summary>
+        <ul class="work-content web-steps" aria-label="Tool activity">
+          ${step('globe','Searched the web',query,'query')}
+          ${step('book-open','Read page',page.url,'url')}
+        </ul>
+      </details>
+      <p>${esc(answer)}</p>
+      <p><a class="reply-citation" href="${page.url}" target="_blank" rel="noopener noreferrer">${esc(page.title)}</a></p>
+      ${actions()}
+    </article>${localMessages(view)}`;
+}
 function conversation(view) {
+  if(view==='curious-otter') return searchConversation(view);
   if(view==='chief'||view==='bob')return handoffConversation(view);
   if(view==='activity') return activityConversation();
   if(view==='failure') return retryConversation();
@@ -1408,6 +1447,12 @@ function fleetLists(view) {
     </section>`;
 }
 function summary(view) {
+  if(view==='curious-otter'){
+    const links = exampleDomainPages.map(page => `<li><a class="summary-row" href="${page.url}" target="_blank" rel="noopener noreferrer">${icon('globe')}<span>${esc(page.title)}</span>${icon('arrow-up-right')}</a></li>`).join('');
+    return `<aside class="summary" aria-label="Fleet summary"><h2>Summary ${icon('list-bullets')}</h2>
+      <section class="summary-section" aria-label="Sources"><h3 class="summary-label">Sources</h3><ul class="web-sources">${links}</ul></section>
+      ${fleetLists(view)}</aside>`;
+  }
   if(view==='chief'||view==='bob'){
     const chief=view==='chief';
     return `<aside class="summary" aria-label="Fleet summary"><h2>Summary ${icon('list-bullets')}</h2><section class="summary-section"><div class="summary-label">Outcome</div><strong>Receipt confirmed</strong><p>Bob acknowledged the morning handoff.</p></section><section class="summary-section"><div class="summary-label">Related conversation</div><button class="summary-row" data-view="${chief?'bob':'chief'}">${icon('stack')}<span>${chief?'Bob':'Chief of Staff'}</span>${icon('arrow-up-right')}</button></section>${fleetLists(view)}</aside>`;
@@ -1425,10 +1470,11 @@ function pendingPreviewReply(view) {return (appState.messages[view]||[]).findLas
 function turnRuns(view) {return !!pendingPreviewReply(view);}
 function composerModel(view) {
   const platform = 'MiniMax M3.1 Flash';
-  const selected = appState.models[view] || (view === 'empty' ? '' : platform);
+  const workspaceDefault = view === 'empty' || view === 'curious-otter';
+  const selected = appState.models[view] || (workspaceDefault ? '' : platform);
   const options = [...new Set([platform,...modelPreview.entries.map(entry=>entry.model)])];
   return `<span class="model-control">${icon('cpu')}<select class="fleet-model-choice" aria-label="Fleet model">
-    ${view==='empty'?`<option value="" disabled hidden ${selected===''?'selected':''}>Workspace model</option>`:''}
+    ${workspaceDefault?`<option value="" disabled hidden ${selected===''?'selected':''}>${view==='empty'?'Workspace model':'Runtime model'}</option>`:''}
     ${options.map(model=>`<option value="${esc(model)}" ${model===selected?'selected':''}>${esc(model)}</option>`).join('')}
   </select>${icon('caret-down')}</span>`;
 }
@@ -1447,7 +1493,7 @@ function composer(empty=false) {
   const wakeup=scheduleFor();
   const paused=wakeup.state==='paused';
   const nextWakeup=wakeupTime(wakeup);
-  return `<div class="composer-wrap">${connectionFlap(view)}${view==='activity'?`<div class="flap-wrap"><button class="work-flap" data-action="activity-changes">${icon('git-diff')}<strong>6 files changed</strong><span class="diff-stat">+271 <b>−3</b></span>${icon('caret-up')}</button></div>`:''}${['active','paused'].includes(wakeup.state)?`<div class="wake-strip">${icon('clock')}<span><span class="wake-label-prefix">${paused?'Wake-up':'Next wake-up'} · </span>${paused?'<span class="wake-label-paused">Paused</span>':`<span title="${esc(wakeup.wake)} UTC">${esc(nextWakeup)}</span>`}</span><div class="wake-actions"><button class="icon-button" data-action="schedule" aria-label="Edit scheduled wake-up" title="Edit wake-up">${icon('pencil-simple')}</button><button class="icon-button" data-action="pause-schedule" aria-label="${paused?'Resume':'Pause'} scheduled wake-up" title="${paused?'Resume':'Pause'} wake-up">${icon(paused?'play':'pause')}</button><button class="icon-button" data-action="cancel-schedule" aria-label="Cancel scheduled wake-up" title="Cancel wake-up">${icon('trash')}</button></div></div>`:''}<div class="composer"><div class="attached-files">${(appState.files[view]||[]).map((f,i)=>`<span class="file-chip">${icon('file-text')}${esc(f)}<button class="attachment-remove" data-remove-file="${i}" aria-label="Remove ${esc(f)}">×</button></span>`).join('')}</div><label class="sr-only" for="message">${empty?'Describe your new fleet':'Message '+fleetNames[view]}</label>${(empty || workspaceFleets.some(fleet=>fleet.view===view))?'<div id="address-options" class="address-options" hidden></div>':''}<textarea id="message" ${(empty || workspaceFleets.some(fleet=>fleet.view===view))?'aria-autocomplete="list"':''} rows="2" placeholder="${empty?'What would you like your fleet to do?':'Message your fleet…'}"></textarea><div class="composer-footer">${empty ? '' : `<button class="icon-button" data-action="attach" aria-label="Attach a document" title="Attach document">${icon('paperclip')}</button>`}<button class="icon-button" data-action="mention" aria-label="${(empty || workspaceFleets.some(fleet=>fleet.view===view))?(empty?'Mention a fleet':'Address a workspace fleet'):'Mention a source'}" title="${(empty || workspaceFleets.some(fleet=>fleet.view===view))?(empty?'Mention a fleet':'Address a workspace fleet'):'Mention a source'}">${icon('at')}</button>${composerModel(view)}${empty?'':`<button class="icon-button stop-turn" data-action="stop-turn" aria-label="Stop" title="Stop" ${turnRuns(view)?'':'hidden'}><span aria-hidden="true" class="stop-glyph"></span></button>`}<button class="send" id="send-message" aria-label="Send message">${icon('arrow-up')}</button></div></div><div class="composer-caption"><span>Enter to send · Shift + Enter for a new line</span>${empty?'':'<span>Token budget: 18%</span>'}</div><p class="composer-status" id="composer-status" hidden></p>
+  return `<div class="composer-wrap">${connectionFlap(view)}${view==='activity'?`<div class="flap-wrap"><button class="work-flap" data-action="activity-changes">${icon('git-diff')}<strong>6 files changed</strong><span class="diff-stat">+271 <b>−3</b></span>${icon('caret-up')}</button></div>`:''}${['active','paused'].includes(wakeup.state)?`<div class="wake-strip">${icon('clock')}<span><span class="wake-label-prefix">${paused?'Wake-up':'Next wake-up'} · </span>${paused?'<span class="wake-label-paused">Paused</span>':`<span title="${esc(wakeup.wake)} UTC">${esc(nextWakeup)}</span>`}</span><div class="wake-actions"><button class="icon-button" data-action="schedule" aria-label="Edit scheduled wake-up" title="Edit wake-up">${icon('pencil-simple')}</button><button class="icon-button" data-action="pause-schedule" aria-label="${paused?'Resume':'Pause'} scheduled wake-up" title="${paused?'Resume':'Pause'} wake-up">${icon(paused?'play':'pause')}</button><button class="icon-button" data-action="cancel-schedule" aria-label="Cancel scheduled wake-up" title="Cancel wake-up">${icon('trash')}</button></div></div>`:''}<div class="composer"><div class="attached-files">${(appState.files[view]||[]).map((f,i)=>`<span class="file-chip">${icon('file-text')}${esc(f)}<button class="attachment-remove" data-remove-file="${i}" aria-label="Remove ${esc(f)}">×</button></span>`).join('')}</div><label class="sr-only" for="message">${empty?'Describe your new fleet':'Message '+fleetNames[view]}</label>${(empty || workspaceFleets.some(fleet=>fleet.view===view))?'<div id="address-options" class="address-options" hidden></div>':''}<textarea id="message" ${(empty || workspaceFleets.some(fleet=>fleet.view===view))?'aria-autocomplete="list"':''} rows="2" placeholder="${empty?'What would you like your fleet to do?':'Message your fleet…'}"></textarea><div class="composer-footer">${empty ? '' : `<button class="icon-button" data-action="attach" aria-label="Attach a document" title="Attach document">${icon('paperclip')}</button>`}<button class="icon-button" data-action="mention" aria-label="${(empty || workspaceFleets.some(fleet=>fleet.view===view))?(empty?'Mention a fleet':'Address a workspace fleet'):'Mention a source'}" title="${(empty || workspaceFleets.some(fleet=>fleet.view===view))?(empty?'Mention a fleet':'Address a workspace fleet'):'Mention a source'}">${icon('at')}</button>${composerModel(view)}${empty?'':`<button class="icon-button stop-turn" data-action="stop-turn" aria-label="Stop" title="Stop" ${turnRuns(view)?'':'hidden'}><span aria-hidden="true" class="stop-glyph"></span></button>`}<button class="send" id="send-message" aria-label="Send message">${icon('arrow-up')}</button></div></div><div class="composer-caption"><span>Enter to send · Shift + Enter for a new line</span>${empty||view==='curious-otter'?'':'<span>Token budget: 18%</span>'}</div><p class="composer-status" id="composer-status" hidden></p>
     ${empty?`<div class="fleet-create-refusal" id="fleet-create-refusal" hidden><span role="alert">Couldn’t start your fleet. Your message is still here.</span><button class="secondary" data-action="send-message">Resend</button></div>`:''}
   </div>`;
 }
@@ -1739,10 +1785,10 @@ Waiting for requests…</pre></div>`+previewNote('This is a sample process, not 
     case 'insert-source':$('#modal').close();insertText('@platform-images');break;
     case 'quote':{
       const preview=b.closest('[data-preview-reply]')?.querySelector('.preview-reply-text')?.textContent;
-      const text=preview??(appState.view==='chief'?'Bob confirmed receipt of the morning handoff.':appState.view==='bob'?'I sent the receipt to @chief-of-staff.':appState.view==='activity'?'The changes are ready.':appState.view==='failure'?'The health check hasn’t run.':appState.view==='scheduled'?'Next check at '+scheduleFor().wake+' UTC.':'The runner update is ready.');
+      const text=b.closest('[data-reply-text]')?.dataset.replyText??preview??(appState.view==='chief'?'Bob confirmed receipt of the morning handoff.':appState.view==='bob'?'I sent the receipt to @chief-of-staff.':appState.view==='activity'?'The changes are ready.':appState.view==='failure'?'The health check hasn’t run.':appState.view==='scheduled'?'Next check at '+scheduleFor().wake+' UTC.':'The runner update is ready.');
       insertText('> '+text+'\n\n');break;
     }
-    case 'copy-reply':{const text=b.closest('.assistant-turn')?.innerText||'';navigator.clipboard?.writeText(text).then(()=>{b.setAttribute('aria-label','Response copied');b.title='Copied';}).catch(()=>dialog('Copy response',`<p>Select and copy this text.</p><pre>${esc(text)}</pre>`));break;}
+    case 'copy-reply':{const turn=b.closest('.assistant-turn');const text=turn?.dataset.replyText??turn?.innerText??'';navigator.clipboard?.writeText(text).then(()=>{b.setAttribute('aria-label','Response copied');b.title='Copied';}).catch(()=>dialog('Copy response',`<p>Select and copy this text.</p><pre>${esc(text)}</pre>`));break;}
     case 'add-secret':dialog('Add secret',`<form id="secret-form"><label class="field">Name<input id="variable-name" placeholder="MY_VARIABLE" pattern="[A-Za-z_][A-Za-z0-9_]*" required><small>Letters, numbers, and underscores.</small></label><label class="field">Value<input id="variable-value" type="password" autocomplete="off" required placeholder="Use a sample value"></label><p class="subtle">Secret values are hidden after saving.</p>${previewNote('Use sample values. Nothing is stored on a server.')} ${modalActions('<button class="primary" type="submit">Add</button>')}</form>`);break;
   }
 });

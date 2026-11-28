@@ -1,7 +1,10 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use af_egress::testing::{RecordingTransport, inbound, redirected};
-use af_wire::{policy::HttpEgress, web::ExtractResponse};
+use af_wire::{
+    policy::HttpEgress,
+    web::{ExtractResponse, SearchResponse, SearchResult},
+};
 use async_trait::async_trait;
 
 use super::{Egressed, NETWORK_RESTRICTED, Unanswered, WebUnanswered};
@@ -13,6 +16,9 @@ const START: &str = "https://demo.es.example/start";
 const UNKNOWN: &str = "https://docs.example.org/guide";
 const DESTINATION: &str = "https://cdn.example.org/private?sig=sentinel";
 const CALL: &str = "fetch-1";
+
+#[path = "web_search_tests.rs"]
+mod search;
 
 #[derive(Debug)]
 struct Verbs {
@@ -42,6 +48,27 @@ impl RunVerbs for Verbs {
     }
     async fn message(&self, _: u64, _: &str) -> Result<bool, Unanswered> {
         Err(Unanswered::Unreachable)
+    }
+    async fn web_search(&self, number: u64, query: &str) -> Result<SearchResponse, Unanswered> {
+        assert_eq!((number, query), (8, "migration"));
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        tokio::time::sleep(self.delay).await;
+        let row = SearchResult {
+            url: UNKNOWN.to_owned(),
+            title: Some("Migration Guide".to_owned()),
+            published: None,
+            excerpts: vec![format!("Guide {}", af_egress::fixture::GRAFANA_TOKEN)],
+        };
+        Ok(SearchResponse {
+            vendor: "parallel".to_owned(),
+            results: vec![
+                SearchResult {
+                    url: "file:///private".to_owned(),
+                    ..row.clone()
+                },
+                row,
+            ],
+        })
     }
     async fn web_extract(&self, number: u64, url: &str) -> Result<ExtractResponse, WebUnanswered> {
         assert_eq!(number, 8);
@@ -196,7 +223,7 @@ impl af_egress::Transport for SlowPage {
 async fn a_local_read_can_spend_only_the_time_left_after_extraction() {
     let mut fixture = RunFixture::new();
     fixture.policy.network_policy.http_egress = HttpEgress::Public;
-    for (delay, expected_connections) in [(11, 1), (14, 0)] {
+    for (delay, expected_connections) in [(11, 1), (13, 0), (14, 0)] {
         let mut verbs = Verbs::new(Err(WebUnanswered::LocalReadPermitted));
         verbs.delay = std::time::Duration::from_secs(delay);
         let run = fixture.run_reaching(&verbs);
@@ -222,7 +249,7 @@ async fn vendor_results_hide_protected_addresses_and_mask_excerpts() -> af_egres
     let run = fixture.run();
     let mut guard = run.egress.lock().await;
     let token = af_egress::fixture::GRAFANA_TOKEN;
-    let mut result = af_wire::web::SearchResult {
+    let mut result = SearchResult {
         url: format!("{UNKNOWN}?private={token}"),
         title: None,
         published: None,
@@ -238,7 +265,7 @@ async fn vendor_results_hide_protected_addresses_and_mask_excerpts() -> af_egres
     assert_eq!(safe.title, None);
     assert_eq!(safe.excerpts, ["excerpt «secret:grafana.token»"]);
     let signed = format!("{UNKNOWN}?token=page-signature");
-    let result = af_wire::web::SearchResult {
+    let result = SearchResult {
         url: signed.clone(),
         title: Some("page-signature".to_owned()),
         published: None,

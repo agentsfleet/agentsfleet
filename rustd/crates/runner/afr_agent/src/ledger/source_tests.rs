@@ -100,6 +100,32 @@ fn signed_redirects_and_titles_are_absent_from_every_disclosure() {
 }
 
 #[test]
+fn a_fetch_without_room_for_its_request_cannot_publish_an_uncorroborated_source() {
+    let frames = Frames::default();
+    let sink = frames.sink();
+    let scrub = scrub();
+    let ledger = Ledger::new(RUN_ID, TURN, &sink, &scrub);
+    let page = "https://docs.test/guide";
+    let call = Call {
+        name: "web_fetch".into(),
+        arguments: json!({"url":page, "extra": vec![0; af_wire::tool_trace::ARGS_MAX_BYTES]}),
+        ..planned()
+    };
+    let output = ToolOutput::succeeded("guide").with_sources(vec![source(page, "")]);
+    ran(&ledger, &call, Some(output));
+    let (trace, records) = ledger.finish();
+    assert_eq!(trace.calls[0].arguments, serde_json::Map::new());
+    assert_eq!(records[0].arguments["url"], page);
+    assert_eq!(trace.calls[0].sources, []);
+    assert_eq!(records[0].sources, []);
+    let completed = frames.taken().into_iter().find_map(|frame| match frame {
+        ActivityFrame::ToolCallCompleted(body) => Some(body.sources),
+        _ => None,
+    });
+    assert_eq!(completed, Some(Vec::new()));
+}
+
+#[test]
 fn an_escaped_source_is_kept_whole_or_omitted() {
     let sample = WebSource {
         url: "https://safe.test/".into(),

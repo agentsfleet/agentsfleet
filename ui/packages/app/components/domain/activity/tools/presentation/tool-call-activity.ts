@@ -58,6 +58,10 @@ export function toolGroupActivity(content: MessageState["content"], indices: rea
   if (calls.length === 1 && single && (state !== CELL_STATE.SUCCEEDED || (KNOWN.has(single.toolName) && !COORDINATION.has(single.toolName)))) {
     return toolActivity(single.toolName, single.args, state);
   }
+  if (state === CELL_STATE.SUCCEEDED && calls.length === 2
+    && calls[0]?.toolName === TOOL_NAME.WEB_SEARCH && calls[1]?.toolName === TOOL_NAME.WEB_FETCH) {
+    return {label: "Searched the web and read a page", target: "", kind: "request", state};
+  }
   const commands = calls.filter(call => call.toolName === TOOL_NAME.EXEC_COMMAND || call.toolName === TOOL_NAME.SHELL).length;
   const tools = calls.length - commands;
   const counts = [tools ? `${tools} ${tools === 1 ? "tool" : "tools"}` : "", commands ? `${commands} ${commands === 1 ? "command" : "commands"}` : ""].filter(Boolean).join(", ");
@@ -77,6 +81,10 @@ function describe(name: string, args: ToolArgs | undefined): Description {
     case TOOL_NAME.EXEC_COMMAND: case TOOL_NAME.SHELL:
       return {running: "Running command", done: "Ran command", target: first(stringArg(args, name === TOOL_NAME.SHELL ? "command" : "cmd")), kind: "command"};
     case TOOL_NAME.HTTP_REQUEST: return request(args);
+    case TOOL_NAME.WEB_SEARCH: case TOOL_NAME.WEB_FETCH: {
+      const copy = toolCopy(name, args);
+      return {...copy.verbs, target: copy.target, kind: name === TOOL_NAME.WEB_SEARCH ? "request" : "read"};
+    }
     case TOOL_NAME.MEMORY_LIST: case TOOL_NAME.CRON_LIST: case TOOL_NAME.CRON_RUNS:
       return {running: "Listing", done: "Listed", target: name === TOOL_NAME.MEMORY_LIST ? "memories" : name === TOOL_NAME.CRON_RUNS ? "schedule runs" : "schedules", kind: "list"};
     case TOOL_NAME.MEMORY_RECALL: return {running: "Recalling memory", done: "Recalled memory", target: first(stringArg(args, "query")), kind: "read"};

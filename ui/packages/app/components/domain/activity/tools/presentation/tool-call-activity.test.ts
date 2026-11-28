@@ -13,6 +13,9 @@ describe("recorded tool activity", () => {
   it.each([
     [TOOL_NAME.FLEET_ACTIVITY, {}, "Reading fleet activity", "Read fleet activity", ""],
     [TOOL_NAME.FLEET_STEER, {fleet_id: "bob-id"}, "Sending fleet message", "Sent fleet message", ""],
+    [TOOL_NAME.WEB_SEARCH, {query: "IANA example domains"}, "Searching the web", "Searched the web", "IANA example domains"],
+    [TOOL_NAME.WEB_FETCH, {url: "https://iana.org/help?sig=private#fragment"}, "Reading page", "Read page", "https://iana.org/help"],
+    [TOOL_NAME.WEB_FETCH, {url: "https://author:pass@iana.org/help"}, "Reading page", "Read page", ""],
     [TOOL_NAME.FILE_READ, {path: "/workspace/a.ts"}, "Reading file", "Read file", "a.ts"],
     [TOOL_NAME.FILE_WRITE, {path: "a.ts"}, "Writing", "Wrote", "a.ts"],
     [TOOL_NAME.FILE_EDIT, {path: "a.ts"}, "Editing", "Edited", "a.ts"],
